@@ -11,7 +11,7 @@ export const getBedrockInferenceProfiles = memoize(async function (): Promise<
     createBedrockClient(),
     import('@aws-sdk/client-bedrock'),
   ])
-  const allProfiles = []
+  const allProfiles: import('@aws-sdk/client-bedrock').InferenceProfileSummary[] = []
   let nextToken: string | undefined
 
   try {

@@ -21,12 +21,12 @@ describe('titleService', () => {
   })
 
   test('sends disabled thinking for opted-in providers when desktop thinking is off', async () => {
-    let requestBody: Record<string, unknown> | null = null
+    const requestCapture: { body: Record<string, unknown> | null } = { body: null }
     const server = Bun.serve({
       hostname: '127.0.0.1',
       port: 0,
       async fetch(req) {
-        requestBody = await req.json() as Record<string, unknown>
+        requestCapture.body = await req.json() as Record<string, unknown>
         return Response.json({
           content: [{ type: 'text', text: '{"title":"Trace ok"}' }],
         })
@@ -64,19 +64,19 @@ describe('titleService', () => {
       )
 
       await expect(generateTitle('请只回复 trace-ok')).resolves.toBe('Trace ok')
-      expect(requestBody?.thinking).toEqual({ type: 'disabled' })
+      expect(requestCapture.body?.thinking).toEqual({ type: 'disabled' })
     } finally {
       server.stop(true)
     }
   })
 
   test('sends disabled thinking for DeepSeek title generation when desktop thinking is off', async () => {
-    let requestBody: Record<string, unknown> | null = null
+    const requestCapture: { body: Record<string, unknown> | null } = { body: null }
     const server = Bun.serve({
       hostname: '127.0.0.1',
       port: 0,
       async fetch(req) {
-        requestBody = await req.json() as Record<string, unknown>
+        requestCapture.body = await req.json() as Record<string, unknown>
         return Response.json({
           content: [{ type: 'text', text: '{"title":"Trace ok"}' }],
         })
@@ -114,7 +114,7 @@ describe('titleService', () => {
       )
 
       await expect(generateTitle('请只回复 trace-ok')).resolves.toBe('Trace ok')
-      expect(requestBody?.thinking).toEqual({ type: 'disabled' })
+      expect(requestCapture.body?.thinking).toEqual({ type: 'disabled' })
     } finally {
       server.stop(true)
     }
@@ -152,14 +152,14 @@ describe('titleService', () => {
   })
 
   test('sends cleaned slash-command text to the title model', async () => {
-    let requestBody: {
+    const requestCapture: { body: {
       messages?: Array<{ content?: string }>
-    } | null = null
+    } | null } = { body: null }
     const server = Bun.serve({
       hostname: '127.0.0.1',
       port: 0,
       async fetch(req) {
-        requestBody = await req.json() as {
+        requestCapture.body = await req.json() as {
           messages?: Array<{ content?: string }>
         }
         return Response.json({
@@ -200,7 +200,7 @@ describe('titleService', () => {
         '<command-args>@website 重新设计首页</command-args>',
       ].join('\n'))).resolves.toBe('Redesign website')
 
-      expect(requestBody?.messages?.[0]?.content).toBe('/frontend-design @website 重新设计首页')
+      expect(requestCapture.body?.messages?.[0]?.content).toBe('/frontend-design @website 重新设计首页')
     } finally {
       server.stop(true)
     }

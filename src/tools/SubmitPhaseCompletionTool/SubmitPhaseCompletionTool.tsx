@@ -2,6 +2,7 @@ import { z } from 'zod/v4'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { WorkflowRuntimeService } from '../../server/services/workflowRuntimeService.js'
+import { WORKFLOW_COMPLETION_SUBMISSION_STATUSES, WORKFLOW_COMPLETION_STATUS_GUIDANCE, isWorkflowReadyCompletionStatus } from '../../server/services/workflowTypes.js'
 import {
   SUBMIT_PHASE_COMPLETION_TOOL_NAME,
   getWorkflowScopedToolNames,
@@ -42,7 +43,7 @@ const inputSchema = lazySchema(() =>
   z.strictObject({
     phaseId: z.string().min(1).optional().describe('The active workflow phase ID. If omitted, the tool uses the current active workflow phase.'),
     stateVersion: z.number().int().nonnegative().optional().describe('The current workflow state version. If omitted, the tool refreshes the current workflow state version.'),
-    status: z.enum(['ready', 'needs_user', 'completed', 'blocked', 'unable']).describe('Completion result for the active phase. Use ready for a normal completion request. Legacy completed is accepted for compatibility but still waits for user confirmation; it never auto-advances.'),
+    status: z.enum(WORKFLOW_COMPLETION_SUBMISSION_STATUSES).describe(WORKFLOW_COMPLETION_STATUS_GUIDANCE),
     handoff: handoffSchema.describe('Structured phase handoff for user confirmation or follow-up.'),
     rationale: z.string().min(1).describe('Why the phase is ready, blocked, or unable.'),
     evidence: z.array(evidenceSchema).describe('Evidence supporting the completion status.'),
@@ -95,12 +96,12 @@ function errorToValidationResult(error: unknown) {
   }
 }
 
-function hasAutomaticRecoveryWindow(workflow: Record<string, unknown>, submissionStatus?: Input['status']): boolean {
+function hasAutomaticRecoveryCredential(workflow: Record<string, unknown>, submissionStatus?: Input['status']): boolean {
   if (submissionStatus !== 'blocked' && submissionStatus !== 'unable') return false
   const recovery = workflow.autoRecovery
   return isRecord(recovery)
     && typeof recovery.phaseId === 'string'
-    && typeof recovery.expiresAt === 'string'
+    && (typeof recovery.credentialId === 'string' || typeof recovery.expiresAt === 'string')
 }
 
 function messageForStatus(
@@ -108,10 +109,11 @@ function messageForStatus(
   workflow: Record<string, unknown> = {},
   submissionStatus?: Input['status'],
 ): string {
-  if (hasAutomaticRecoveryWindow(workflow, submissionStatus)) {
+  if (hasAutomaticRecoveryCredential(workflow, submissionStatus)) {
     return [
-      'The current phase was recorded as repairable and the server opened a 10-second silent recovery window.',
+      'The current phase was recorded as repairable and the server issued a one-time recovery credential.',
       'Immediately call request_workflow_route in this same turn with rework_current_phase or jump_to_phase to the actual repair phase.',
+      'The credential remains valid until that route call consumes it, even while the model is reasoning.',
       'Keep requireUserConfirmation true; the server applies only this constrained first recovery without a user click.',
       'Do not wait for the user, do not call the UI retry action, and do not advance normally.',
     ].join(' ')
@@ -201,7 +203,7 @@ async function submitThroughDesktopApi(
       ? payloadRecord.state
       : {}
   const artifact = isRecord(payloadRecord.artifact) ? payloadRecord.artifact : {}
-  const status: Output['status'] = submission.status === 'ready' ? 'pending' : 'recorded'
+  const status: Output['status'] = isWorkflowReadyCompletionStatus(submission.status) ? 'pending' : 'recorded'
 
   return {
     data: {
@@ -289,7 +291,8 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
   },
   async prompt() {
     return [
-      'Submit the active workflow phase completion. Use status ready only after the current phase is complete; it always requests user confirmation. Use blocked or unable only for a repairable ordinary workflow failure. For permission, login, credential, model-environment, or data-safety problems, record the explicit human blocker instead of treating it as a silent repair.',
+      WORKFLOW_COMPLETION_STATUS_GUIDANCE,
+      'For permission, login, credential, model-environment, or data-safety problems, record the explicit human blocker instead of treating it as a silent repair.',
       'Required input: status, handoff, rationale, and evidence.',
       'handoff must be an object containing the phase summary, key decisions, evidence or artifact references, remaining risks, and next-phase inputs.',
       'rationale must be a non-empty string explaining why the selected completion status is appropriate.',
@@ -324,7 +327,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
     }
 
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
+    if (!state || !getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
       return unavailable()
     }
     if (
@@ -343,7 +346,7 @@ export const SubmitPhaseCompletionTool: Tool<InputSchema, Output> = buildTool({
     }
 
     const state = workflowStateFromContext(context)
-    if (!getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
+    if (!state || !getWorkflowScopedToolNames(state).includes(SUBMIT_PHASE_COMPLETION_TOOL_NAME)) {
       throw new Error('Workflow completion is available only in workflow sessions.')
     }
     const submission = completionInputWithState(input, state)

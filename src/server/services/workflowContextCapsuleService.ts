@@ -89,6 +89,37 @@ export function activeWorkflowContextCapsule(state: WorkflowSessionState): Workf
 export function contextCapsulePrompt(state: WorkflowSessionState): string {
   const capsule = activeWorkflowContextCapsule(state)
   if (!capsule) return ''
+  // Keep persisted recovery evidence intact; only de-duplicate the model view.
+  const handoff = { ...capsule.handoff }
+  for (const [key, value] of Object.entries({
+    userRequirements: capsule.userRequirements,
+    userDecisions: capsule.userDecisions,
+    modifiedFiles: capsule.modifiedFiles,
+    verificationEvidence: capsule.verificationEvidence,
+    unresolvedRisks: capsule.unresolvedRisks,
+    nextActions: capsule.nextActions,
+  })) {
+    if (JSON.stringify(handoff[key]) === JSON.stringify(value)) delete handoff[key]
+  }
+  if (state.templateIdentity.id === 'efficient-constrained-dev-debug-workflow-v5') {
+    for (const [alias, facts] of Object.entries({
+      requirements: capsule.userRequirements,
+      decisions: capsule.userDecisions,
+      changedFiles: capsule.modifiedFiles,
+      evidence: capsule.verificationEvidence,
+      excludedCauses: capsule.excludedIssues,
+      risks: capsule.unresolvedRisks,
+      nextPhaseInputs: capsule.nextActions,
+    })) {
+      const value = handoff[alias]
+      // Only remove a lossless duplicate. Objects, mixed arrays and additional
+      // custom details stay in the handoff for recovery and downstream use.
+      const strings = typeof value === 'string' ? [value] : value
+      if (Array.isArray(strings) && strings.every(item => typeof item === 'string' && facts.includes(item))) {
+        delete handoff[alias]
+      }
+    }
+  }
   return [
     'Context Capsule (authoritative handoff for this phase)',
     JSON.stringify({
@@ -101,13 +132,13 @@ export function contextCapsulePrompt(state: WorkflowSessionState): string {
       acceptedTaskIds: capsule.acceptedTaskIds,
       completedTaskIds: capsule.completedTaskIds,
       incompleteTaskIds: capsule.incompleteTaskIds,
-      artifactRefs: capsule.artifactRefs,
+      artifactRefs: capsule.artifactRefs.map(({ submission: _submission, ...reference }) => reference),
       modifiedFiles: capsule.modifiedFiles,
       verificationEvidence: capsule.verificationEvidence,
       excludedIssues: capsule.excludedIssues,
       unresolvedRisks: capsule.unresolvedRisks,
       nextActions: capsule.nextActions,
-      handoff: capsule.handoff,
+      handoff,
     }, null, 2),
     'Use this capsule plus the current phase instructions and latest user input. Do not infer work outside the active phase.',
   ].join('\n')

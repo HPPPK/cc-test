@@ -37,6 +37,15 @@ function makeRequest(
 }
 
 describe('Plugins API', () => {
+  it('rejects mutation of managed plugins before applying user-scoped operations', async () => {
+    for (const action of ['enable', 'disable', 'uninstall']) {
+      const { req, url, segments } = makeRequest('POST', '/api/plugins/' + action, { id: 'managed@example', scope: 'managed' })
+      const response = await handlePluginsApi(req, url, segments)
+      expect(response.status).toBe(400)
+      expect(await response.text()).toContain('Managed plugins cannot be changed through user actions')
+    }
+  })
+
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-plugins-api-'))
     originalConfigDir = process.env.CLAUDE_CONFIG_DIR

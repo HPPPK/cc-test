@@ -441,6 +441,7 @@ describe('anthropicToOpenaiResponses', () => {
       name: 'get_weather',
       description: 'Get weather',
       parameters: { type: 'object', properties: { city: { type: 'string' } } },
+      strict: false,
     })
   })
 

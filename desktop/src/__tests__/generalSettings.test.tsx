@@ -759,6 +759,32 @@ describe('Settings > General tab', () => {
     })
   })
 
+  it('keeps a retry and system-settings path after a native permission read fails', async () => {
+    desktopNotificationsMock.getDesktopNotificationPermission.mockResolvedValueOnce('error')
+    render(<Settings />)
+    fireEvent.click(screen.getByText('General'))
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText(/Could not read notification permission/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument()
+    desktopNotificationsMock.getDesktopNotificationPermission.mockResolvedValueOnce('denied')
+    await act(async () => { fireEvent.click(retry) })
+    expect(desktopNotificationsMock.requestDesktopNotificationPermission).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open Settings' })) })
+    expect(desktopNotificationsMock.openDesktopNotificationSettings).toHaveBeenCalled()
+  })
+
+  it('refreshes permission after returning from system settings', async () => {
+    desktopNotificationsMock.getDesktopNotificationPermission.mockResolvedValueOnce('denied')
+    render(<Settings />)
+    fireEvent.click(screen.getByText('General'))
+    await screen.findByRole('button', { name: 'Open Settings' })
+    desktopNotificationsMock.getDesktopNotificationPermission.mockResolvedValueOnce('granted')
+    await act(async () => { window.dispatchEvent(new Event('focus')) })
+    expect(screen.getByText(/Permission: Granted/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).not.toBeInTheDocument()
+  })
+
   it('moves H5 access out of General into its own Settings tab', () => {
     render(<Settings />)
 
@@ -966,6 +992,15 @@ describe('Settings > General tab', () => {
       tavilyApiKey: 'tvly-test-key',
       braveApiKey: '',
     })
+  })
+
+  it('offers an explicit keyless trial without silently changing Auto', () => {
+    render(<Settings />)
+    fireEvent.click(screen.getByText('General'))
+    fireEvent.click(screen.getByRole('button', { name: 'Tavily trial (no key)' }))
+    expect(screen.getByText(/Shared trial quota/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(useSettingsStore.getState().setWebSearch).toHaveBeenCalledWith({ mode: 'tavily-keyless', tavilyApiKey: '', braveApiKey: '' })
   })
 
   it('links to WebSearch provider API key dashboards', () => {

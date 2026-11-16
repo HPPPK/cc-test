@@ -1,3 +1,4 @@
+import { unavailableBetaHeader } from './unsupportedBeta.js'
 import { feature } from 'bun:bundle'
 
 export const CLAUDE_CODE_20250219_BETA_HEADER = 'claude-code-20250219'
@@ -50,3 +51,6 @@ export const VERTEX_COUNT_TOKENS_ALLOWED_BETAS = new Set([
   INTERLEAVED_THINKING_BETA_HEADER,
   CONTEXT_MANAGEMENT_BETA_HEADER,
 ])
+
+// The removed private cache-editing implementation has no public protocol value.
+export const CACHE_EDITING_BETA_HEADER = feature('CACHED_MICROCOMPACT') ? unavailableBetaHeader(true, 'CACHED_MICROCOMPACT') : ''

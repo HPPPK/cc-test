@@ -11,7 +11,7 @@ import { onPluginsAutoUpdated } from '../../utils/plugins/pluginAutoupdate.js';
  * Hook that displays a notification when plugins have been auto-updated.
  * The notification tells the user to run /reload-plugins to apply the updates.
  */
-export function usePluginAutoupdateNotification() {
+export function usePluginAutoupdateNotification(): void {
   const $ = _c(7);
   const {
     addNotification
@@ -23,7 +23,7 @@ export function usePluginAutoupdateNotification() {
   } else {
     t0 = $[0];
   }
-  const [updatedPlugins, setUpdatedPlugins] = useState(t0);
+  const [updatedPlugins, setUpdatedPlugins] = useState<string[]>(t0);
   let t1;
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {

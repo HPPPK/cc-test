@@ -1,4 +1,6 @@
-﻿import type { BetaContentBlock, BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import { EMPTY_USAGE } from './emptyUsage.js'
+import type { Message } from '../../types/message.js'
+import type { BetaContentBlock, BetaUsage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID } from 'crypto'
 import type { Tools, ToolPermissionContext } from 'src/Tool.js'
 import { toolMatchesName } from 'src/Tool.js'
@@ -174,12 +176,12 @@ export async function buildAzureOpenAITools(params: {
       ),
   )
 
-  return toolSchemas.map(schema => ({
-    type: 'function',
-    name: schema.name,
-    description: schema.description ?? '',
-    parameters: schema.input_schema ?? {},
-  }))
+  return toolSchemas.map(schema => {
+    if (!('name' in schema) || !('input_schema' in schema)) {
+      throw new Error('Azure OpenAI supports custom function tool schemas only.')
+    }
+    return { type: 'function' as const, name: schema.name, description: schema.description ?? '', parameters: schema.input_schema ?? {} }
+  })
 }
 
 function contentBlocksToText(content: unknown): string {
@@ -199,7 +201,7 @@ function contentBlocksToText(content: unknown): string {
     .join('\n')
 }
 
-export function buildAzureOpenAIInput(messages: Array<{ type: string; message: { content: unknown } }>): OpenAIMessage[] {
+export function buildAzureOpenAIInput(messages: readonly Message[]): OpenAIMessage[] {
   const inputs: OpenAIMessage[] = []
 
   for (const msg of messages) {
@@ -290,7 +292,7 @@ function mapOutputItemToBlocks(item: OpenAIResponseOutputItem): BetaContentBlock
       if (!content || typeof content !== 'object') continue
       if (content.type === 'output_text' || content.type === 'text') {
         const text = content.text ?? ''
-        blocks.push({ type: 'text', text })
+        blocks.push({ type: 'text', text, citations: null })
       }
     }
   }
@@ -303,10 +305,11 @@ function mapOutputItemToBlocks(item: OpenAIResponseOutputItem): BetaContentBlock
         typeof rawArgs === 'string' ? safeParseJSON(rawArgs) : rawArgs
       blocks.push({
         type: 'tool_use',
+        caller: { type: 'direct' },
         id: item.id ?? item.call_id ?? item.tool_call_id ?? randomUUID(),
         name,
         input: parsed ?? {},
-      } as BetaContentBlock)
+      })
     }
   }
 
@@ -328,15 +331,16 @@ export function parseAzureOpenAIResponse(response: OpenAIResponse): {
   }
 
   if (contentBlocks.length === 0 && response.output_text) {
-    contentBlocks.push({ type: 'text', text: response.output_text })
+    contentBlocks.push({ type: 'text', text: response.output_text, citations: null })
   }
 
   const usage: BetaUsage = {
+    ...EMPTY_USAGE,
     input_tokens: response.usage?.input_tokens ?? response.usage?.prompt_tokens ?? 0,
     output_tokens: response.usage?.output_tokens ?? response.usage?.completion_tokens ?? 0,
     cache_read_input_tokens: 0,
     cache_creation_input_tokens: 0,
-  } as BetaUsage
+  }
 
   const stopReason =
     response.status === 'incomplete'
@@ -351,7 +355,7 @@ export function parseAzureOpenAIResponse(response: OpenAIResponse): {
 export async function requestAzureOpenAI(params: {
   model: string
   systemPrompt: string
-  messages: Array<{ type: string; message: { content: unknown } }>
+  messages: readonly Message[]
   tools: Tools
   toolChoice?: { type?: string; name?: string }
   maxOutputTokens: number

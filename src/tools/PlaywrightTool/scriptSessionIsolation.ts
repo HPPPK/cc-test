@@ -13,6 +13,8 @@ type Options = {
   browser: Browser
   ownedPages: Set<Page>
   onOwnedPage?: (page: Page) => void
+  createPage?: () => Promise<Page>
+  background?: boolean
 }
 
 const PAGE_EVENT_METHODS = new Set(['on', 'once', 'addListener', 'prependListener'])
@@ -62,6 +64,9 @@ export function createAgentScopedPlaywrightObjects(options: Options): ScopedPlay
     const proxy = new Proxy(candidate, {
       get(target, property) {
         if (property === 'context') return () => scopedContext
+        if (options.background && property === 'bringToFront') {
+          return () => { throw new Error('Use the Desktop Open browser button to bring a background research browser to the foreground.') }
+        }
         if (property === 'waitForEvent') {
           return async (event: string, ...args: unknown[]) => {
             const result = await (target.waitForEvent as (name: string, ...values: unknown[]) => Promise<unknown>).call(target, event, ...args)
@@ -97,7 +102,9 @@ export function createAgentScopedPlaywrightObjects(options: Options): ScopedPlay
       if (property === 'browser') return () => scopedBrowser
       if (property === 'newPage') {
         return async (...args: unknown[]) => {
-          const candidate = await (target.newPage as (...values: unknown[]) => Promise<Page>).apply(target, args)
+          const candidate = options.createPage
+            ? await options.createPage()
+            : await (target.newPage as (...values: unknown[]) => Promise<Page>).apply(target, args)
           return markOwned(candidate)
         }
       }
@@ -124,6 +131,7 @@ export function createAgentScopedPlaywrightObjects(options: Options): ScopedPlay
   scopedBrowser = new Proxy(options.browser, {
     get(target, property) {
       if (property === 'contexts') return () => [scopedContext]
+      if (options.background && property === 'newPage') return () => scopedContext.newPage()
       if (typeof property === 'string' && FORBIDDEN_BROWSER_METHODS.has(property)) {
         return () => { throw new Error('This shared Expert script cannot close, detach, or create another BrowserContext.') }
       }
@@ -137,4 +145,29 @@ export function createAgentScopedPlaywrightObjects(options: Options): ScopedPlay
     browser: scopedBrowser,
     pages: () => openOwnedPages().map(wrapPage),
   }
+}
+
+export function createScriptPlaywrightModule<T extends object>(module: T, background: boolean): T {
+  if (!background) return module
+  const browserTypes = new Set(['chromium', 'firefox', 'webkit'])
+  const lifecycle = new Set(['launch', 'launchPersistentContext', 'launchServer', 'connect', 'connectOverCDP'])
+  const proxies = new Map<PropertyKey, object>()
+  return new Proxy(module, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target)
+      if (typeof property !== 'string' || !browserTypes.has(property) || !value || typeof value !== 'object') return value
+      const existing = proxies.get(property)
+      if (existing) return existing
+      const proxy = new Proxy(value as object, {
+        get(browserType, method) {
+          if (typeof method === 'string' && lifecycle.has(method)) {
+            return () => { throw new Error('Background research scripts cannot launch or connect another browser. Use the existing context and the Desktop Open browser button.') }
+          }
+          return bindMethod(browserType, Reflect.get(browserType, method, browserType))
+        },
+      })
+      proxies.set(property, proxy)
+      return proxy
+    },
+  })
 }

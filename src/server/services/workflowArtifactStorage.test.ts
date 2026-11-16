@@ -1,3 +1,4 @@
+import { invokeUncheckedFixture } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -83,6 +84,44 @@ describe('workflow artifact storage policy', () => {
     await expect(fs.stat(path.join(workspaceRoot, 'run-preview.md'))).rejects.toThrow()
   })
 
+  test('state synchronization preserves editable canonical notes and their read timestamps', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-storage-owner-'))
+    try {
+      const input = { workspaceRoot, run: run({ workspaceRoot }), now: NOW }
+      await ensureWorkflowArtifactStorage(input)
+      const target = path.join(workspaceRoot, '.workflow/project-context.md')
+      await fs.writeFile(target, '# 用户和模型共同整理的背景\n保留已确认需求\n')
+      const before = await fs.stat(target)
+      await ensureWorkflowArtifactStorage({ ...input, run: { ...input.run, currentPhaseId: 'scope' } })
+      expect(await fs.readFile(target, 'utf8')).toContain('保留已确认需求')
+      expect((await fs.stat(target)).mtimeMs).toBe(before.mtimeMs)
+      const workOrder = path.join(workspaceRoot, '.workflow/work-order.md')
+      const orderBefore = await fs.stat(workOrder)
+      await ensureWorkflowArtifactStorage(input)
+      expect((await fs.stat(workOrder)).mtimeMs).toBe(orderBefore.mtimeMs)
+      await fs.unlink(workOrder)
+      await ensureWorkflowArtifactStorage(input)
+      expect(await fs.readFile(workOrder, 'utf8')).toContain('Work Order')
+    } finally { await fs.rm(workspaceRoot, { recursive: true, force: true }) }
+  })
+
+  test('backend archives refresh independently while unchanged snapshots do not invalidate reads', async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-storage-archive-owner-'))
+    try {
+      const artifact = { id: 'project-context', filename: 'project-context.md', kind: 'markdown' as const, required: true, createdAt: NOW, updatedAt: NOW, content: '# Initial' }
+      const input = { workspaceRoot, run: run({ workspaceRoot, artifacts: [artifact] }), now: NOW }
+      await ensureWorkflowArtifactStorage(input)
+      const archived = path.join(workflowRunArchiveDir(workspaceRoot, 0), artifact.filename)
+      const before = await fs.stat(archived)
+      await ensureWorkflowArtifactStorage(input)
+      expect((await fs.stat(archived)).mtimeMs).toBe(before.mtimeMs)
+      artifact.content = '# Updated state snapshot'
+      await ensureWorkflowArtifactStorage(input)
+      expect(await fs.readFile(archived, 'utf8')).toContain('Updated state snapshot')
+      expect(await fs.readFile(path.join(workspaceRoot, '.workflow/project-context.md'), 'utf8')).toBe('# Initial\n')
+    } finally { await fs.rm(workspaceRoot, { recursive: true, force: true }) }
+  })
+
   test('archives per-run artifact history under .workflow/runs/run-001', async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-storage-history-'))
     const currentRun = run({
@@ -128,7 +167,7 @@ describe('workflow artifact storage policy', () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-storage-snapshot-'))
     const currentRun = run({ id: 'session-abc-run-1', workspaceRoot })
     const templateSnapshot: WorkflowTemplate = {
-      schemaVersion: 2, id: 'guided-product-builder', source: 'pack', version: '7', displayName: 'Guided', phases: [],
+      schemaVersion: 2, id: 'guided-product-builder', source: 'pack', version: '7', displayName: 'Guided', description: 'Storage fixture', phases: [],
     }
     const capsule: WorkflowContextCapsule = {
       schemaVersion: 1, id: 'capsule-route-to-scope', sessionId: 'session-abc', runId: currentRun.id,
@@ -159,7 +198,7 @@ describe('workflow artifact storage policy', () => {
 
     expect(workflowArtifactStoragePath(workspaceRoot, 'project-context').relativePath)
       .toBe('.workflow/project-context.md')
-    expect(() => workflowArtifactStoragePath(workspaceRoot, 'docs/project-context.md')).toThrow()
-    expect(() => workflowArtifactStoragePath(workspaceRoot, '../project-context')).toThrow()
+    expect(() => invokeUncheckedFixture(workflowArtifactStoragePath, undefined, [workspaceRoot, 'docs/project-context.md'])).toThrow()
+    expect(() => invokeUncheckedFixture(workflowArtifactStoragePath, undefined, [workspaceRoot, '../project-context'])).toThrow()
   })
 })

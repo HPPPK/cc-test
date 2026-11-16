@@ -5,7 +5,11 @@ import type { ConfigScope } from 'src/services/mcp/types.js';
 import { describeMcpConfigFilePath, getScopeLabel } from 'src/services/mcp/utils.js';
 import type { ValidationError } from 'src/utils/settings/validation.js';
 import { Box, Link, Text } from '../../ink.js';
-function McpConfigErrorSection(t0) {
+function McpConfigErrorSection(t0: {
+  scope: ConfigScope
+  parsingErrors: ValidationError[]
+  warnings: ValidationError[]
+}): React.ReactNode {
   const $ = _c(26);
   const {
     scope,
@@ -119,7 +123,7 @@ function _temp(error, i) {
   const serverName = error.mcpErrorMetadata?.serverName;
   return <Box key={`error-${i}`}><Text><Text dimColor={true}>└ </Text><Text color="error">[Error]</Text><Text dimColor={true}>{" "}{serverName && `[${serverName}] `}{error.path && error.path !== "" ? `${error.path}: ` : ""}{error.message}</Text></Text></Box>;
 }
-export function McpParsingWarnings() {
+export function McpParsingWarnings(): React.ReactNode {
   const $ = _c(6);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

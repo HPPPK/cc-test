@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -16,11 +16,15 @@ function activeExpert(): ExpertSessionMetadata {
     packId: 'commercialization-research-report',
     packVersion: '1.0.0',
     status: 'active',
+    materialRefs: [], startedAt: '2026-05-20T00:00:00Z', updatedAt: '2026-05-20T00:00:00Z',
     runtimeBinding: {
+      schemaVersion: 1,
+      packId: 'commercialization-research-report', packVersion: '1.0.0',
+      permissions: [], activatedAt: '2026-05-20T00:00:00Z',
       active: true,
       expertId: 'commercialization-research-report',
       expertName: '新品商业化调研报告专家',
-      systemPrompt: 'Test prompt',
+      promptSnapshot: 'Test prompt',
       skills: [],
       tools: [],
       hostTools: [],

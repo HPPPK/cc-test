@@ -1,3 +1,4 @@
+import type { BrowserDiagnostics } from './browserDiagnostics.js'
 import { existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -6,7 +7,8 @@ export const PLAYWRIGHT_NODE_RUNNER_PATH_ENV = 'CLAUDE_PLAYWRIGHT_BROWSER_RUNNER
 export const PLAYWRIGHT_NODE_BOOTSTRAP = [
   'const runnerPath = process.env.CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH',
   "if (!runnerPath) throw new Error('Missing CLAUDE_PLAYWRIGHT_BROWSER_RUNNER_PATH')",
-  'require(runnerPath)',
+  'const runner = require(runnerPath)',
+  "if (typeof runner.startServer === 'function') runner.startServer()",
 ].join(';')
 
 type PlaywrightAction = {
@@ -58,6 +60,7 @@ type PlaywrightRunnerResult = {
   links: Array<{ text: string; url: string }>
   steps: Array<{ index: number; type: PlaywrightAction['type']; outcome: 'success' | 'failed'; url: string; title?: string; detail?: string; screenshotPath?: string; scriptPages?: Array<{ requestedUrl: string; finalUrl?: string; title?: string; status: 'opened' | 'access_limited' | 'failed'; detail?: string }> }>
   accessLimited: boolean
+  browserDiagnostics?: BrowserDiagnostics
   verificationWindowPresentationConfirmed?: boolean
   verificationGateId?: string
   sharedHumanVerificationBlocked?: boolean
@@ -100,7 +103,7 @@ type PendingRequest = {
 }
 
 type PersistentBridge = {
-  proc: ReturnType<typeof Bun.spawn>
+  proc: Bun.Subprocess<'pipe', 'pipe', 'pipe'>
   pending: Map<string, PendingRequest>
   nextRequestId: number
   stderr: string

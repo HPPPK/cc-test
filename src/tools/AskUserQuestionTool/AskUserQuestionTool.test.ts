@@ -1,9 +1,11 @@
+import { createToolContextFixture, callToolFixture } from '../toolFixtures.test.js'
+import { withFetchPreconnect } from '../../server/__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import type { Tool } from '../../Tool.js'
 import { zodToJsonSchema } from '../../utils/zodToJsonSchema.js'
 
-async function loadTool(): Promise<Tool> {
-  const mod = await import('./AskUserQuestionTool.js') as { AskUserQuestionTool?: Tool }
+async function loadTool(): Promise<typeof import('./AskUserQuestionTool.js')['AskUserQuestionTool']> {
+  const mod = await import('./AskUserQuestionTool.js')
   if (!mod.AskUserQuestionTool) throw new Error('AskUserQuestionTool export is required')
   return mod.AskUserQuestionTool
 }
@@ -200,7 +202,7 @@ describe('AskUserQuestionTool workflow contract', () => {
         metadata: {
           expert_research_delivery: { question_id: 'delivery_confirm_markdown_reader' },
         },
-      })).resolves.toMatchObject({
+      }, createToolContextFixture())).resolves.toMatchObject({
         behavior: 'ask',
         updatedInput: expect.objectContaining({
           metadata: expect.objectContaining({
@@ -241,7 +243,7 @@ describe('AskUserQuestionTool workflow contract', () => {
         metadata: {
           expert_research_delivery: { question_id: 'research-delivery:commercialization-report' },
         },
-      })).resolves.toMatchObject({ behavior: 'ask' })
+      }, createToolContextFixture())).resolves.toMatchObject({ behavior: 'ask' })
     } finally {
       if (previousPolicy === undefined) delete process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY
       else process.env.CC_JIANGXIA_EXPERT_RESEARCH_DELIVERY_POLICY = previousPolicy
@@ -263,7 +265,7 @@ describe('AskUserQuestionTool workflow contract', () => {
             { id: 'pause', label: '暂停输出' },
           ],
         }],
-      })).resolves.toMatchObject({
+      }, createToolContextFixture())).resolves.toMatchObject({
         behavior: 'ask',
         updatedInput: expect.objectContaining({
           metadata: expect.objectContaining({
@@ -299,13 +301,13 @@ describe('AskUserQuestionTool workflow contract', () => {
     process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
     const originalFetch = globalThis.fetch
     let request: RequestInit | undefined
-    globalThis.fetch = async (_url, init) => {
+    globalThis.fetch = withFetchPreconnect(async (_url, init) => {
       request = init
       return new Response('{}', { status: 200 })
-    }
+    })
     try {
       const tool = await loadTool()
-      await tool.call({
+      await callToolFixture(tool, {
         questions: [{
           id: 'research_delivery',
           prompt: '是否接受当前证据范围并生成报告？',
@@ -353,7 +355,7 @@ describe('AskUserQuestionTool workflow contract', () => {
             { id: 'record_gap', label: '记录证据缺口' },
           ],
         }],
-      })).resolves.toMatchObject({
+      }, createToolContextFixture())).resolves.toMatchObject({
         behavior: 'deny',
         message: expect.stringContaining('dedicated Playwright verification result'),
       })
@@ -368,7 +370,7 @@ describe('AskUserQuestionTool workflow contract', () => {
             { id: 'record_evidence_gap', label: 'Record gap' },
           ],
         }],
-      })).resolves.toMatchObject({ behavior: 'deny' })
+      }, createToolContextFixture())).resolves.toMatchObject({ behavior: 'deny', decisionReason: { type: 'other', reason: 'Expert question policy' } })
     } finally {
       if (previousHandoff === undefined) delete process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
       else process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = previousHandoff
@@ -397,7 +399,7 @@ describe('AskUserQuestionTool workflow contract', () => {
             { id: 'team', label: '小团队' },
           ],
         }],
-      })).resolves.toMatchObject({ behavior: 'ask' })
+      }, createToolContextFixture())).resolves.toMatchObject({ behavior: 'ask' })
     } finally {
       if (previousHandoff === undefined) delete process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF
       else process.env.CC_JIANGXIA_EXPERT_BROWSER_HUMAN_VERIFICATION_HANDOFF = previousHandoff
@@ -408,4 +410,17 @@ describe('AskUserQuestionTool workflow contract', () => {
     }
   })
 
+})
+
+ test('accepts an eight-question independent batch and rejects an oversized batch', async () => {
+  const tool = await loadTool()
+  const questions = Array.from({ length: 8 }, (_, i) => ({ id: `decision-${i}`, prompt: `Decision ${i}?`, choices: [{ label: 'Recommended' }, { label: 'Custom' }], blocksCompletion: false }))
+  expect(tool.inputSchema.safeParse({ questions }).success).toBe(true)
+  expect(tool.inputSchema.safeParse({ questions: [...questions, { ...questions[0], prompt: 'Ninth?' }] }).success).toBe(false)
+})
+
+test('rejects duplicate question IDs so batch answers cannot overwrite one another', async () => {
+  const tool = await loadTool()
+  const choices = [{ label: 'Yes' }, { label: 'No' }]
+  expect(tool.inputSchema.safeParse({ questions: [{ id: 'same', prompt: 'First?', choices }, { id: 'same', prompt: 'Second?', choices }] }).success).toBe(false)
 })

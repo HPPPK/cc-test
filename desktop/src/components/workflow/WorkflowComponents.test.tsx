@@ -57,7 +57,7 @@ if (!('mocked' in vi)) {
   })
 }
 
-const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import('@testing-library/react')
 
 const { notifyDesktopMock } = vi.hoisted(() => ({
   notifyDesktopMock: vi.fn(),
@@ -2843,7 +2843,7 @@ describe('WorkflowStatusPanel', () => {
 })
 
 describe('WorkflowTransitionControls', () => {
-  it('notifies for a pending phase confirmation and keeps the session as the notification target', () => {
+  it('renders phase confirmation without owning notification delivery', () => {
     render(
       <WorkflowTransitionControls
         sessionId="workflow-session"
@@ -2861,16 +2861,10 @@ describe('WorkflowTransitionControls', () => {
       />,
     )
 
-    expect(notifyDesktopMock).toHaveBeenCalledWith({
-      dedupeKey: 'workflow-user-action:workflow-session:confirmation:confirmation-specify-v7',
-      title: 'Confirm this step',
-      body: 'The result for this step is ready. Confirm whether to move to the next step.',
-      requestAttention: true,
-      target: { type: 'session', sessionId: 'workflow-session' },
-    })
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
   })
 
-  it('notifies for a pending route requested between workflow stages', () => {
+  it('renders a pending route without owning notification delivery', () => {
     render(
       <WorkflowTransitionControls
         sessionId="workflow-session"
@@ -2897,13 +2891,7 @@ describe('WorkflowTransitionControls', () => {
       />,
     )
 
-    expect(notifyDesktopMock).toHaveBeenCalledWith({
-      dedupeKey: 'workflow-user-action:workflow-session:route:route-specify-plan-v3',
-      title: 'Confirm this step',
-      body: 'The result for this step is ready. Confirm whether to move to the next step.',
-      requestAttention: true,
-      target: { type: 'session', sessionId: 'workflow-session' },
-    })
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
   })
 
   it('renders no workflow controls unless workflow props are explicit', () => {
@@ -3307,6 +3295,44 @@ describe('WorkflowTransitionControls', () => {
     })).not.toBeInTheDocument()
   })
 
+  it.each(['en', 'zh'] as const)('describes same-phase rework without claiming completion or next-stage advancement (%s)', locale => {
+    useSettingsStore.setState({ locale })
+    const onConfirm = vi.fn()
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'pending-confirmation',
+          activePhaseId: 'plan',
+          pendingConfirmation: false,
+          pendingConfirmationId: 'rework-plan-v8',
+          pendingRoute: {
+            routeId: 'rework-plan-v8', phaseId: 'plan', fromPhaseId: 'plan',
+            targetPhaseId: 'plan', approvedTargetPhaseId: 'plan',
+            intent: 'rework_current_phase', rationale: 'Repair the current batch.',
+            requiresConfirmation: true, status: 'pending',
+          },
+          pendingTargetPhaseId: 'plan',
+          pendingTargetPhaseIndex: 1,
+          pendingTargetPhaseLabel: 'Plan',
+        }}
+        stateVersion={8}
+        onConfirm={onConfirm}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(locale === 'zh' ? '确认当前阶段返工' : 'Confirm rework of this step')).toBeInTheDocument()
+    expect(screen.getByText(locale === 'zh' ? '关键结果：当前阶段需要修复，尚未完成。' : 'Key result: this step needs repair before it can be completed.')).toBeInTheDocument()
+    expect(screen.queryByText(/this step is complete|当前阶段已完成/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(locale === 'zh' ? '进入下一阶段' : 'Go to next stage', { exact: true })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Retry this step|重试当前阶段/i }))
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'confirm', phaseId: 'plan', confirmationId: 'rework-plan-v8', stateVersion: 8,
+    }))
+  })
+
   it('prioritizes pending confirmation controls when lifecycle status is stale', () => {
     render(
       <WorkflowTransitionControls
@@ -3334,6 +3360,56 @@ describe('WorkflowTransitionControls', () => {
   })
 
 
+  it.each([
+    ['active', false],
+    ['active', true],
+  ] as const)('does not offer retry for historical blocked evidence while %s (agent active: %s)', (runStatus, agentActive) => {
+    const { container } = render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status: 'running',
+          runStatus,
+          activePhaseId: 'plan',
+          pendingConfirmation: false,
+          blockedStatus: 'blocked',
+          blockedReason: 'Previous manual browser evidence was unavailable.',
+        }}
+        agentActive={agentActive}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it.each([
+    ['failed', 'active'],
+    ['failed', 'waiting_for_user'],
+    ['running', 'blocked'],
+  ] as const)('preserves retry for unresolved blocked evidence with lifecycle %s/%s', (status, runStatus) => {
+    render(
+      <WorkflowTransitionControls
+        workflow={{
+          ...WORKFLOW_SUMMARY,
+          status,
+          runStatus,
+          activePhaseId: 'plan',
+          pendingConfirmation: false,
+          blockedReason: 'Manual evidence is still required.',
+        }}
+        onConfirm={vi.fn()}
+        onReject={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Retry this step/i })).toBeInTheDocument()
+    expect(screen.getByText('Manual evidence is still required.')).toBeInTheDocument()
+  })
+
   it('omits blocked reason copy when blocked workflow has no reason', () => {
     render(
       <WorkflowTransitionControls
@@ -3353,7 +3429,7 @@ describe('WorkflowTransitionControls', () => {
     expect(screen.queryByText(/Completion checklist is still missing/i)).not.toBeInTheDocument()
   })
 
-  it('keeps the blocked card hidden during an active silent recovery even when a stale phase id is displayed', () => {
+  it('keeps the blocked card hidden while the active agent owns recovery even when a stale phase id is displayed', () => {
     const { container } = render(
       <WorkflowTransitionControls
         workflow={{
@@ -3365,11 +3441,12 @@ describe('WorkflowTransitionControls', () => {
           autoRecovery: {
             phaseId: 'scenario-review',
             startedAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 10_000).toISOString(),
+            credentialId: 'recovery:scenario-review:1',
             attempt: 1,
             source: 'phase-completion-blocked',
           },
         }}
+        agentActive
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -3452,9 +3529,7 @@ describe('WorkflowTransitionControls', () => {
   })
 
 
-  it('keeps the first repairable blocker silent for 10 seconds, shows it on timeout, and clears it when state recovers', async () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-05-20T00:00:00.000Z'))
+  it('keeps retry hidden while an agent is consuming a recovery credential and exposes it only after the turn ends', () => {
     const workflow = {
       ...WORKFLOW_SUMMARY,
       status: 'failed' as const,
@@ -3465,7 +3540,7 @@ describe('WorkflowTransitionControls', () => {
       autoRecovery: {
         phaseId: 'plan',
         startedAt: '2026-05-20T00:00:00.000Z',
-        expiresAt: '2026-05-20T00:00:10.000Z',
+        credentialId: 'recovery:plan:1',
         attempt: 1,
         source: 'phase-completion-blocked' as const,
       },
@@ -3474,6 +3549,7 @@ describe('WorkflowTransitionControls', () => {
       <WorkflowTransitionControls
         workflow={workflow}
         stateVersion={42}
+        agentActive
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
@@ -3481,28 +3557,18 @@ describe('WorkflowTransitionControls', () => {
     )
 
     expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(9_999) })
-    expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
-    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
-    expect(screen.getByTestId('workflow-phase-confirmation-card')).toHaveTextContent('A repairable validation defect needs correction.')
 
     rerender(
       <WorkflowTransitionControls
-        workflow={{
-          ...workflow,
-          status: 'running',
-          runStatus: 'active',
-          blockedReason: undefined,
-          autoRecovery: undefined,
-        }}
-        stateVersion={43}
+        workflow={workflow}
+        stateVersion={42}
+        agentActive={false}
         onConfirm={vi.fn()}
         onReject={vi.fn()}
         onRetry={vi.fn()}
       />,
     )
-    expect(screen.queryByTestId('workflow-phase-confirmation-card')).not.toBeInTheDocument()
-    vi.useRealTimers()
+    expect(screen.getByTestId('workflow-phase-confirmation-card')).toHaveTextContent('A repairable validation defect needs correction.')
   })
 
   it('gives a pending recovery route priority over stale blocked evidence', () => {

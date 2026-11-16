@@ -35,6 +35,10 @@ export function detectHumanVerificationKind(
   title: string,
   text: string,
 ): string | null {
+  // Match the challenge surface, not an article merely quoting its wording.
+  if (/^\s*(?:Reddit\s*[-|:]\s*)?Prove your humanity\s*$/i.test(title)
+    || (/^\s*Prove your humanity(?:\s|$)/i.test(text) && /complete the challenge/i.test(text))
+    || (/^\s*(?:Just a moment|请稍候|请稍等)[.!。…]*\s*$/i.test(title) && /[?&]__cf_chl_|\/cdn-cgi\/challenge-platform|challenge|checking your browser|performing security verification|security service to protect against malicious bots|正在进行安全验证|安全服务防护恶意自动程序/i.test(url + ' ' + text))) return 'human verification'
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
   const explicitChallenge = HUMAN_VERIFICATION_PATTERNS.find(({ pattern }) => pattern.test(haystack))?.kind
   if (explicitChallenge) return explicitChallenge
@@ -53,24 +57,14 @@ export function isHumanVerificationSurfaceStillPresent(
   title: string,
   text: string,
 ): boolean {
+  // The original challenge may turn into a different CAPTCHA or login page.
+  // Recovery must consider all concrete authentication surfaces, not only the
+  // initial provider, while ignoring topic words such as "captcha" or "robots".
+  void expectedKind
   const haystack = [url, title, text].join('\n').slice(0, 20_000)
-  if (expectedKind === 'Google security verification') {
-    return /\/sorry(?:\/|\?|$)|google\.[^/\s]+\/sorry/i.test(url)
-      || (/进行人机身份验证|verify you are human/i.test(haystack) && /异常流量|unusual traffic|automated queries/i.test(haystack))
-  }
-  if (expectedKind === 'Baidu security verification') {
-    return /wappass\.baidu\.com|(?:^|[/?#])captcha(?:[/?#]|$)|tuxing_v2/i.test(url)
-      || (/百度安全验证|请完成安全验证/i.test(haystack) && /拖动(?:左侧)?滑块|滑块验证|滑动验证/i.test(haystack))
-  }
-  if (expectedKind === 'Bing security verification') {
-    return /请解决以下难题以继续|solve the following puzzle to continue/i.test(haystack)
-  }
-  if (expectedKind === 'login verification') return hasLoginVerificationSurface(url, title, text)
-
-  // The generic initial detector may use a broad hint to surface a modal. Once
-  // a page is frozen, recovery waits only on phrases that describe a live
-  // challenge, never a lone "captcha" or "robots" word in ordinary content.
-  return /进行人机身份验证|请完成(?:下方|安全)验证|拖动(?:左侧)?滑块|请解决以下难题以继续|solve the following puzzle to continue|verify you are human|i.?m not a robot/i.test(haystack)
+  return Boolean(detectHumanVerificationKind(url, title, text))
+    || /\/sorry(?:\/|\?|$)|google\.[^/\s]+\/sorry|wappass\.baidu\.com|(?:^|[/?#])captcha(?:[/?#]|$)|tuxing_v2/i.test(url)
+    || /进行人机身份验证|请完成(?:下方|安全)验证|百度安全验证|拖动(?:左侧)?滑块|请解决以下难题以继续|solve the following puzzle to continue|verify you are human|i.?m not a robot/i.test(haystack)
 }
 
 /** Detects a rendered access or verification surface without making any research-quality judgment. */
@@ -96,4 +90,21 @@ export function assessRenderedPageAccess(url: string, title: string, text: strin
     accessLimited: Boolean(reason?.startsWith('ACCESS_LIMITED_PAGE:')),
     ...(reason?.startsWith('PAGE_UNAVAILABLE:') ? { error: reason } : {}),
   }
+}
+
+
+/** Positive recovery evidence: a stable, readable public document on the same tab. */
+export function isHumanVerificationRecoveryHealthy(page: {
+  url: string
+  title: string
+  text: string
+  readyState: string
+  closed: boolean
+}): boolean {
+  return !page.closed
+    && page.readyState === 'complete'
+    && /^https?:\/\//i.test(page.url)
+    && page.text.trim().length > 0
+    && !isHumanVerificationSurfaceStillPresent(undefined, page.url, page.title, page.text)
+    && !classifyRenderedPageAccess(page.url, page.title, page.text)
 }

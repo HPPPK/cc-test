@@ -1,3 +1,5 @@
+import { validateUuid } from '../uuid.js'
+import { messageKindMetadata } from '../messageKind.js'
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { randomUUID, type UUID } from 'crypto'
 import { getSessionId } from 'src/bootstrap/state.js'
@@ -26,14 +28,15 @@ import { getPlan } from '../plans.js'
 export function toInternalMessages(
   messages: readonly DeepImmutable<SDKMessage>[],
 ): Message[] {
-  return messages.flatMap(message => {
+  return messages.flatMap((message): Message[] => {
     switch (message.type) {
       case 'assistant':
         return [
           {
             type: 'assistant',
+            ...messageKindMetadata(message),
             message: message.message,
-            uuid: message.uuid,
+            uuid: validateUuid(message.uuid) ?? randomUUID(),
             requestId: undefined,
             timestamp: new Date().toISOString(),
           } as Message,
@@ -42,10 +45,10 @@ export function toInternalMessages(
         return [
           {
             type: 'user',
+            ...messageKindMetadata(message),
             message: message.message,
-            uuid: message.uuid ?? randomUUID(),
+            uuid: validateUuid(message.uuid) ?? randomUUID(),
             timestamp: message.timestamp ?? new Date().toISOString(),
-            isMeta: message.isSynthetic,
           } as Message,
         ]
       case 'system':
@@ -55,13 +58,14 @@ export function toInternalMessages(
           return [
             {
               type: 'system',
+              ...messageKindMetadata(message),
               content: 'Conversation compacted',
               level: 'info',
               subtype: 'compact_boundary',
               compactMetadata: fromSDKCompactMetadata(
                 compactMsg.compact_metadata,
               ),
-              uuid: message.uuid,
+              uuid: validateUuid(message.uuid) ?? randomUUID(),
               timestamp: new Date().toISOString(),
             },
           ]
@@ -119,10 +123,11 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
         return [
           {
             type: 'assistant',
+            ...messageKindMetadata(message),
             message: normalizeAssistantMessageForSDK(message),
             session_id: getSessionId(),
             parent_tool_use_id: null,
-            uuid: message.uuid,
+            uuid: validateUuid(message.uuid) ?? randomUUID(),
             error: message.error,
           },
         ]
@@ -130,12 +135,12 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
         return [
           {
             type: 'user',
+            ...messageKindMetadata(message),
             message: message.message,
             session_id: getSessionId(),
             parent_tool_use_id: null,
-            uuid: message.uuid,
+            uuid: validateUuid(message.uuid) ?? randomUUID(),
             timestamp: message.timestamp,
-            isSynthetic: message.isMeta || message.isVisibleInTranscriptOnly,
             // Structured tool output (not the string content sent to the
             // model — the full Output object). Rides the protobuf catchall
             // so web viewers can read things like BriefTool's file_uuid
@@ -150,9 +155,10 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
           return [
             {
               type: 'system',
+              ...messageKindMetadata(message),
               subtype: 'compact_boundary' as const,
               session_id: getSessionId(),
-              uuid: message.uuid,
+              uuid: validateUuid(message.uuid) ?? randomUUID(),
               compact_metadata: toSDKCompactMetadata(message.compactMetadata),
             },
           ]
@@ -207,6 +213,7 @@ export function localCommandOutputToSDKAssistantMessage(
   const synthetic = createAssistantMessage({ content: cleanContent })
   return {
     type: 'assistant',
+    messageKind: 'system_event',
     message: synthetic.message,
     parent_tool_use_id: null,
     session_id: getSessionId(),

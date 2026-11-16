@@ -1,7 +1,7 @@
 {
   "name": "cc-jiangxia-desktop",
   "private": true,
-  "version": "0.2.62",
+  "version": "0.2.63",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,7 @@
     "lint": "tsc --noEmit",
     "dev:desktop": "tauri dev --no-watch",
     "tauri:audited": "bun run ./scripts/tauri-audited.ts",
-    "test:scripts": "bun test ./scripts/bundled-image-runtime.test.ts ./scripts/tauri-audited.test.ts ./src-tauri/tauri-config.test.ts"
+    "test:scripts": "bun test ./scripts/bundled-image-runtime.test.ts ./scripts/tauri-audited.test.ts ./src-tauri/tauri-config.test.ts ./src-tauri/project-folder-picker.test.ts"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",

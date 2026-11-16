@@ -1,7 +1,31 @@
+import type { BrowserDiagnostics } from './browserDiagnostics.js'
+import { toolPromptFixture } from '../toolFixtures.test.js'
+import { asAgentId } from '../../types/ids.js'
 import { describe, expect, test } from 'bun:test'
 import { PlaywrightTool, resolveExpertCdpConnection, resolveExpertManagedPlaywrightPresentation, resolvePlaywrightContextKey, resolvePlaywrightSessionKey, shouldPreserveExpertHumanVerificationPage } from './PlaywrightTool.js'
 
 describe('PlaywrightTool', () => {
+  test('keeps real result links and page identity ahead of a large audit ledger, without inventing destinations', () => {
+    const resultUrl = 'https://www.google.com.hk/goto?url=opaque-real-token'
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam({
+      url: 'https://www.google.com.hk/search?q=desktop+tool', title: 'Desktop tool results',
+      text: 'Results', durationMs: 12, truncated: false, accessLimited: false,
+      links: [
+        ...Array.from({ length: 30 }, (_, i) => ({ text: 'Search tab', url: 'https://www.google.com.hk/search?q=desktop&tab=' + i })),
+        { text: 'Relevant user discussion', url: resultUrl },
+        { text: 'Other product', url: 'https://example.org/product' },
+      ],
+      steps: [{ index: 0, type: 'extract', outcome: 'success', url: 'https://www.google.com.hk/search?q=desktop+tool', detail: 'x'.repeat(9000) }],
+    } as never, 'links-before-large-ledger')
+    const content = String(mapped.content)
+    const preview = content.slice(0, 2000)
+    expect(preview).toContain('Desktop tool results')
+    expect(preview).toContain(resultUrl)
+    expect(preview).toContain('Relevant user discussion')
+    expect(content.indexOf(resultUrl)).toBeLessThan(content.indexOf('Search tab'))
+    expect(content).toContain('Do not invent post IDs')
+    expect(content).toContain('<playwright-action-ledger')
+  })
   test('exposes explicit observable actions rather than a research query or retry black box', () => {
     const schema = PlaywrightTool.inputSchema
     const value = schema.parse({ actions: [{ type: 'navigate', url: 'https://example.com' }, { type: 'extract' }] })
@@ -182,14 +206,20 @@ describe('PlaywrightTool', () => {
 
   test('shares an Expert cookie context while keeping each delegated agent on its own runnable page session', () => {
     const shared = { rootSessionId: 'conversation-1', expertSessionId: 'expert-1', shareAcrossAgents: true }
-    expect(resolvePlaywrightSessionKey({ agentId: 'subagent-product' }, shared)).toBe('conversation-1:subagent-product')
-    expect(resolvePlaywrightSessionKey({ agentId: 'subagent-demand' }, shared)).toBe('conversation-1:subagent-demand')
-    expect(resolvePlaywrightContextKey({ agentId: 'subagent-product' }, shared)).toBe('expert:expert-1')
-    expect(resolvePlaywrightContextKey({ agentId: 'subagent-demand' }, shared)).toBe('expert:expert-1')
+    expect(resolvePlaywrightSessionKey({ agentId: asAgentId('subagent-product') }, shared)).toBe('conversation-1:subagent-product')
+    expect(resolvePlaywrightSessionKey({ agentId: asAgentId('subagent-demand') }, shared)).toBe('conversation-1:subagent-demand')
+    expect(resolvePlaywrightContextKey({ agentId: asAgentId('subagent-product') }, shared)).toBe('expert:expert-1')
+    expect(resolvePlaywrightContextKey({ agentId: asAgentId('subagent-demand') }, shared)).toBe('expert:expert-1')
 
     const isolated = { rootSessionId: 'conversation-1', expertSessionId: 'expert-1', shareAcrossAgents: false }
-    expect(resolvePlaywrightContextKey({ agentId: 'subagent-product' }, isolated)).toBe('conversation-1:subagent-product')
-    expect(resolvePlaywrightContextKey({ agentId: 'subagent-demand' }, isolated)).toBe('conversation-1:subagent-demand')
+    expect(resolvePlaywrightContextKey({ agentId: asAgentId('subagent-product') }, isolated)).toBe('conversation-1:subagent-product')
+    expect(resolvePlaywrightContextKey({ agentId: asAgentId('subagent-demand') }, isolated)).toBe('conversation-1:subagent-demand')
+    expect(resolvePlaywrightContextKey({ agentId: asAgentId('subagent-channel') }, isolated)).toBe('conversation-1:subagent-channel')
+    expect(new Set([
+      resolvePlaywrightContextKey({ agentId: asAgentId('subagent-product') }, isolated),
+      resolvePlaywrightContextKey({ agentId: asAgentId('subagent-demand') }, isolated),
+      resolvePlaywrightContextKey({ agentId: asAgentId('subagent-channel') }, isolated),
+    ]).size).toBe(3)
   })
 
 
@@ -235,6 +265,17 @@ describe('PlaywrightTool', () => {
     })])
   })
 
+  test('preserves passive widget observations in the tool schema, output and ledger', () => {
+    const browserDiagnostics: BrowserDiagnostics = { observation: 'unactionable', observedAt: '2026-11-11T00:00:00Z', readyState: 'complete', widgetCount: 0, visibleControlCount: 0, inspectedFrames: 1, inspectionIncomplete: false, events: [], droppedEvents: 0 }
+    const data: Parameters<typeof PlaywrightTool.mapToolResultToToolResultBlockParam>[0] = { url: 'https://www.google.com/sorry/index', title: '', text: '', links: [], durationMs: 1, truncated: false, steps: [], accessLimited: true, browserDiagnostics }
+    expect(PlaywrightTool.outputSchema.parse(data).browserDiagnostics).toEqual(browserDiagnostics)
+    const result = PlaywrightTool.mapToolResultToToolResultBlockParam(data, 'toolu-widget')
+    const content = String(result.content)
+    expect(content).toContain('no visible verification controls observed')
+    const encoded = content.match(/<playwright-action-ledger encoding="base64">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/)?.[1]
+    expect(JSON.parse(Buffer.from(encoded!, 'base64').toString('utf8')).browserDiagnostics).toEqual(browserDiagnostics)
+  })
+
   test('persists optional access diagnostics in the compact action ledger without exposing them in normal output text', () => {
     const result = PlaywrightTool.mapToolResultToToolResultBlockParam({
       url: 'https://www.baidu.com/s?wd=markdown',
@@ -273,4 +314,37 @@ test('UIUX image-only forces headless viewport research without changing other E
   const output = PlaywrightTool.mapToolResultToToolResultBlockParam({ url: 'https://example.com/pricing', title: 'pricing', text: '', links: [], durationMs: 1, truncated: false, steps: [], screenshotPath: 'C:/screens/pricing.png' } as never, 'research')
   const match = String(output.content).match(/<playwright-action-ledger encoding="base64">([^<]+)/)
   expect(JSON.parse(Buffer.from(match![1]!, 'base64').toString()).screenshotPath).toBe('C:/screens/pricing.png')
+})
+
+test('a resumed result makes historical verification distinct from a current waiting instruction', () => {
+  const output = { url: 'https://www.bing.com/search?q=photo', title: 'Search', text: 'Results', links: [], durationMs: 12, accessLimited: false, truncated: false,
+    verificationHistory: [{ stepIndex: 0, url: 'https://www.google.com/sorry/', detail: 'EXPERT_HUMAN_VERIFICATION_PENDING: wait for another worker' }],
+    steps: [{ index: 0, type: 'navigate', outcome: 'success', url: 'https://www.bing.com/search?q=photo' }] }
+  const result = PlaywrightTool.mapToolResultToToolResultBlockParam(output as never, 'resumed')
+  expect(String(result.content)).toContain('Current call has resumed')
+  expect(String(result.content)).toContain('does not mean the skipped site was verified')
+  const pending = PlaywrightTool.mapToolResultToToolResultBlockParam({ ...output, accessLimited: true, error: 'EXPERT_HUMAN_VERIFICATION_PENDING' } as never, 'pending')
+  expect(String(pending.content)).not.toContain('Current call has resumed')
+})
+
+test('empty recovery actions return an executable wait/extract example without accepting a no-op', () => {
+  const result = PlaywrightTool.inputSchema.safeParse({ actions: [] })
+  expect(result.success).toBe(false)
+  if (!result.success) expect(result.error.issues[0]?.message).toContain('"type":"extract"')
+})
+
+
+test('current verification ledger overrides old history and never turns an ordinary access restriction into a pending human task', () => {
+  const base = { url: 'https://example.com/', title: '', text: '', links: [], durationMs: 1, steps: [], truncated: false, accessLimited: true }
+  for (const [extra, expected] of [
+    [{}, { state: 'none', requiresUserAction: false }],
+    [{ verificationHistory: [{ detail: 'EXPERT_HUMAN_VERIFICATION_PENDING: old' }], accessLimited: false }, { state: 'released', requiresUserAction: false }],
+    [{ verificationHistory: [{ detail: 'old' }], error: 'EXPERT_HUMAN_VERIFICATION_HANDOFF_FAILED: timeout' }, { state: 'unknown', requiresUserAction: false }],
+    [{ verificationHistory: [{ detail: 'old' }], sharedHumanVerificationBlocked: true }, { state: 'pending', requiresUserAction: true }],
+    [{ error: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: current' }, { state: 'pending', requiresUserAction: true }],
+  ] as const) {
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam({ ...base, ...extra } as never, 'state-fixture')
+    const encoded = String(mapped.content).match(/encoding="base64">([^<]+)/)![1]!
+    expect(JSON.parse(Buffer.from(encoded, 'base64').toString()).currentHumanVerification).toEqual(expected)
+  }
 })

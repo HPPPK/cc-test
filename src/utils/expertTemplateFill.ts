@@ -269,7 +269,7 @@ function renderTableRows(value: unknown, field: Extract<ExpertTemplateFillField,
   return renderedRows.join('\n')
 }
 
-export function renderExpertTemplateFill(templateContent: string, payload: ExpertTemplateFillPayload): { content: string; schema: ExpertTemplateFillSchema } {
+export function renderExpertTemplateFill(templateContent: string, payload: ExpertTemplateFillPayload, options: { allowEmptySourceRows?: boolean } = {}): { content: string; schema: ExpertTemplateFillSchema } {
   const schema = deriveExpertTemplateFillSchema(templateContent)
   if (payload.templateId !== schema.templateId) {
     throw new Error(`模板标识不匹配：当前会话要求 ${schema.templateId}，但收到 ${payload.templateId}。`)
@@ -289,7 +289,9 @@ export function renderExpertTemplateFill(templateContent: string, payload: Exper
         ? renderText(value, field.id)
         : field.kind === 'paragraphs'
           ? renderParagraphs(value, field.id)
-          : renderTableRows(value, field)
+          : renderTableRows(value, options.allowEmptySourceRows && field.id === 'SOURCE_ROWS' && !field.emptyState
+            ? { ...field, emptyState: '本轮未取得可核验公开来源；相关结论已降级为证据缺口。' }
+            : field)
       if (field.kind === 'text') {
         rendered = rendered.replaceAll(`{{${field.id}}}`, replacement)
       } else {

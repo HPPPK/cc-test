@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import ts from 'typescript'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -88,10 +91,11 @@ describe('build-sidecars Windows x64 target mapping', () => {
     expect(source).toContain('buildBundledPlaywrightRunner')
     expect(source).toContain("playwright-browser-runner.cjs")
     expect(source).toContain("playwright-browser-runner.ts")
-    expect(source).toContain("const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core'] as const")
+    expect(source).toContain("const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core', 'patchright', 'patchright-core'] as const")
     expect(source).toContain("path.join(runtimeDir, 'node_modules')")
     expect(source).toContain("path.join(repoRoot, 'node_modules', packageName)")
     expect(source).toContain("'playwright-core/*'")
+    expect(source).toContain("'patchright-core/*'")
     expect(source).toContain('identifiers: false')
   })
 
@@ -116,9 +120,13 @@ describe('build-sidecars Windows x64 target mapping', () => {
 
     expect(source).toContain('buildBundledNodeRuntime')
     expect(source).toContain("path.join(binariesDir, 'node-runtime')")
-    expect(source).toContain("const MANAGED_NODE_VERSION = '22.23.1'")
-    expect(source).toContain('MANAGED_NODE_ARCHIVE = `${MANAGED_NODE_DIRECTORY}.zip`')
-    expect(source).toContain('7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29')
+    const targets = readFileSync(path.resolve(import.meta.dirname, 'managed-node-runtime.ts'), 'utf8')
+    expect(targets).toContain("MANAGED_NODE_VERSION = '22.23.1'")
+    expect(source).toContain('getManagedNodeRuntime(targetTriple)')
+    expect(targets).toContain("'darwin-arm64'")
+    expect(targets).toContain("'darwin-x64'")
+    expect(source).toContain("['tar', '-xzf', archivePath, '-C', cacheRoot]")
+    expect(targets).toContain('7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29')
     expect(source).toContain("'node.exe'")
     expect(source).toContain("'npm.cmd'")
     expect(source).toContain("'npx.cmd'")
@@ -139,3 +147,88 @@ describe('build-sidecars Windows x64 target mapping', () => {
   })
 
 })
+
+
+function compileExecutableExternalPolicy(source: string): string[] {
+  const parsed = ts.createSourceFile('build-sidecars.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  let policy: string[] | undefined
+  const visit = (node: ts.Node): void => {
+    if (ts.isObjectLiteralExpression(node) && node.properties.some(property => ts.isPropertyAssignment(property) && property.name.getText(parsed) === 'compile')) {
+      const external = node.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText(parsed) === 'external')
+      if (!external || !ts.isPropertyAssignment(external) || !ts.isArrayLiteralExpression(external.initializer)) throw new Error('Expected the production compile external array')
+      policy = external.initializer.elements.map(element => {
+        if (!ts.isStringLiteral(element)) throw new Error('Expected literal external module names')
+        return element.text
+      })
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(parsed)
+  if (!policy) throw new Error('Production compile external policy not found')
+  return policy
+}
+
+it('ships working archive and MCPB manifest dependencies without project node_modules', () => {
+  const repoRoot = path.resolve(import.meta.dirname, '../..')
+  const fixtureRoot = mkdtempSync(path.join(repoRoot, '.sidecar-archive-contract-'))
+  const isolatedRoot = mkdtempSync(path.join(tmpdir(), 'sidecar-archive-contract-'))
+  try {
+    const entrypoint = path.join(fixtureRoot, 'entry.ts')
+    const artifact = path.join(isolatedRoot, 'archive-contract.mjs')
+    writeFileSync(entrypoint, `
+      const { zipSync, unzipSync, strToU8, strFromU8 } = await import('fflate')
+      const { McpbManifestSchema } = await import('@anthropic-ai/mcpb')
+      const archive = zipSync({ 'manifest.txt': strToU8('portable archive fixture') })
+      if (strFromU8(unzipSync(archive)['manifest.txt']) !== 'portable archive fixture') throw new Error('ZIP round trip failed')
+      const manifest = McpbManifestSchema.parse({ manifest_version: '0.3', name: 'fixture-extension', version: '1.0.0', description: 'Fixture', author: { name: 'Fixture' }, server: { type: 'node', entry_point: 'server.js', mcp_config: { command: 'node' } } })
+      if (manifest.name !== 'fixture-extension' || McpbManifestSchema.safeParse({}).success) throw new Error('Manifest validation failed')
+      console.log('portable archive and manifest validation passed')
+    `)
+    const external = compileExecutableExternalPolicy(readBuildScript())
+    execFileSync('bun', ['build', entrypoint, '--target=bun', '--minify', `--outfile=${artifact}`, ...external.flatMap(name => ['--external', name])], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe', timeout: 30_000 })
+    expect(readFileSync(artifact, 'utf8')).not.toContain(path.join(repoRoot, 'node_modules'))
+    rmSync(fixtureRoot, { recursive: true, force: true })
+    const output = execFileSync('bun', ['--no-install', artifact], { cwd: isolatedRoot, env: { ...process.env, NODE_PATH: '' }, encoding: 'utf8', stdio: 'pipe', timeout: 10_000 })
+    expect(output.trim()).toBe('portable archive and manifest validation passed')
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true })
+    rmSync(isolatedRoot, { recursive: true, force: true })
+  }
+}, 45_000)
+
+it('loads missing private native integrations from the production bundle with honest fallback results', () => {
+  const repoRoot = path.resolve(import.meta.dirname, '../..')
+  const fixtureRoot = mkdtempSync(path.join(repoRoot, '.sidecar-native-contract-'))
+  const isolatedRoot = mkdtempSync(path.join(tmpdir(), 'sidecar-native-contract-'))
+  try {
+    const entrypoint = path.join(fixtureRoot, 'entry.ts')
+    const artifact = path.join(isolatedRoot, 'native-contract.mjs')
+    writeFileSync(entrypoint, `
+      import '../preload.ts'
+      import { loadOptionalAudioNapi, getVoiceDependencyStatus } from '../src/services/voice.ts'
+      import { loadOptionalNativeImageProcessor } from '../src/tools/FileReadTool/imageProcessor.ts'
+      import { readOptionalUrlEvent } from '../src/utils/deepLink/protocolHandler.ts'
+      const audio = await loadOptionalAudioNapi(() => import('audio-capture-napi'))
+      const image = await loadOptionalNativeImageProcessor(() => import('image-processor-napi'))
+      const url = await readOptionalUrlEvent(() => import('url-handler-napi'))
+      if (audio !== null || image !== null || url !== null) throw new Error('Missing native package was treated as available')
+      const windows = getVoiceDependencyStatus(false, 'win32', () => { throw new Error('Windows has no command fallback') }, () => null)
+      const fallback = getVoiceDependencyStatus(false, 'darwin', command => command === 'rec', () => null)
+      if (windows.available || !fallback.available) throw new Error('Voice fallback policy changed')
+      console.log('private native modules unavailable; fallback policy preserved')
+    `)
+    const external = compileExecutableExternalPolicy(readBuildScript())
+    execFileSync('bun', ['build', entrypoint, '--target=bun', '--minify', `--outfile=${artifact}`, ...external.flatMap(name => ['--external', name])], { cwd: repoRoot, encoding: 'utf8', stdio: 'pipe', timeout: 30_000 })
+    expect(external).toEqual(expect.arrayContaining(['audio-capture-napi', 'image-processor-napi', 'url-handler-napi']))
+    expect(external.filter(name => name.includes('*'))).toEqual([])
+    expect(external).not.toContain('fflate')
+    expect(external).not.toContain('@anthropic-ai/mcpb')
+    expect(readFileSync(artifact, 'utf8')).not.toContain(path.join(repoRoot, 'node_modules'))
+    rmSync(fixtureRoot, { recursive: true, force: true })
+    const output = execFileSync('bun', ['--no-install', artifact], { cwd: isolatedRoot, env: { ...process.env, NODE_PATH: '', CALLER_DIR: '', CLAUDE_CONFIG_DIR: path.join(isolatedRoot, 'config') }, encoding: 'utf8', stdio: 'pipe', timeout: 10_000 })
+    expect(output.trim()).toBe('private native modules unavailable; fallback policy preserved')
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true })
+    rmSync(isolatedRoot, { recursive: true, force: true })
+  }
+}, 45_000)

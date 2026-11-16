@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from "bun:test"
 import { readFile as readFileForSourceLibraryTest } from "node:fs/promises"
 import {
@@ -25,6 +26,21 @@ const SOURCE_LIBRARY = [
   "- B 站：https://www.bilibili.com/",
   "- Google Play：https://play.google.com/",
 ].join("\n")
+
+test('Trends legacy entry maps only actual Trends pages, retaining limited status and exact URL', () => {
+  const catalog = parseResearchSourceLibrary('<!-- research-source-library-tier: core -->\n### 趋势\n- Trends：http://www.google.com/trends')
+  const page = 'https://trends.google.com/trends/explore?q=Windows%20mouse%20shortcuts'
+  const records: any[] = [{ agentId: 'c', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-14', content: '', entries: [{ kind: 'url', target: page, finalUrl: page, status: 'access_limited' }] }]
+  expect(matchResearchSourceLibraryAttempts({ catalog, records })).toMatchObject([{ candidateUrl: 'http://www.google.com/trends', targetUrl: page, status: 'access_limited' }])
+  for (const target of ['https://trends.google.com/', 'https://trends.google.com/trending', 'https://www.google.com/trends/explore']) {
+    records[0].entries = [{ kind: 'url', target, finalUrl: target, status: 'opened' }]
+    expect(matchResearchSourceLibraryAttempts({ catalog, records })).toHaveLength(1)
+  }
+  for (const target of ['https://www.google.com/search?q=trends', 'https://www.google.com/maps', 'https://trends.google.com.evil.example/trends']) {
+    records[0].entries = [{ kind: 'url', target, finalUrl: target, status: 'opened' }]
+    expect(matchResearchSourceLibraryAttempts({ catalog, records })).toEqual([])
+  }
+})
 
 describe("research source library usage audit", () => {
   test("classifies only actually opened concrete pages by core and open source tiers", () => {
@@ -627,11 +643,11 @@ test('counts bounded platform search attempts without treating generic discovery
 test('attributes part audits to the assigned lane without counting repeated visits twice', () => {
   const catalog = parseResearchSourceLibrary(SOURCE_LIBRARY)
   const plan = planResearchSourceLibraryExecutionBatches({ catalog, researcherPaths: ['commercialization-research/02-competitors.md', 'commercialization-research/03-user-needs.md', 'commercialization-research/04-channels.md'] })
-  const lane = plan.batches.find(batch => batch.entries.some(entry => entry.candidateHost === 'talkingdata.com'))!.artifactPath
+  const lane = requireFixtureValue(plan).batches.find(batch => batch.entries.some(entry => entry.candidateHost === 'talkingdata.com'))!.artifactPath
   const records = [0, 1].map(i => ({ agentId: 'part-' + i, agentType: 'expert-evidence-researcher', recordedAt: '2026-09-10T00:00:00Z', artifactPath: lane.replace('.md', '.parts/worker-' + i + '.md'), content: '# evidence', entries: [{ target: 'https://www.talkingdata.com/', finalUrl: 'https://www.talkingdata.com/', kind: 'url' as const, status: 'opened' as const }] }))
   const attempts = matchResearchSourceLibraryAttempts({ catalog, records })
   expect(attempts).toHaveLength(2) // retain both real visits
-  const progress = evaluateResearchSourceLibraryExecutionProgress({ plan, attempts })
+  const progress = evaluateResearchSourceLibraryExecutionProgress({ plan: requireFixtureValue(plan), attempts })
   expect(progress.reduce((count, batch) => count + batch.coreAttemptedCount, 0)).toBe(1)
   expect(attempts[0].artifactPath).toBe(lane)
   expect(attempts[0].status).toBe('opened')

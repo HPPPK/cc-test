@@ -15,7 +15,7 @@ import { createCombinedAbortSignal } from '../combinedAbortSignal.js'
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
-import { createUserMessage, handleMessageFromStream } from '../messages.js'
+import { createRuntimeUserMessage, handleMessageFromStream } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import { hasPermissionsToUseTool } from '../permissions/permissions.js'
 import { getAgentTranscriptPath, getTranscriptPath } from '../sessionStorage.js'
@@ -64,7 +64,7 @@ export async function execAgentHook(
 
     // Create user message directly - no need for processUserInput which would
     // trigger UserPromptSubmit hooks and cause infinite recursion
-    const userMessage = createUserMessage({ content: processedPrompt })
+    const userMessage = createRuntimeUserMessage({ content: processedPrompt })
     const agentMessages = [userMessage]
 
     logForDebugging(

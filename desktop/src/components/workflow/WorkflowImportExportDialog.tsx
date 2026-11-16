@@ -1,3 +1,4 @@
+import { ContentOverlay } from '../shared/ContentOverlay'
 import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import { ApiError } from '../../api/client'
 import { sessionsApi } from '../../api/sessions'
@@ -277,13 +278,13 @@ export function WorkflowImportExportDialog({
   }
 
   return (
-    <div
+    <ContentOverlay
       role="dialog"
       aria-modal="true"
       aria-label={mode === 'import' ? t('settings.workflows.import.title') : t('settings.workflows.export.title')}
       className="workflow-content-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/35 py-4"
     >
-      <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
+      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl">
         <header className="flex min-w-0 items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
@@ -484,7 +485,7 @@ export function WorkflowImportExportDialog({
           </div>
         </footer>
       </div>
-    </div>
+    </ContentOverlay>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from '../../i18n'
 import { DirectoryPicker } from '../shared/DirectoryPicker'
+import { ContentOverlay } from '../shared/ContentOverlay'
 import type {
   WorkflowBrainstormingMode,
   WorkflowEffortMode,
@@ -186,7 +187,7 @@ export function WorkflowStartDialog({
   }
 
   return (
-    <div
+    <ContentOverlay
       className="workflow-content-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/35 py-4"
       role="presentation"
       onMouseDown={(event) => {
@@ -204,7 +205,7 @@ export function WorkflowStartDialog({
         onKeyDown={(event) => {
           if (event.key === 'Escape') onClose()
         }}
-        className="flex h-[680px] w-[1150px] flex-none flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl focus-visible:outline-none"
+        className="flex h-[680px] max-h-full w-full max-w-[1150px] min-w-0 flex-col overflow-hidden rounded-[10px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl focus-visible:outline-none"
       >
         <header className="flex min-w-0 items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3">
           <div className="min-w-0">
@@ -469,7 +470,7 @@ export function WorkflowStartDialog({
           </button>
         </footer>
       </div>
-    </div>
+    </ContentOverlay>
   )
 }
 

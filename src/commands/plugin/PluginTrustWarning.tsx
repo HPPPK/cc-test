@@ -3,7 +3,7 @@ import figures from 'figures';
 import * as React from 'react';
 import { Box, Text } from '../../ink.js';
 import { getPluginTrustMessage } from '../../utils/plugins/marketplaceHelpers.js';
-export function PluginTrustWarning() {
+export function PluginTrustWarning(): React.ReactNode {
   const $ = _c(3);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

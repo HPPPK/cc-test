@@ -116,15 +116,15 @@ function validateReportScope(sessionId: string, report: WorkflowFinalReport): vo
   }
 }
 
-function artifactIndexValues(state: WorkflowSessionState): Array<Record<string, unknown>> {
+function artifactIndexValues(state: WorkflowSessionState): WorkflowArtifactPointer[] {
   if (Array.isArray(state.artifactIndex)) {
-    return state.artifactIndex.filter((artifact): artifact is Record<string, unknown> =>
+    return state.artifactIndex.filter((artifact): artifact is WorkflowArtifactPointer =>
       Boolean(artifact) && typeof artifact === 'object' && !Array.isArray(artifact)
     )
   }
 
   if (state.artifactIndex && typeof state.artifactIndex === 'object') {
-    return Object.values(state.artifactIndex).filter((artifact): artifact is Record<string, unknown> =>
+    return Object.values(state.artifactIndex).filter((artifact): artifact is WorkflowArtifactPointer =>
       Boolean(artifact) && typeof artifact === 'object' && !Array.isArray(artifact)
     )
   }

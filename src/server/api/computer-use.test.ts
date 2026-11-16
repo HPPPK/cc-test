@@ -26,6 +26,9 @@ function skillsDevelopmentScopePlanState(sessionId: string): WorkflowSessionStat
     schemaVersion: 1,
     sessionId,
     mode: 'workflow',
+    template: { id: 'skills-development', source: 'user', version: '13', snapshotId: 'fixture', sourceState: 'current' },
+    stateVersion: 1,
+    phases: [{ id: 'scope-plan', index: 0, status: 'running', artifactPointers: [] }],
     templateSnapshot: {
       schemaVersion: 1,
       id: 'skills-development',

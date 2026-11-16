@@ -3,7 +3,7 @@ import React from 'react';
 import { Box, Text, useTheme } from 'src/ink.js';
 import { env } from '../../utils/env.js';
 const WELCOME_V2_WIDTH = 58;
-export function WelcomeV2() {
+export function WelcomeV2(): React.ReactNode {
   const $ = _c(35);
   const [theme] = useTheme();
   if (env.terminal === "Apple_Terminal") {
@@ -200,7 +200,7 @@ type AppleTerminalWelcomeV2Props = {
   theme: string;
   welcomeMessage: string;
 };
-function AppleTerminalWelcomeV2(t0) {
+function AppleTerminalWelcomeV2(t0: AppleTerminalWelcomeV2Props): React.ReactNode {
   const $ = _c(44);
   const {
     theme,

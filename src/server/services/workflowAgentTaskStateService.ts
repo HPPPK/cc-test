@@ -4,12 +4,14 @@ import type { WorkflowSessionState, WorkflowTaskSnapshot } from './workflowTypes
 
 export const MANAGED_WORKFLOW_IDS = new Set([
   'efficient-constrained-dev-debug-workflow-v5',
+  'stradn-managed-development-workflow-v1',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
 ])
 
 const IMPLEMENT_PHASE_BY_WORKFLOW = new Map([
   ['efficient-constrained-dev-debug-workflow-v5', 'delegate-implement'],
+  ['stradn-managed-development-workflow-v1', 'stradn-delivery'],
   ['feature-extension-workflow-v8', 'feature-implement'],
   ['debug-repair-workflow-v8', 'debug-fix'],
 ])
@@ -215,6 +217,14 @@ export function recordWorkflowAgentTaskProgress(
   }
   if (sameReceipt(current, input)) return state
 
+  if (input.status === 'succeeded' && (
+    (state.runStatus !== undefined && state.runStatus !== 'active')
+    || ['paused', 'cancelled', 'completed', 'exited'].includes(state.status)
+    || state.pendingConfirmation || state.pendingRoute
+  )) {
+    throw new Error('WORKFLOW_EXECUTION_SUSPENDED: A successful task receipt requires the current workflow to be active without a pending confirmation or route. Preserve completed work and resume through the Leader.')
+  }
+
   if (input.status === 'running') {
     if (current.status === 'succeeded') {
       const reviewer = input.role === 'coder'
@@ -351,6 +361,7 @@ export async function reconcileWorkflowAgentTasks(
   state: WorkflowSessionState,
   lookup: AgentRunLookup,
   recordedAt = new Date().toISOString(),
+  options: { ownerAlive?: boolean } = {},
 ): Promise<WorkflowSessionState> {
   if (!isManagedWorkflowAgentTaskState(state) || !state.runtimeContract) return state
   const next = cloneState(state)
@@ -366,16 +377,33 @@ export async function reconcileWorkflowAgentTasks(
       let reason = task.reason
       let outputArtifactRefs = task.outputArtifactRefs
       if (!ledger) {
-        if (isStaleTimestamp(task.lastHeartbeatAt ?? task.updatedAt, recordedAt)) {
+        if (!options.ownerAlive && isStaleTimestamp(task.lastHeartbeatAt ?? task.updatedAt, recordedAt)) {
           status = 'interrupted'
           reason = 'Agent Run Ledger is unavailable after workflow recovery.'
         }
-      } else if (ledger.status === 'running' && isStaleTimestamp(ledger.updatedAt, recordedAt)) {
+      } else if (ledger.status === 'running' && !options.ownerAlive && isStaleTimestamp(ledger.updatedAt, recordedAt)) {
         status = 'interrupted'
         reason = 'Agent Run Ledger heartbeat expired during workflow recovery.'
       } else if (ledger.status === 'completed') {
-        status = 'succeeded'
-        outputArtifactRefs = ledger.artifacts.map(artifact => artifact.path)
+        if (templateId(next) === 'efficient-constrained-dev-debug-workflow-v5'
+          && phaseState.phaseId === 'delegate-implement' && task.phaseId === 'delegate-implement'
+          && task.workflowRole === 'coder') {
+          // runAgent writes its generic completion before the lifecycle parses
+          // readiness. A GET must not race that accepted typed receipt to success.
+          if (options.ownerAlive) continue
+          status = 'interrupted'
+          reason = 'Coder completed without an accepted readiness receipt before its owner exited. Resume the same Batch and preserve its existing work.'
+        } else if (task.workflowRole === 'reviewer'
+          && (task.reviewStatus !== 'pass' || task.readyForNextBatch !== true || task.requiredFixes?.length)) {
+          // A generic completion ledger does not contain a validated review.
+          // Let a live owner commit its receipt; an orphan needs re-review.
+          if (options.ownerAlive) continue
+          status = 'interrupted'
+          reason = 'Reviewer completed without an accepted review receipt before its owner exited. Retry the Reviewer; accepted Coder results remain valid.'
+        } else {
+          status = 'succeeded'
+          outputArtifactRefs = ledger.artifacts.map(artifact => artifact.path)
+        }
       } else if (ledger.status === 'failed') {
         status = 'failed'
         reason = 'Agent Run Ledger reports a failed task.'
@@ -384,7 +412,7 @@ export async function reconcileWorkflowAgentTasks(
       } else if (ledger.status === 'blocked') {
         status = 'blocked'
       }
-      if (status === task.status && ledger?.updatedAt === task.lastHeartbeatAt) continue
+      if (status === task.status && (!ledger || ledger.updatedAt === task.lastHeartbeatAt)) continue
       phaseState.taskSnapshots[index] = {
         ...task,
         status,
@@ -402,6 +430,25 @@ export async function reconcileWorkflowAgentTasks(
     if (changed) {
       phaseState.taskSnapshots = reconcileWaitingStatuses(phaseState.taskSnapshots, recordedAt, nextStateVersion)
     }
+  }
+
+  // A recovered orphan must not look like an actively executing phase. Keep
+  // its accepted receipts and expose the existing retry action; a GET never
+  // starts a CLI or repeats production work. Reconcile old interrupted states
+  // as well as tasks interrupted by this read.
+  const orphan = next.activePhaseId
+    ? next.runtimeContract!.phaseStates[next.activePhaseId]?.taskSnapshots.find(task => task.status === 'interrupted')
+    : undefined
+  const canExposeRecovery = !options.ownerAlive && orphan
+    && (next.runStatus === undefined || next.runStatus === 'active')
+    && !['completed', 'cancelled', 'exited'].includes(next.status)
+    && !next.pendingRoute && !next.pendingConfirmation
+  if (canExposeRecovery) {
+    next.runStatus = 'blocked'
+    next.blockedReason = next.workflowLanguage === 'zh'
+      ? `任务 ${orphan.taskId} 已中断，执行进程已退出。请重试当前阶段以继续未完成的任务；已通过的结果会保留。`
+      : `WORKFLOW_TASK_INTERRUPTED: ${orphan.taskId}. The task owner is no longer running. Retry the current phase to resume interrupted work; accepted results are retained.`
+    changed = true
   }
 
   if (!changed) return state

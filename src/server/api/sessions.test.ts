@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { handleSessionsApi } from './sessions.js'
@@ -688,5 +688,78 @@ describe('sessions Expert context routes', () => {
     expect(await secondResponse.json()).toMatchObject({
       error: 'BAD_REQUEST',
     })
+  })
+})
+
+describe('canonical research budget API', () => {
+  it('enforces intake admission through HTTP and reports invalid human-evidence assessments', async () => {
+    const root = await makeTempRoot('sessions-intake-admission-')
+    process.env.CLAUDE_CONFIG_DIR = root
+    const { sessionId } = await sessionService.createSession(root)
+    await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert: { mode: 'expert', status: 'active', expertId: 'commercialization-research-report', runtimeBinding: { active: true, expertId: 'commercialization-research-report' } } as never })
+    const call = (action: string, method: string, body?: unknown) => {
+      const url = new URL(`http://localhost/api/sessions/${sessionId}/expert/${action}`)
+      return handleSessionsApi(new Request(url, { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) }), url, ['api', 'sessions', sessionId, 'expert', action])
+    }
+    expect((await call('intake-admission', 'GET')).status).toBe(405)
+    const blocked = await call('intake-admission', 'POST', { toolName: 'Agent' })
+    expect(blocked.status).toBe(409)
+    expect(await blocked.json()).toMatchObject({ error: 'EXPERT_INTAKE_REQUIRED' })
+    const read = await call('intake-admission', 'POST', { toolName: 'Read', input: { file_path: 'supplied-brief.md' } })
+    expect(read.status).toBe(200)
+    expect(await read.json()).toEqual({ allowed: true })
+    const invalid = await call('scope-assessment', 'POST', { action: 'assess', assessment: { dimensions: [] } })
+    expect(invalid.status).toBe(409)
+    expect(await invalid.json()).toMatchObject({ error: 'EXPERT_INTAKE_REQUIRED' })
+    expect((await sessionService.getSession(sessionId))?.expert?.researchIntake?.status).not.toBe('clear')
+  })
+
+  it('rejects unreserved public research and admits a researcher before browser calls', async () => {
+    const root = await makeTempRoot('sessions-research-budget-')
+    process.env.CLAUDE_CONFIG_DIR = root
+    const { sessionId } = await sessionService.createSession(root)
+    const activatedAt = new Date().toISOString()
+    await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert: { mode: 'expert', status: 'active', expertId: 'commercialization-research-report', runtimeBinding: { active: true, expertId: 'commercialization-research-report', activatedAt, promptSnapshot: '默认受众为个人用户' } } as never })
+    const url = new URL(`http://localhost/api/sessions/${sessionId}/expert/research-budget`)
+    const post = (body: unknown) => handleSessionsApi(new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), url, ['api', 'sessions', sessionId, 'expert', 'research-budget'])
+    expect((await post({ action: 'reserve-browser', agentId: '', requestId: 'root' })).status).toBe(409)
+    expect((await post({ action: 'reserve-researcher', agentId: 'a', artifactPath: 'commercialization-research/02-competitors.md' })).status).toBe(409)
+    const transcript = await sessionService.findSessionFile(sessionId)
+    await appendFile(transcript!.filePath, JSON.stringify({ uuid: 'scope-user', type: 'user', messageKind: 'user_input', message: { role: 'user', content: '做帮助学生复习的网页' }, timestamp: activatedAt }) + '\n')
+    const scopeUrl = new URL(`http://localhost/api/sessions/${sessionId}/expert/scope-assessment`)
+    const assessed = await handleSessionsApi(new Request(scopeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'assess', assessment: { dimensions: [
+      { id: 'coreTask', provenance: 'confirmed', value: '帮助学生复习', evidence: { messageId: 'scope-user', quote: '帮助学生复习' } },
+      { id: 'audience', provenance: 'known-business-default', evidence: { messageId: 'active-business-rules', quote: '默认受众为个人用户' } },
+      { id: 'deliveryBoundary', provenance: 'confirmed', value: '网页', evidence: { messageId: 'scope-user', quote: '网页' } },
+    ] } }) }), scopeUrl, ['api', 'sessions', sessionId, 'expert', 'scope-assessment'])
+    expect(await assessed.clone().json()).toMatchObject({ state: { status: 'clear' }, nextAction: 'continue_research', requiresAssessment: false })
+    expect(assessed.status).toBe(200)
+    const started = await post({ action: 'reserve-researcher', agentId: 'a', artifactPath: 'commercialization-research/02-competitors.md' })
+    expect(started.status).toBe(200)
+    expect(await started.json()).toMatchObject({ allowed: true, applicable: true })
+    expect((await post({ action: 'reserve-browser', agentId: 'a', requestId: '1' })).status).toBe(200)
+    expect((await post({ action: 'unknown' })).status).toBe(400)
+    expect((await handleSessionsApi(new Request(url), url, ['api', 'sessions', sessionId, 'expert', 'research-budget'])).status).toBe(405)
+    await sessionService.appendSessionMetadata(sessionId, { workDir: root, expert: { mode: 'expert', status: 'active', expertId: 'other', runtimeBinding: { expertId: 'other', activatedAt } } as never })
+    expect(await (await post({ action: 'reserve-browser', agentId: '', requestId: 'other' })).json()).toMatchObject({ allowed: true, applicable: false })
+
+  })
+})
+
+
+describe('session-bound agent result preview route', () => {
+  it('only accepts a GET with one tool call identifier and delegates within the session', async () => {
+    const original = sessionService.getAgentResult
+    const calls: string[][] = []
+    sessionService.getAgentResult = async (sessionId, toolUseId) => { calls.push([sessionId, toolUseId]); return { status: 'available', content: 'saved result' } }
+    try {
+      const url = new URL('http://localhost/api/sessions/session-fixture/agent-results/call-fixture')
+      const segments = url.pathname.split('/').filter(Boolean)
+      const response = await handleSessionsApi(new Request(url), url, segments)
+      expect(await response.json()).toEqual({ status: 'available', content: 'saved result' })
+      expect(calls).toEqual([['session-fixture', 'call-fixture']])
+      expect((await handleSessionsApi(new Request(url, { method: 'POST' }), url, segments)).status).toBe(405)
+      expect((await handleSessionsApi(new Request(url), url, [...segments, 'extra'])).status).toBe(400)
+    } finally { sessionService.getAgentResult = original }
   })
 })

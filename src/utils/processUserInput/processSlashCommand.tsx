@@ -30,6 +30,7 @@ import { isFullscreenEnvEnabled } from '../fullscreen.js';
 import { toArray } from '../generators.js';
 import { registerSkillHooks } from '../hooks/registerSkillHooks.js';
 import { logError } from '../log.js';
+import type { MessageKindMetadata } from '../messageKind.js';
 import { enqueuePendingNotification } from '../messageQueueManager.js';
 import { createCommandInputMessage, createSyntheticUserCaveatMessage, createSystemMessage, createUserInterruptionMessage, createUserMessage, formatCommandInputTags, isCompactBoundaryMessage, isSystemLocalCommandMessage, normalizeMessages, prepareUserContent } from '../messages.js';
 import type { ModelAlias } from '../model/aliases.js';
@@ -59,7 +60,7 @@ const MCP_SETTLE_TIMEOUT_MS = 10_000;
 /**
  * Executes a slash command with context: fork in a sub-agent.
  */
-async function executeForkedSlashCommand(command: CommandBase & PromptCommand, args: string, context: ProcessUserInputContext, precedingInputBlocks: ContentBlockParam[], setToolJSX: SetToolJSXFn, canUseTool: CanUseToolFn): Promise<SlashCommandResult> {
+async function executeForkedSlashCommand(command: CommandBase & PromptCommand, args: string, context: ProcessUserInputContext, precedingInputBlocks: ContentBlockParam[], setToolJSX: SetToolJSXFn, canUseTool: CanUseToolFn, inputMetadata: Partial<MessageKindMetadata> = { messageKind: 'user_input' }): Promise<SlashCommandResult> {
   const agentId = createAgentId();
   const pluginMarketplace = command.pluginInfo ? parsePluginIdentifier(command.pluginInfo.repository).marketplace : undefined;
   logEvent('tengu_slash_command_forked', {
@@ -273,17 +274,20 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
   logForDebugging(`Forked slash command /${command.name} completed with agent ${agentId}`);
 
   // Prepend debug log for ant users so it appears inside the command output
-  if ("external" === 'ant') {
+  if (false) {
     resultText = `[ANT-ONLY] API calls: ${getDisplayPath(getDumpPromptsPath(agentId))}\n${resultText}`;
   }
 
-  // Return the result as a user message (simulates the agent's output)
+  // Retain the transport role while distinguishing the command input from its generated result.
   const messages: UserMessage[] = [createUserMessage({
+    messageKind: 'user_input',
+    ...inputMetadata,
     content: prepareUserContent({
       inputString: `/${getCommandName(command)} ${args}`.trim(),
       precedingInputBlocks
     })
   }), createUserMessage({
+    messageKind: 'system_event',
     content: `<local-command-stdout>\n${resultText}\n</local-command-stdout>`
   })];
   return {
@@ -306,13 +310,14 @@ export function looksLikeCommand(commandName: string): boolean {
   // If it contains other characters, it's probably a file path or other input
   return !/[^a-zA-Z0-9:\-_]/.test(commandName);
 }
-export async function processSlashCommand(inputString: string, precedingInputBlocks: ContentBlockParam[], imageContentBlocks: ContentBlockParam[], attachmentMessages: AttachmentMessage[], context: ProcessUserInputContext, setToolJSX: SetToolJSXFn, uuid?: string, isAlreadyProcessing?: boolean, canUseTool?: CanUseToolFn): Promise<ProcessUserInputBaseResult> {
+export async function processSlashCommand(inputString: string, precedingInputBlocks: ContentBlockParam[], imageContentBlocks: ContentBlockParam[], attachmentMessages: AttachmentMessage[], context: ProcessUserInputContext, setToolJSX: SetToolJSXFn, uuid?: string, isAlreadyProcessing?: boolean, canUseTool?: CanUseToolFn, inputMetadata: Partial<MessageKindMetadata> = { messageKind: 'user_input' }): Promise<ProcessUserInputBaseResult> {
   const parsed = parseSlashCommand(inputString);
   if (!parsed) {
     logEvent('tengu_input_slash_missing', {});
     const errorMessage = 'Commands are in the form `/command [args]`';
     return {
       messages: [createSyntheticUserCaveatMessage(), ...attachmentMessages, createUserMessage({
+        messageKind: 'system_event',
         content: prepareUserContent({
           inputString: errorMessage,
           precedingInputBlocks
@@ -347,6 +352,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
       const unknownMessage = `Unknown skill: ${commandName}`;
       return {
         messages: [createSyntheticUserCaveatMessage(), ...attachmentMessages, createUserMessage({
+          messageKind: 'system_event',
           content: prepareUserContent({
             inputString: unknownMessage,
             precedingInputBlocks
@@ -370,6 +376,8 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     });
     return {
       messages: [createUserMessage({
+        messageKind: 'user_input',
+        ...inputMetadata,
         content: prepareUserContent({
           inputString,
           precedingInputBlocks
@@ -392,7 +400,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     resultText,
     nextInput,
     submitNextInput
-  } = await getMessagesForSlashCommand(commandName, parsedArgs, setToolJSX, context, precedingInputBlocks, imageContentBlocks, isAlreadyProcessing, canUseTool, uuid);
+  } = await getMessagesForSlashCommand(commandName, parsedArgs, setToolJSX, context, precedingInputBlocks, imageContentBlocks, isAlreadyProcessing, canUseTool, uuid, inputMetadata);
 
   // Local slash commands that skip messages
   if (newMessages.length === 0) {
@@ -427,18 +435,6 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     logEvent('tengu_input_command', {
       ...eventData,
       invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...("external" === 'ant' && {
-        skill_name: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(returnedCommand.type === 'prompt' && {
-          skill_source: returnedCommand.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        }),
-        ...(returnedCommand.loadedFrom && {
-          skill_loaded_from: returnedCommand.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        }),
-        ...(returnedCommand.kind && {
-          skill_kind: returnedCommand.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        })
-      })
     });
     return {
       messages: [],
@@ -495,18 +491,6 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
   logEvent('tengu_input_command', {
     ...eventData,
     invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...("external" === 'ant' && {
-      skill_name: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(returnedCommand.type === 'prompt' && {
-        skill_source: returnedCommand.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      ...(returnedCommand.loadedFrom && {
-        skill_loaded_from: returnedCommand.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      ...(returnedCommand.kind && {
-        skill_kind: returnedCommand.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      })
-    })
   });
 
   // Check if this is a compact result which handle their own synthetic caveat message ordering
@@ -522,7 +506,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     submitNextInput
   };
 }
-async function getMessagesForSlashCommand(commandName: string, args: string, setToolJSX: SetToolJSXFn, context: ProcessUserInputContext, precedingInputBlocks: ContentBlockParam[], imageContentBlocks: ContentBlockParam[], _isAlreadyProcessing?: boolean, canUseTool?: CanUseToolFn, uuid?: string): Promise<SlashCommandResult> {
+async function getMessagesForSlashCommand(commandName: string, args: string, setToolJSX: SetToolJSXFn, context: ProcessUserInputContext, precedingInputBlocks: ContentBlockParam[], imageContentBlocks: ContentBlockParam[], _isAlreadyProcessing?: boolean, canUseTool?: CanUseToolFn, uuid?: string, inputMetadata: Partial<MessageKindMetadata> = { messageKind: 'user_input' }): Promise<SlashCommandResult> {
   const command = getCommand(commandName, context.options.commands);
 
   // Track skill usage for ranking (only for prompt commands that are user-invocable)
@@ -535,11 +519,14 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
   if (command.userInvocable === false) {
     return {
       messages: [createUserMessage({
+        messageKind: 'user_input',
+        ...inputMetadata,
         content: prepareUserContent({
           inputString: `/${commandName}`,
           precedingInputBlocks
         })
       }), createUserMessage({
+        messageKind: 'system_event',
         content: `This skill can only be invoked by Claude, not directly by users. Ask Claude to use the "${commandName}" skill for you.`
       })],
       shouldQuery: false,
@@ -574,6 +561,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
 
               // Meta messages are model-visible but hidden from the user
               const metaMessages = (options?.metaMessages ?? []).map((content: string) => createUserMessage({
+        messageKind: 'internal_notification',
                 content,
                 isMeta: true
               }));
@@ -590,14 +578,18 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
               // output that must reach the transcript.
               const skipTranscript = isFullscreenEnvEnabled() && typeof result === 'string' && result.endsWith(' dismissed');
               void resolve({
-                messages: options?.display === 'system' ? skipTranscript ? metaMessages : [createCommandInputMessage(formatCommandInput(command, args)), createCommandInputMessage(`<local-command-stdout>${result}</local-command-stdout>`), ...metaMessages] : [createUserMessage({
+                messages: options?.display === 'system' ? skipTranscript ? metaMessages : [{ ...createCommandInputMessage(formatCommandInput(command, args)), messageKind: 'user_input' as const, ...inputMetadata }, createCommandInputMessage(`<local-command-stdout>${result}</local-command-stdout>`), ...metaMessages] : [createUserMessage({
+                  messageKind: 'user_input',
+                  ...inputMetadata,
                   content: prepareUserContent({
                     inputString: formatCommandInput(command, args),
                     precedingInputBlocks
                   })
                 }), result ? createUserMessage({
+                  messageKind: 'system_event',
                   content: `<local-command-stdout>${result}</local-command-stdout>`
                 }) : createUserMessage({
+                  messageKind: 'system_event',
                   content: `<local-command-stdout>${NO_CONTENT_MESSAGE}</local-command-stdout>`
                 }), ...metaMessages],
                 shouldQuery: options?.shouldQuery ?? false,
@@ -658,6 +650,8 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
         {
           const displayArgs = command.isSensitive && args.trim() ? '***' : args;
           const userMessage = createUserMessage({
+            messageKind: 'user_input',
+            ...inputMetadata,
             content: prepareUserContent({
               inputString: formatCommandInput(command, displayArgs),
               precedingInputBlocks
@@ -680,6 +674,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
               // Append slash command messages to messagesToKeep so that
               // attachments and hookResults come after user messages
               const slashCommandMessages = [syntheticCaveatMessage, userMessage, ...(result.displayText ? [createUserMessage({
+                messageKind: 'system_event',
                 content: `<local-command-stdout>${result.displayText}</local-command-stdout>`,
                 // --resume looks at latest timestamp message to determine which message to resume from
                 // This is a perf optimization to avoid having to recaculcate the leaf node every time
@@ -725,14 +720,16 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
           try {
             // Check if command should run as forked sub-agent
             if (command.context === 'fork') {
-              return await executeForkedSlashCommand(command, args, context, precedingInputBlocks, setToolJSX, canUseTool ?? hasPermissionsToUseTool);
+              return await executeForkedSlashCommand(command, args, context, precedingInputBlocks, setToolJSX, canUseTool ?? hasPermissionsToUseTool, inputMetadata);
             }
-            return await getMessagesForPromptSlashCommand(command, args, context, precedingInputBlocks, imageContentBlocks, uuid);
+            return await getMessagesForPromptSlashCommand(command, args, context, precedingInputBlocks, imageContentBlocks, uuid, inputMetadata);
           } catch (e) {
             // Handle abort errors specially to show proper "Interrupted" message
             if (e instanceof AbortError) {
               return {
                 messages: [createUserMessage({
+                  messageKind: 'user_input',
+                  ...inputMetadata,
                   content: prepareUserContent({
                     inputString: formatCommandInput(command, args),
                     precedingInputBlocks
@@ -746,11 +743,14 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
             }
             return {
               messages: [createUserMessage({
+                messageKind: 'user_input',
+                ...inputMetadata,
                 content: prepareUserContent({
                   inputString: formatCommandInput(command, args),
                   precedingInputBlocks
                 })
               }), createUserMessage({
+                messageKind: 'system_event',
                 content: `<local-command-stderr>${String(e)}</local-command-stderr>`
               })],
               shouldQuery: false,
@@ -763,6 +763,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
     if (e instanceof MalformedCommandError) {
       return {
         messages: [createUserMessage({
+          messageKind: 'system_event',
           content: prepareUserContent({
             inputString: e.message,
             precedingInputBlocks
@@ -822,9 +823,10 @@ export async function processPromptSlashCommand(commandName: string, args: strin
   if (command.type !== 'prompt') {
     throw new Error(`Unexpected ${command.type} command. Expected 'prompt' command. Use /${commandName} directly in the main conversation.`);
   }
-  return getMessagesForPromptSlashCommand(command, args, context, [], imageContentBlocks);
+  // SkillTool invokes this entrypoint on behalf of the model, without typed input.
+  return getMessagesForPromptSlashCommand(command, args, context, [], imageContentBlocks, undefined, { messageKind: 'internal_notification' });
 }
-async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCommand, args: string, context: ToolUseContext, precedingInputBlocks: ContentBlockParam[] = [], imageContentBlocks: ContentBlockParam[] = [], uuid?: string): Promise<SlashCommandResult> {
+async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCommand, args: string, context: ToolUseContext, precedingInputBlocks: ContentBlockParam[] = [], imageContentBlocks: ContentBlockParam[] = [], uuid?: string, inputMetadata: Partial<MessageKindMetadata> = { messageKind: 'user_input' }): Promise<SlashCommandResult> {
   // In coordinator mode (main thread only), skip loading the full skill content
   // and permissions. The coordinator only has Agent + TaskStop tools, so the
   // skill content and allowedTools are useless. Instead, send a brief summary
@@ -854,9 +856,12 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
     }];
     return {
       messages: [createUserMessage({
+        messageKind: 'user_input',
+        ...inputMetadata,
         content: metadata,
         uuid
       }), createUserMessage({
+        messageKind: 'internal_notification',
         content: summaryContent,
         isMeta: true
       })],
@@ -900,9 +905,12 @@ async function getMessagesForPromptSlashCommand(command: CommandBase & PromptCom
     skipSkillDiscovery: true
   }));
   const messages = [createUserMessage({
+    messageKind: 'user_input',
+    ...inputMetadata,
     content: metadata,
     uuid
   }), createUserMessage({
+    messageKind: 'internal_notification',
     content: mainMessageContent,
     isMeta: true
   }), ...attachmentMessages, createAttachmentMessage({

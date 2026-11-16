@@ -1,3 +1,4 @@
+import { messageKindMetadata } from './messageKind.js'
 /**
  * Transforms SDK messages for streamlined output mode.
  *
@@ -150,6 +151,7 @@ export function createStreamlinedTransformer(): (
           cumulativeCounts = createEmptyToolCounts()
           return {
             type: 'streamlined_text',
+            ...messageKindMetadata(message),
             text,
             session_id: message.session_id,
             uuid: message.uuid,
@@ -164,6 +166,7 @@ export function createStreamlinedTransformer(): (
 
         return {
           type: 'streamlined_tool_use_summary',
+          ...messageKindMetadata(message),
           tool_summary: toolSummary,
           session_id: message.session_id,
           uuid: message.uuid,

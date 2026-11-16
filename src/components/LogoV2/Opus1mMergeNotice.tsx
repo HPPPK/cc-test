@@ -10,7 +10,7 @@ const MAX_SHOW_COUNT = 6;
 export function shouldShowOpus1mMergeNotice(): boolean {
   return isOpus1mMergeEnabled() && (getGlobalConfig().opus1mMergeNoticeSeenCount ?? 0) < MAX_SHOW_COUNT;
 }
-export function Opus1mMergeNotice() {
+export function Opus1mMergeNotice(): React.ReactNode {
   const $ = _c(4);
   const [show] = useState(shouldShowOpus1mMergeNotice);
   let t0;

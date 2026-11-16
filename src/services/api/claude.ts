@@ -74,7 +74,7 @@ import { computeFingerprintFromMessages } from "../../utils/fingerprint.js";
 import { captureAPIRequest, logError } from "../../utils/log.js";
 import {
   createAssistantAPIErrorMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   ensureToolResultPairing,
   normalizeContentFromAPI,
   normalizeMessagesForAPI,
@@ -941,13 +941,13 @@ function getPreviousRequestIdFromMessages(
 }
 
 function isMedia(
-  block: BetaContentBlockParam,
+  block: { readonly type: string },
 ): block is BetaImageBlockParam | BetaRequestDocumentBlock {
   return block.type === "image" || block.type === "document";
 }
 
 function isToolResult(
-  block: BetaContentBlockParam,
+  block: { readonly type: string },
 ): block is BetaToolResultBlockParam {
   return block.type === "tool_result";
 }
@@ -1058,6 +1058,10 @@ async function* queryModel(
           id: result.responseId ?? randomUUID(),
           model: options.model,
           role: "assistant",
+          type: "message",
+          container: null,
+          context_management: null,
+          stop_sequence: null,
           content: result.content,
           stop_reason: result.stopReason,
           usage: result.usage,
@@ -1385,7 +1389,7 @@ async function* queryModel(
       .join("\n");
     if (deferredToolList) {
       messagesForAPI = [
-        createUserMessage({
+        createRuntimeUserMessage({
           content: `<available-deferred-tools>\n${deferredToolList}\n</available-deferred-tools>`,
           isMeta: true,
         }),
@@ -3323,16 +3327,16 @@ export async function queryHaiku({
 }): Promise<AssistantMessage> {
   const result = await withVCR(
     [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: systemPrompt.map((text) => ({ type: "text", text })),
       }),
-      createUserMessage({
+      createRuntimeUserMessage({
         content: userPrompt,
       }),
     ],
     async () => {
       const messages = [
-        createUserMessage({
+        createRuntimeUserMessage({
           content: userPrompt,
         }),
       ];
@@ -3382,16 +3386,16 @@ export async function queryWithModel({
 }): Promise<AssistantMessage> {
   const result = await withVCR(
     [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: systemPrompt.map((text) => ({ type: "text", text })),
       }),
-      createUserMessage({
+      createRuntimeUserMessage({
         content: userPrompt,
       }),
     ],
     async () => {
       const messages = [
-        createUserMessage({
+        createRuntimeUserMessage({
           content: userPrompt,
         }),
       ];

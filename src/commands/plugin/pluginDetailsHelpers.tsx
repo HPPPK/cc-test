@@ -76,7 +76,9 @@ export function buildPluginDetailsMenuOptions(hasHomepage: string | undefined, g
 /**
  * Key hint component for plugin selection screens
  */
-export function PluginSelectionKeyHint(t0) {
+export function PluginSelectionKeyHint(t0: {
+  hasSelection: boolean
+}): React.ReactNode {
   const $ = _c(7);
   const {
     hasSelection

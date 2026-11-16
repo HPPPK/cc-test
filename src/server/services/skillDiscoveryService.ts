@@ -63,7 +63,7 @@ export class SkillDiscoveryService {
 
     const settings = this.dependencies.getSettings()
     const provider = this.dependencies.getProvider(settings)
-    if (!provider) {
+    if (!provider || provider === 'tavily-keyless') {
       throw new SkillDiscoveryConfigurationError(
         'Online Skill discovery needs a Tavily or Brave API key in Web Search settings.',
       )

@@ -19,7 +19,7 @@ const LSP_POLL_INTERVAL_MS = 5000;
  *
  * Only active when ENABLE_LSP_TOOL is set.
  */
-export function useLspInitializationNotification() {
+export function useLspInitializationNotification(): void {
   const $ = _c(10);
   const {
     addNotification
@@ -33,7 +33,7 @@ export function useLspInitializationNotification() {
   } else {
     t0 = $[0];
   }
-  const notifiedErrorsRef = React.useRef(t0);
+  const notifiedErrorsRef = React.useRef<Set<string>>(t0);
   let t1;
   if ($[1] !== addNotification || $[2] !== setAppState) {
     t1 = (source, errorMessage) => {

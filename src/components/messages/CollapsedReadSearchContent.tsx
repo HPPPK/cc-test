@@ -39,7 +39,14 @@ type Props = {
 };
 
 /** Render a single tool use in verbose mode */
-function VerboseToolUse(t0) {
+function VerboseToolUse(t0: {
+  content: { type: 'tool_use'; id: string; name: string; input: unknown }
+  tools: Tools
+  lookups: ReturnType<typeof buildMessageLookups>
+  inProgressToolUseIDs: Set<string>
+  shouldAnimate: boolean
+  theme: ThemeName
+}): React.ReactNode {
   const $ = _c(24);
   const {
     content,

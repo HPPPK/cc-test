@@ -56,6 +56,61 @@ function state(): WorkflowSessionState {
 }
 
 describe('workflow context capsule', () => {
+  it('deduplicates canonical handoff aliases without dropping unique facts or mutating stored recovery data', () => {
+    const session = state()
+    session.templateIdentity.id = 'efficient-constrained-dev-debug-workflow-v5'
+    const capsule = createWorkflowContextCapsule(session, {
+      fromPhaseId: 'feature-scope', toPhaseId: 'feature-implement', createdAt: '2026-09-17T01:00:00.000Z',
+      handoff: {
+        requirements: ['preserve-unique-requirement'], decisions: ['accepted-choice'],
+        changedFiles: ['src/preserved.ts'], evidence: ['fixture-pass'],
+        excludedCauses: ['excluded-cause'], risks: ['known-risk'], nextPhaseInputs: ['next-action'],
+        customDetail: { nonstandardFact: 'keep-custom-detail' },
+      },
+    })
+    attachWorkflowContextCapsule(session, capsule)
+    const before = JSON.stringify(session)
+    const prompt = contextCapsulePrompt(session)
+    for (const fact of ['preserve-unique-requirement', 'accepted-choice', 'src/preserved.ts', 'fixture-pass', 'excluded-cause', 'known-risk', 'next-action']) {
+      expect(prompt.split(fact)).toHaveLength(2)
+    }
+    expect(prompt).toContain('keep-custom-detail')
+    expect(JSON.stringify(session)).toBe(before)
+  })
+
+  it('preserves specialized handoff aliases and canonical alias details that differ from normalized facts', () => {
+    const session = state()
+    const capsule = createWorkflowContextCapsule(session, {
+      fromPhaseId: 'feature-scope', toPhaseId: 'feature-implement', createdAt: '2026-09-17T01:00:00.000Z',
+      handoff: { requirements: ['specialized-requirement'], evidence: [{ command: 'npm test', outcome: 'pass' }] },
+    })
+    attachWorkflowContextCapsule(session, capsule)
+    expect(contextCapsulePrompt(session)).toContain('"requirements"')
+    session.templateIdentity.id = 'efficient-constrained-dev-debug-workflow-v5'
+    expect(contextCapsulePrompt(session)).toContain('"command"')
+  })
+
+  it('renders accepted handoff facts once without replaying nested submissions or changing stored data', () => {
+    const session = state()
+    session.phases[0]!.artifactPointers[0]!.submission = {
+      phaseId: 'feature-scope', status: 'blocked', stateVersion: 1,
+      handoff: { summary: 'obsolete-recovery-payload' }, rationale: 'old attempt', evidence: [],
+    }
+    const capsule = createWorkflowContextCapsule(session, {
+      fromPhaseId: 'feature-scope', toPhaseId: 'feature-implement', createdAt: '2026-09-17T01:00:00.000Z',
+      handoff: { userRequirements: ['unique-required-fact'], summary: 'accepted summary' },
+    })
+    attachWorkflowContextCapsule(session, capsule)
+    const stored = JSON.stringify(capsule)
+    const prompt = contextCapsulePrompt(session)
+    expect(prompt.split('unique-required-fact')).toHaveLength(2)
+    expect(prompt).not.toContain('obsolete-recovery-payload')
+    expect(prompt).toContain('accepted summary')
+    expect(prompt).toContain('feature-delta')
+    expect(JSON.stringify(capsule)).toBe(stored)
+    expect(stored).toContain('obsolete-recovery-payload')
+  })
+
   it('creates a stable structured handoff from accepted state and completion handoff', () => {
     const capsule = createWorkflowContextCapsule(state(), {
       fromPhaseId: 'feature-scope',

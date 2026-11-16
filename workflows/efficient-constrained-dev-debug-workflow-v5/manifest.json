@@ -1,7 +1,7 @@
 {
   "packId": "efficient-constrained-dev-debug-workflow-v5",
   "name": "引导式产品开发流程",
-  "version": "24",
+  "version": "32",
   "schemaVersion": 2,
   "type": "workflow-pack",
   "description": "从需求梳理到产品交付，循序渐进构建完整方案",
@@ -538,7 +538,7 @@
         "safeName": "workflow-local-preview-runner",
         "entrypoint": "skills/workflow-local-preview-runner/SKILL.md",
         "root": "skills/workflow-local-preview-runner",
-        "contentHash": "sha256-d79c9275b617c4449638c8229296e3e4a4065b393ab0d8c01e36c8829643381a",
+        "contentHash": "sha256-9aac52c76e00c93d4e3a0b25944fbbb780be1f775ba8ca5e2a2670443892c42e",
         "source": "bundled",
         "references": [
           "workflow:local-preview-runner"
@@ -559,7 +559,7 @@
           }
         ],
         "fileCount": 1,
-        "totalBytes": 662
+        "totalBytes": 1108
       },
       {
         "id": "superpowers:finishing-a-development-branch",
@@ -625,7 +625,7 @@
         "safeName": "workflow-lightweight-batch-review",
         "entrypoint": "skills/workflow-lightweight-batch-review/SKILL.md",
         "root": "skills/workflow-lightweight-batch-review",
-        "contentHash": "sha256-7952e21df8656726b8ef7aa6370f4695b2eae44dd7e30680bf228e057607e320",
+        "contentHash": "sha256-46f10fde82a0b1f361a1737a4e96edda1c114b8514584917800912d7778a7b2e",
         "source": "bundled",
         "references": [
           "workflow:lightweight-batch-review"
@@ -646,7 +646,7 @@
           }
         ],
         "fileCount": 1,
-        "totalBytes": 1652
+        "totalBytes": 5695
       }
     ],
     "requiredHostTools": [

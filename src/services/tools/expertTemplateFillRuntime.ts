@@ -43,6 +43,19 @@ function cliDeliveryRequired(): Error {
   return new Error('EXPERT_TEMPLATE_FILL_CLI_REQUIRED: HTML generation, modification, and finalization must use cc-jiangxia expert-template-fill --data <payload.json> or --data-stdin, with --output <report.html> in the current session workDir. Payload: { templateId, fields, mode?: "patch" | "finalize" }. Use the existing fixed template only. First create the draft, then review 08, then patch only supported corrections or finalize with fields: {}. Never Write, Edit, or MultiEdit HTML. Research Markdown Write/Edit remains available. Correct the command yourself; do not ask the user for a filename or output location.')
 }
 
+/** Remove only known write-call prefixes with a provably literal JSON target.
+ * Keep the remaining arguments intact so a nested HTML write is still detected.
+ * Variables, interpolation, concatenation and transformed Path targets do not
+ * qualify; an HTML-naming compound command remains conservative for those.
+ */
+function withoutLiteralJsonWritePrefixes(command: string): string {
+  const literalJsonPath = String.raw`(?:"[^"'$\x60\\\r\n]*\.json"|'[^"'$\x60\\\r\n]*\.json')`
+  return command
+    .replace(new RegExp(String.raw`\bopen\s*\(\s*${literalJsonPath}\s*,\s*(?:mode\s*=\s*)?["'][wax](?:[+b]|b\+)?["']\s*(?=[,)])`, 'gi'), '__literal_json_write__')
+    .replace(new RegExp(String.raw`\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream)\s*\(\s*${literalJsonPath}\s*(?=[,)])`, 'gi'), '__literal_json_write__')
+    .replace(new RegExp(String.raw`\bPath\s*\(\s*${literalJsonPath}\s*\)\s*\.\s*(?:write_text|write_bytes)\s*\(`, 'gi'), '__literal_json_write__(')
+}
+
 /** Recognizes common accidental bypasses, not an arbitrary-shell security boundary. */
 function isObviousShellHtmlMutation(command: string): boolean {
   // Check the whole command before considering any CLI invocation: a trailing
@@ -55,8 +68,9 @@ function isObviousShellHtmlMutation(command: string): boolean {
   if (/\bsed\b[^;|&\n]*--in-place(?:=[^\s]+)?[^;|&\n]*\.html?\b/i.test(command)) return true
   if (/\b(?:sed|perl)\b[^;|&\n]*\s-(?:[a-z]*i|i[a-z]*)(?:\s|["'])[^;|&\n]*\.html?\b/i.test(command)) return true
   if (/\b(?:Set-Content|Add-Content|Out-File)\b[^;|&\n]*\.html?\b/i.test(command)) return true
-  if (/\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|write_text|write_bytes|createWriteStream)\s*\(/i.test(command)) return true
-  return /\bopen\s*\([^)]*['"][wax](?:[+b]|b\+)?['"]/i.test(command)
+  const unknownTargetWrites = withoutLiteralJsonWritePrefixes(command)
+  if (/\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|write_text|write_bytes|createWriteStream)\s*\(/i.test(unknownTargetWrites)) return true
+  return /\bopen\s*\([^)]*['"][wax](?:[+b]|b\+)?['"]/i.test(unknownTargetWrites)
 }
 
 /** Call before any tool-side file mutation; the CLI is the sole report delivery path. */
@@ -242,7 +256,7 @@ export function isCurrentExpertTemplateOutputReviewReportPath(
   const current = currentExpertTemplateOutputReviewContext()
   if (current && sameResolvedPath(filePath, current.reportPath)) return true
   return typeof persistedReportPath === 'string'
-    && persistedReportPath.trim()
+    && persistedReportPath.trim().length > 0
     && sameResolvedPath(filePath, persistedReportPath)
 }
 
@@ -427,7 +441,7 @@ export function expertTemplateFillPostWriteNotice(filePath: unknown): string | u
   const outputRoot = getJiangxiaEnvValue('EXPERT_TEMPLATE_FILL_OUTPUT_ROOT')?.trim()
   const key = policy && outputRoot ? outputReviewStateKey(policy, outputRoot) : undefined
   if (!current || (key && expertTemplateOutputReviewStates.get(key)?.reviewRead) || !sameResolvedPath(filePath, current.reportPath)) return undefined
-  return 'This is the initial rendered report draft, not the final delivery. Immediately invoke the constrained expert-evidence-output-reviewer. Its research inputs are only the brief, 07 absorption Markdown, and this exact HTML; it must Write the declared 08 completeness review and may Read that same 08 to verify saving. Then Read 08. Complete one successful terminal Write; rejected or unsaved attempts may be corrected and retried on the same draft without restarting research. Use mode="patch" only when the natural-language review plainly identifies a source-supported omission or correction grounded in 07 that needs a patch; otherwise send mode="finalize" with empty fields so the reviewed draft becomes final without a rewrite.'
+  return 'This is the initial rendered report draft, not the final delivery. Immediately invoke the constrained expert-evidence-output-reviewer. Its research inputs are the brief, 07 absorption Markdown, this exact HTML, and the exact declared researcher reports/parts, evidence review and browser audit; independently verify original captured source text and adjacent price conditions there, without browsing or reading undeclared files; it must Write the declared 08 completeness review and may Read that same 08 to verify saving. When the active Commercialization Expert requires expert-report-review, F must retain human-readable evidence plus exactly one fenced JSON block with version:1, findings (actual schema fieldId, factual-error/source-error/supported-omission/optional kind, evidence-grounded reason) and calculations (fieldId, numeric amount, amountPeriod:month/year/one-time, numeric allowance, allowancePeriod:month/year/one-time, numeric unitsPerTask, numeric reportedCost) for all derived unit costs including AI inferences; no reconstructable derived costs means calculations:[], but unsupported unreconstructable costs require factual-error findings instead of invented calculation entries; normalize annual spend against monthly quota and retain original operand/source evidence; known factual/source/count/price-condition errors are never optional, even if the recommendation is unchanged. List all affected summary/body/table/source field IDs. Then Read 08; patch every non-optional fieldId, and never finalize while any remain. Complete one successful terminal Write; rejected or unsaved attempts may be corrected and retried on the same draft without restarting research. Use mode="patch" for the smallest required corrections supported by the saved original evidence and 08, covering every non-optional fieldId in the commercial review contract; only when no mandatory correction remains send mode="finalize" with empty fields so the reviewed draft becomes final without a rewrite.'
 }
 
 const RESEARCH_ARTIFACT_KINDS: ExpertResearchArtifactKind[] = [
@@ -603,7 +617,7 @@ function resolveResearchArtifactWrite(input: Record<string, unknown>): Extract<E
   // This internal classification is inferred by the runtime, never supplied by the model.
   const kind = inferResearchArtifactKind(policy, outputRoot, input.file_path)
   if (!kind) {
-    throw new Error('EXPERT_TEMPLATE_FILL_REJECTED: Research Markdown file_path must exactly match a Markdown artifact declared for this Expert session.')
+    throw new Error('EXPERT_TEMPLATE_FILL_REJECTED: Research Markdown file_path must exactly match a Markdown artifact declared for this Expert session. Keep the existing content and retry the correct file_path; do not restart research or rename the artifact. Declared paths: ' + JSON.stringify([policy.briefPath, ...policy.researcherPaths, policy.reviewerPath, policy.auditPath, policy.absorptionPath, policy.completionReviewPath].filter(Boolean)))
   }
   const resolved = resolveExpertResearchArtifactPath({
     workDir: outputRoot,

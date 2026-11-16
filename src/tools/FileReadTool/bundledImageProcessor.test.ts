@@ -21,7 +21,7 @@ describe('packaged image processor', () => {
     await writeFile(join(pkg, 'package.json'), JSON.stringify({ name: 'sharp', main: 'index.cjs' }))
     await writeFile(join(pkg, 'index.cjs'), 'module.exports = () => ({ metadata: async () => ({ width: 3, height: 2 }) })')
     const sharp = loadBundledImageProcessor(root)!
-    expect(await sharp(Buffer.from('test')).metadata()).toEqual({ width: 3, height: 2 })
+    expect(await sharp(Buffer.from('test')).metadata()).toMatchObject({ width: 3, height: 2 })
   })
   test('rejects invalid native module exports with a recoverable diagnostic', async () => {
     const root = await mkdtemp(join(tmpdir(), 'image-runtime-invalid-')); dirs.push(root)

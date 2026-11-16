@@ -24,14 +24,14 @@ type Props = {
     display?: CommandResultDisplay;
   }) => void;
 };
-export function DesktopHandoff(t0) {
+export function DesktopHandoff(t0: Props): React.ReactNode {
   const $ = _c(20);
   const {
     onDone
   } = t0;
-  const [state, setState] = useState("checking");
-  const [error, setError] = useState(null);
-  const [downloadMessage, setDownloadMessage] = useState("");
+  const [state, setState] = useState<DesktopHandoffState>("checking");
+  const [error, setError] = useState<string | null>(null);
+  const [downloadMessage, setDownloadMessage] = useState<string>("");
   let t1;
   if ($[0] !== error || $[1] !== onDone || $[2] !== state) {
     t1 = input => {
@@ -171,7 +171,10 @@ export function DesktopHandoff(t0) {
   } else {
     t4 = $[17];
   }
-  const messages = t4;
+  const messages: Record<
+    Exclude<DesktopHandoffState, 'error' | 'prompt-download'>,
+    string
+  > = t4;
   const t5 = messages[state];
   let t6;
   if ($[18] !== t5) {

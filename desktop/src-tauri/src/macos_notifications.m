@@ -144,7 +144,7 @@ int cchh_notification_authorization_status(char *error_buffer, uintptr_t error_b
     }
 }
 
-bool cchh_request_notification_authorization(char *error_buffer, uintptr_t error_buffer_len) {
+int cchh_request_notification_authorization(char *error_buffer, uintptr_t error_buffer_len) {
     @autoreleasepool {
         cchh_copy_error(error_buffer, error_buffer_len, nil);
 
@@ -164,18 +164,23 @@ bool cchh_request_notification_authorization(char *error_buffer, uintptr_t error
 
             if (dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC)) != 0) {
                 cchh_copy_error(error_buffer, error_buffer_len, @"Timed out while requesting macOS notification permission");
-                return false;
+                return -1;
+            }
+
+            // A system denial is an authorization state, not a broken bridge.
+            if ([requestError.domain isEqualToString:UNErrorDomain] && requestError.code == UNErrorCodeNotificationsNotAllowed) {
+                return (int)UNAuthorizationStatusDenied;
             }
 
             if (requestError != nil) {
                 cchh_copy_error(error_buffer, error_buffer_len, [requestError localizedDescription]);
-                return false;
+                return -1;
             }
 
-            return granted;
+            return (int)(granted ? UNAuthorizationStatusAuthorized : UNAuthorizationStatusDenied);
         }
 
-        return true;
+        return (int)UNAuthorizationStatusAuthorized;
     }
 }
 

@@ -31,15 +31,15 @@ import { TagTabs } from './TagTabs.js';
 import TextInput from './TextInput.js';
 import { type TreeNode, TreeSelect } from './ui/TreeSelect.js';
 type AgenticSearchState = {
-  status: 'idle';
+  status: 'idle'; query?: never; results?: never;
 } | {
-  status: 'searching';
+  status: 'searching'; query?: never; results?: never;
 } | {
   status: 'results';
   results: LogOption[];
   query: string;
 } | {
-  status: 'error';
+  status: 'error'; query?: never; results?: never;
   message: string;
 };
 export type LogSelectorProps = {
@@ -140,7 +140,7 @@ function buildLogMetadata(log: LogOption, options?: {
   const projectSuffix = showProjectPath && log.projectPath ? ` · ${log.projectPath}` : '';
   return childPadding + baseMetadata + projectSuffix;
 }
-export function LogSelector(t0) {
+export function LogSelector(t0: LogSelectorProps): React.ReactNode {
   const $ = _c(247);
   const {
     logs,
@@ -190,7 +190,7 @@ export function LogSelector(t0) {
   }
   const highlightColor = t5;
   const isAgenticSearchEnabled = false;
-  const [currentBranch, setCurrentBranch] = React.useState(null);
+  const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [branchFilterEnabled, setBranchFilterEnabled] = React.useState(false);
   const [showAllWorktrees, setShowAllWorktrees] = React.useState(false);
   const [hasMultipleWorktrees, setHasMultipleWorktrees] = React.useState(false);
@@ -211,12 +211,12 @@ export function LogSelector(t0) {
   } else {
     t7 = $[6];
   }
-  const [expandedGroupSessionIds, setExpandedGroupSessionIds] = React.useState(t7);
-  const [focusedNode, setFocusedNode] = React.useState(null);
+  const [expandedGroupSessionIds, setExpandedGroupSessionIds] = React.useState<Set<string>>(t7);
+  const [focusedNode, setFocusedNode] = React.useState<LogTreeNode | null>(null);
   const [focusedIndex, setFocusedIndex] = React.useState(1);
-  const [viewMode, setViewMode] = React.useState("list");
-  const [previewLog, setPreviewLog] = React.useState(null);
-  const prevFocusedIdRef = React.useRef(null);
+  const [viewMode, setViewMode] = React.useState<'list' | 'preview' | 'rename' | 'search'>("list");
+  const [previewLog, setPreviewLog] = React.useState<LogOption | null>(null);
+  const prevFocusedIdRef = React.useRef<string | null>(null);
   const [selectedTagIndex, setSelectedTagIndex] = React.useState(0);
   let t8;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
@@ -227,9 +227,9 @@ export function LogSelector(t0) {
   } else {
     t8 = $[7];
   }
-  const [agenticSearchState, setAgenticSearchState] = React.useState(t8);
+  const [agenticSearchState, setAgenticSearchState] = React.useState<AgenticSearchState>(t8);
   const [isAgenticSearchOptionFocused, setIsAgenticSearchOptionFocused] = React.useState(false);
-  const agenticSearchAbortRef = React.useRef(null);
+  const agenticSearchAbortRef = React.useRef<AbortController | null>(null);
   const t9 = viewMode === "search" && agenticSearchState.status !== "searching";
   let t10;
   let t11;
@@ -299,7 +299,10 @@ export function LogSelector(t0) {
     t16 = $[16];
   }
   React.useEffect(t15, t16);
-  const [deepSearchResults, setDeepSearchResults] = React.useState(null);
+  const [deepSearchResults, setDeepSearchResults] = React.useState<{
+    results: Array<{ log: LogOption; score?: number; searchableText: string }>
+    query: string
+  } | null>(null);
   const [isSearching, setIsSearching] = React.useState(false);
   let t17;
   let t18;
@@ -803,7 +806,7 @@ export function LogSelector(t0) {
       });
       ;
       try {
-        const results_0 = await onAgenticSearch(searchQuery, logs, abortController.signal);
+        const results_0 = await onAgenticSearch?.(searchQuery, logs, abortController.signal) ?? [];
         if (abortController.signal.aborted) {
           return;
         }
@@ -1354,7 +1357,7 @@ export function LogSelector(t0) {
   }
   let t70;
   if ($[202] !== agenticSearchState.status || $[203] !== branchFilterEnabled || $[204] !== columns || $[205] !== displayedLogs || $[206] !== expandedGroupSessionIds || $[207] !== flatOptions || $[208] !== focusedLog || $[209] !== focusedNode?.id || $[210] !== handleFlatOptionsSelectFocus || $[211] !== handleRenameSubmit || $[212] !== handleTreeSelectFocus || $[213] !== isAgenticSearchOptionFocused || $[214] !== onCancel || $[215] !== onSelect || $[216] !== renameCursorOffset || $[217] !== renameValue || $[218] !== treeNodes || $[219] !== viewMode || $[220] !== visibleCount) {
-    t70 = agenticSearchState.status === "searching" ? null : viewMode === "rename" && focusedLog ? <Box paddingLeft={2} flexDirection="column"><Text bold={true}>Rename session:</Text><Box paddingTop={1}><TextInput value={renameValue} onChange={setRenameValue} onSubmit={handleRenameSubmit} placeholder={getLogDisplayTitle(focusedLog, "Enter new session name")} columns={columns} cursorOffset={renameCursorOffset} onChangeCursorOffset={setRenameCursorOffset} showCursor={true} /></Box></Box> : isResumeWithRenameEnabled ? <TreeSelect nodes={treeNodes} onSelect={node_0 => {
+    t70 = agenticSearchState.status === "searching" ? null : viewMode === "rename" && focusedLog ? <Box paddingLeft={2} flexDirection="column"><Text bold={true}>Rename session:</Text><Box paddingTop={1}><TextInput value={renameValue} onChange={setRenameValue} onSubmit={handleRenameSubmit} placeholder={getLogDisplayTitle(focusedLog, "Enter new session name")} columns={columns} cursorOffset={renameCursorOffset} onChangeCursorOffset={setRenameCursorOffset} showCursor={true} /></Box></Box> : isResumeWithRenameEnabled ? <TreeSelect<LogTreeNode["value"]> nodes={treeNodes} onSelect={node_0 => {
       onSelect(node_0.value.log);
     }} onFocus={handleTreeSelectFocus} onCancel={onCancel} focusNodeId={focusedNode?.id} visibleOptionCount={visibleCount} layout="expanded" isDisabled={viewMode === "search" || isAgenticSearchOptionFocused} hideIndexes={false} isNodeExpanded={nodeId => {
       if (viewMode === "search" || branchFilterEnabled) {
@@ -1501,7 +1504,7 @@ function _temp2(log_1) {
   }
   return false;
 }
-function _temp(log) {
+function _temp(log: LogOption): [LogOption, string] {
   return [log, buildSearchableText(log)];
 }
 function extractSearchableText(message: SerializedMessage): string {

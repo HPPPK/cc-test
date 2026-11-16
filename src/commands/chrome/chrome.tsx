@@ -22,7 +22,7 @@ type Props = {
   isClaudeAISubscriber: boolean;
   isWSL: boolean;
 };
-function ClaudeInChromeMenu(t0) {
+function ClaudeInChromeMenu(t0: Props): React.ReactNode {
   const $ = _c(41);
   const {
     onDone,
@@ -114,7 +114,7 @@ function ClaudeInChromeMenu(t0) {
     t4 = $[5];
   }
   const handleAction = t4;
-  let options;
+  let options: OptionWithDescription<MenuAction>[];
   if ($[6] !== enabledByDefault || $[7] !== isExtensionInstalled) {
     options = [];
     const requiresExtensionSuffix = isExtensionInstalled ? "" : " (requires extension)";

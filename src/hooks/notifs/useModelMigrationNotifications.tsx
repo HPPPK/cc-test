@@ -32,12 +32,12 @@ c => {
     timeoutMs: isLegacyRemap ? 8000 : 3000
   };
 }];
-export function useModelMigrationNotifications() {
+export function useModelMigrationNotifications(): void {
   useStartupNotification(_temp);
 }
 function _temp() {
   const config = getGlobalConfig();
-  const notifs = [];
+  const notifs: Notification[] = [];
   for (const migration of MIGRATIONS) {
     const notif = migration(config);
     if (notif) {

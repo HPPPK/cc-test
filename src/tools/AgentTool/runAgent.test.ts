@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { readFile } from 'node:fs/promises'
-import { assignedResearchArtifactPath, assignedResearchArtifactPathFromTask, buildExpertSubagentPackagePrompt, formatFileFirstOutputReviewContext, researcherArtifactWriteError, researcherArtifactEditError, pageExpertResearchRead, reportWorkerReadError } from './runAgent.js'
+import { readFile, mkdtemp, mkdir, symlink, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
+import { assignedResearchArtifactPath, assignedResearchArtifactPathFromTask, buildExpertSubagentPackagePrompt, resolveExpertResearchTaskKind, formatFileFirstOutputReviewContext, researcherArtifactWriteError, researcherArtifactEditError, pageExpertResearchRead, reportWorkerReadError, resolveExpertAgentModel } from './runAgent.js'
 
 const policyKey = 'CC_JIANGXIA_EXPERT_RESEARCH_ARTIFACT_POLICY'
 const outputRootKey = 'CC_JIANGXIA_EXPERT_TEMPLATE_FILL_OUTPUT_ROOT'
@@ -158,15 +160,21 @@ describe('formatFileFirstOutputReviewContext', () => {
       absorptionPath: 'commercialization-research/07-report-field-absorption.md',
       reportPath: 'final-report.html',
       targetPath: 'commercialization-research/08-report-completeness-review.md',
+      templateFields: [{ id: 'COMPETITOR_LANDSCAPE_ROWS', kind: 'table-rows', columns: ['产品', '能力'] }],
+      provenancePaths: ['commercialization-research/02-competitors.parts/one.md', 'commercialization-research/05-evidence-review.md', 'commercialization-research/06-browser-audit.md'],
     })
 
     expect(prompt).toContain('08-report-completeness-review.md')
+    expect(prompt).toContain('COMPETITOR_LANDSCAPE_ROWS')
+    expect(prompt).toContain('never section numbers')
     expect(prompt).toContain('return exactly one short file receipt')
     expect(prompt).toContain('Do not repeat findings, evidence, URLs, review prose, limitations, error history, or next steps')
     expect(prompt).toContain('receipt is not a completion gate')
     expect(prompt).toContain('Read that exact output Markdown for save verification')
     expect(prompt).toContain('source-supported corrections')
     expect(prompt).not.toContain('free-form handoff')
+    expect(prompt).toContain('02-competitors.parts/one.md')
+    expect(prompt).toContain('independently check original captured source text')
   })
 })
 
@@ -257,17 +265,93 @@ describe('report worker Read and write-back verification boundary', () => {
       expect(reportWorkerReadError({ file_path }, { agentType, artifactPaths: paths, reportPath: 'C:/research/report.html' })).toBeUndefined()
     }
   })
+  test('rejects declared raw evidence symlinks and directory symlinks outside the workDir', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'expert-review-boundary-'))
+    try {
+      const workDir = path.join(root, 'session')
+      await mkdir(path.join(workDir, 'commercialization-research'), { recursive: true })
+      const secret = path.join(root, 'secret.md')
+      await writeFile(secret, 'private')
+      await symlink(secret, path.join(workDir, paths.auditPath))
+      await symlink(root, path.join(workDir, 'commercialization-research/02-competitors.parts'))
+      setup()
+      process.env[outputRootKey] = workDir
+      const reviewer = { agentType: 'expert-evidence-output-reviewer', artifactPaths: paths }
+      for (const file_path of [paths.auditPath, paths.researcherPaths[0]]) {
+        expect(reportWorkerReadError({ file_path }, reviewer)).toBeDefined()
+        expect(reportWorkerReadError({ file_path: path.join(workDir, file_path) }, reviewer)).toBeDefined()
+      }
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
   test('allows registered sources and the exact reviewed HTML, not arbitrary or sibling output paths', () => {
     setup()
     const absorber = { agentType: 'expert-evidence-absorber', artifactPaths: paths }
     const reviewer = { agentType: 'expert-evidence-output-reviewer', artifactPaths: paths, reportPath: 'C:/research/report.html' }
     for (const file_path of [paths.briefPath, ...paths.researcherPaths, paths.reviewerPath, paths.auditPath]) expect(reportWorkerReadError({ file_path }, absorber)).toBeUndefined()
-    for (const file_path of [paths.briefPath, paths.absorptionPath, reviewer.reportPath]) expect(reportWorkerReadError({ file_path }, reviewer)).toBeUndefined()
+    for (const file_path of [paths.briefPath, paths.absorptionPath, ...paths.researcherPaths, paths.reviewerPath, paths.auditPath, reviewer.reportPath]) expect(reportWorkerReadError({ file_path }, reviewer)).toBeUndefined()
     for (const ctx of [absorber, reviewer]) {
       for (const file_path of ['C:/other/' + paths.absorptionPath, '../secrets.md', 'commercialization-research/private.md']) expect(reportWorkerReadError({ file_path }, ctx)).toBeDefined()
     }
     expect(reportWorkerReadError({ file_path: paths.completionReviewPath }, absorber)).toBeDefined()
-    expect(reportWorkerReadError({ file_path: paths.researcherPaths[0] }, reviewer)).toBeDefined()
+    expect(reportWorkerReadError({ file_path: 'commercialization-research/02-competitors.parts/unregistered.md' }, reviewer)).toBeDefined()
     expect(reportWorkerReadError({ file_path: 'C:/research/another.html' }, reviewer)).toBeDefined()
+  })
+})
+
+test('reserves the normalized researcher and exact assigned artifact before entering its query loop', async () => {
+  const source = await readFile(new URL('./runAgent.ts', import.meta.url), 'utf8')
+  const reservation = source.indexOf('await reserveExpertResearcherStart(')
+  expect(reservation).toBeGreaterThan(source.indexOf('const researcherTargetPath = expertPackagePrompt.researcherTargetPath'))
+  expect(reservation).toBeLessThan(source.indexOf('for await (const message of query('))
+  expect(source.slice(reservation, reservation + 220)).toContain('agentType: agentDefinition.agentType')
+  expect(source.slice(reservation, reservation + 220)).toContain('artifactPath: researcherTargetPath')
+})
+
+test('canonical server targeted context overrides omitted or legacy source-batch task kind', () => {
+  const target = 'commercialization-research/02-competitors.md'
+  const expertSkillContext = { expertId: 'commercialization-research-report', packId: 'imported-canonical', packVersion: 'test', researchTaskKind: 'targeted-evidence' as const, artifactPaths: { briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: [target], reviewerPath: 'commercialization-research/05-evidence-review.md', auditPath: 'commercialization-research/06-browser-audit.md' }, skills: [] }
+  for (const researchTaskKind of [undefined, 'source-batch'] as const) {
+    const prepared = buildExpertSubagentPackagePrompt({ agentId: 'legacy', agentType: 'expert-evidence-researcher', promptMessages: [], declaredResearchArtifactPath: target, researchTaskKind, expertSkillContext })
+    expect(prepared.researcherTargetPath).toBe(target)
+    expect(prepared.prompt).toContain('targeted')
+  }
+})
+
+test('task-kind normalization preserves other experts and precedes source receipt routing', async () => {
+  const other = { expertId: 'other', packId: 'other', packVersion: 'test', researchTaskKind: 'targeted-evidence' as const, skills: [] }
+  expect(resolveExpertResearchTaskKind('source-batch', other)).toBe('source-batch')
+  expect(resolveExpertResearchTaskKind(undefined, undefined)).toBeUndefined()
+  const source = await readFile(new URL('./runAgent.ts', import.meta.url), 'utf8')
+  const normalize = source.indexOf('researchTaskKind = resolveExpertResearchTaskKind(researchTaskKind, expertSkillContext)')
+  expect(normalize).toBeGreaterThan(source.indexOf('const [expertSkillContext, expertResearchEvidenceContext]'))
+  expect(normalize).toBeLessThan(source.indexOf('const expertPackagePrompt = buildExpertSubagentPackagePrompt'))
+  expect(normalize).toBeLessThan(source.indexOf("const sourceBatch = researchTaskKind === 'targeted-evidence'"))
+})
+
+
+describe('host-scoped Flash-only subagent model selection', () => {
+  test.each(['deepseek-pro', 'claude-opus-4-6', 'inherit', undefined])('pins agent model %s and incoming aliases regardless of a cleared subagent override', (agentModel) => {
+    const env = { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'deepseek-flash-only' }
+    for (const toolModel of ['opus', 'sonnet', 'haiku', 'deepseek-pro', undefined] as const) {
+      expect(resolveExpertAgentModel(agentModel, 'deepseek-pro', toolModel as Parameters<typeof resolveExpertAgentModel>[2], 'bypassPermissions', env)).toBe('deepseek-flash')
+    }
+  })
+  test('pins every delegated selector to the explicitly selected session model', () => {
+    const env = { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'session-model-only', CC_JIANGXIA_EXPERT_MODEL_ID: 'gpt-6-luna' }
+    for (const candidate of ['deepseek-pro', 'opus', 'inherit', undefined]) {
+      expect(resolveExpertAgentModel(candidate, 'other-model', undefined, 'default', env)).toBe('gpt-6-luna')
+    }
+    expect(() => resolveExpertAgentModel('inherit', 'other-model', undefined, 'default', { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'session-model-only' })).toThrow('model')
+  })
+  test('supports the scoped legacy env alias but preserves ordinary model selection', () => {
+    expect(resolveExpertAgentModel('deepseek-pro', 'other-model', undefined, 'default', { CC_HAHA_EXPERT_MODEL_POLICY: 'deepseek-flash-only' })).toBe('deepseek-flash')
+    expect(resolveExpertAgentModel('deepseek-pro', 'other-model', undefined, 'default', {})).toBe('deepseek-pro')
+    expect(resolveExpertAgentModel('inherit', 'deepseek-pro', undefined, 'default', { CC_JIANGXIA_EXPERT_MODEL_POLICY: 'unrelated-policy' })).toBe('deepseek-pro')
+  })
+  test('runAgent uses the policy resolver before constructing the agent context', async () => {
+    const source = await readFile(new URL('./runAgent.ts', import.meta.url), 'utf8')
+    const entry = source.indexOf('const resolvedAgentModel = resolveExpertAgentModel(')
+    expect(entry).toBeGreaterThan(0)
+    expect(entry).toBeLessThan(source.indexOf('const agentId = override?.agentId'))
   })
 })

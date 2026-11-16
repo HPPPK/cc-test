@@ -27,7 +27,7 @@ export type ThemePickerProps = {
   /** Called when the user cancels (presses Escape). If skipExitHandling is true and this is provided, it will be called instead of just saving the preview. */
   onCancel?: () => void;
 };
-export function ThemePicker(t0) {
+export function ThemePicker(t0: ThemePickerProps): React.ReactNode {
   const $ = _c(59);
   const {
     onThemeSelect,
@@ -72,7 +72,7 @@ export function ThemePicker(t0) {
   } = usePreviewTheme();
   const syntaxHighlightingDisabled = useAppState(_temp) ?? false;
   const setAppState = useSetAppState();
-  useRegisterKeybindingContext("ThemePicker");
+  useRegisterKeybindingContext("ThemePicker", true);
   const syntaxToggleShortcut = useShortcutDisplay("theme:toggleSyntaxHighlighting", "ThemePicker", "ctrl+t");
   let t8;
   if ($[3] !== setAppState || $[4] !== syntaxHighlightingDisabled) {
@@ -136,7 +136,7 @@ export function ThemePicker(t0) {
   } else {
     t10 = $[7];
   }
-  const themeOptions = t10;
+  const themeOptions: { label: string; value: ThemeSetting }[] = t10;
   let t11;
   if ($[8] !== showIntroText) {
     t11 = showIntroText ? <Text>Let's get started.</Text> : <Text bold={true} color="permission">Theme</Text>;

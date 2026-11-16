@@ -32,6 +32,7 @@ export type WorkflowTemplateValidationIssueSource =
   | 'request'
   | 'import'
   | 'authoring'
+  | 'pack-registry'
 
 export type WorkflowTemplateValidationIssue = {
   source: WorkflowTemplateValidationIssueSource
@@ -460,7 +461,7 @@ export function normalizeOutputArtifacts(value: unknown): WorkflowPhaseOutputArt
   if (!Array.isArray(value)) return []
   return value
     .filter(isRecord)
-    .filter((artifact) => isNonEmptyString(artifact.id) && isNonEmptyString(artifact.kind))
+    .filter((artifact): artifact is Record<string, unknown> & { id: string; kind: string } => isNonEmptyString(artifact.id) && isNonEmptyString(artifact.kind))
     .map((artifact) => {
       const requiredWhen = normalizeWorkflowLabels(artifact.requiredWhen)
       return {
@@ -974,7 +975,11 @@ export function validateAndNormalizeWorkflowTemplate(
           transition,
           intent: groupedContract.intent,
           contract: groupedContract.contract,
-          evidencePolicy: groupedContract.evidencePolicy,
+          evidencePolicy: {
+            ...groupedContract.evidencePolicy,
+            outputArtifact: groupedContract.evidencePolicy.outputArtifact ?? outputArtifact,
+            completionCriteria: groupedContract.evidencePolicy.completionCriteria ?? completionCriteria,
+          },
           ...(appliesTo.labels.length ? { appliesTo: appliesTo.labels } : {}),
           ...(skipWhen.policy ? { skipWhen: skipWhen.policy } : {}),
           ...(modePolicy ? { modePolicy } : {}),
@@ -1110,7 +1115,13 @@ function projectPhaseForValidation(phase: Record<string, unknown>): Record<strin
 function projectGroupedPhaseContract(phase: Record<string, unknown>): {
   intent: WorkflowTemplateRegistryPhase['intent']
   contract: WorkflowTemplateRegistryPhase['contract']
-  evidencePolicy: WorkflowTemplateRegistryPhase['evidencePolicy']
+  evidencePolicy: {
+    [key: string]: unknown
+    outputArtifact: WorkflowTemplateRegistryOutputArtifact | null
+    requiredArtifacts: WorkflowTemplateRegistryRequiredArtifact[]
+    completionCriteria: WorkflowTemplateRegistryCompletionCriteria | null
+    handoffRules: string[]
+  }
 } {
   const normalized = projectPhaseForValidation(phase)
   const existingIntent = isRecord(phase.intent) ? phase.intent : {}

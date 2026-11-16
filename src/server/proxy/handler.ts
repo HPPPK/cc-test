@@ -182,6 +182,8 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
 
   const isStream = body.stream === true
   const baseUrl = config.baseUrl.replace(/\/+$/, '')
+  const requestStarted = Date.now()
+  const requestId = crypto.randomUUID()
 
   try {
     if (config.apiFormat === 'openai_chat') {
@@ -195,13 +197,20 @@ export async function handleProxyRequest(req: Request, url: URL): Promise<Respon
         type: 'invalid_request_error', code: err.code, message: err.message,
       } }, { status: 400 })
     }
-    console.error('[Proxy] Upstream request failed:', err)
+    const cause = err && typeof err === 'object' && 'cause' in err ? err.cause : undefined
+    const rawCode = err && typeof err === 'object' && 'code' in err ? String(err.code)
+      : cause && typeof cause === 'object' && 'code' in cause ? String(cause.code) : ''
+    const causeCode = /^(?:ECONNRESET|EPIPE|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN)$/.test(rawCode) ? rawCode : 'UNKNOWN'
+    const diagnostic = { requestId, phase: 'upstream-request', elapsedMs: Date.now() - requestStarted, causeCode,
+      code: causeCode === 'ECONNRESET' ? 'UPSTREAM_CONNECTION_RESET' : 'UPSTREAM_REQUEST_FAILED' }
+    console.error('[Proxy] Upstream request failed:', diagnostic)
     return Response.json(
       {
         type: 'error',
         error: {
           type: 'api_error',
-          message: err instanceof Error ? err.message : String(err),
+          ...diagnostic,
+          message: `Upstream request failed (${causeCode}); request ${requestId}. Preserve existing task progress; recover the original task instead of starting a replacement.`,
         },
       },
       { status: 502 },

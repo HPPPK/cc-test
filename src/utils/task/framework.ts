@@ -14,7 +14,8 @@ import {
   type TaskType,
 } from '../../Task.js'
 import type { TaskState } from '../../tasks/types.js'
-import { enqueuePendingNotification } from '../messageQueueManager.js'
+import { enqueuePendingNotification, hasPendingTaskNotification } from '../messageQueueManager.js'
+import { terminalAgentReceipts } from './terminalAgentReceipts.js'
 import { enqueueSdkEvent } from '../sdkEventQueue.js'
 import { getTaskOutputDelta, getTaskOutputPath } from './diskOutput.js'
 
@@ -75,6 +76,7 @@ export function updateTaskState<T extends TaskState>(
  * Register a new task in AppState.
  */
 export function registerTask(task: TaskState, setAppState: SetAppState): void {
+  terminalAgentReceipts.forget(task.id)
   let isReplacement = false
   setAppState(prev => {
     const existing = prev.tasks[task.id]
@@ -137,6 +139,7 @@ export function evictTerminalTask(
     if (!task) return prev
     if (!isTerminalTaskStatus(task.status)) return prev
     if (!task.notified) return prev
+    if (hasPendingTaskNotification(taskId)) return prev
     // Panel grace period — blocks eviction until deadline passes.
     // 'retain' in task narrows to LocalAgentTaskState (the only type with
     // that field); evictAfter is optional so 'evictAfter' in task would
@@ -144,6 +147,7 @@ export function evictTerminalTask(
     if ('retain' in task && (task.evictAfter ?? Infinity) > Date.now()) {
       return prev
     }
+    if (task.type === 'local_agent') terminalAgentReceipts.record(task)
     const { [taskId]: _, ...remainingTasks } = prev.tasks
     return { ...prev, tasks: remainingTasks }
   })
@@ -180,7 +184,8 @@ export async function generateTaskAttachments(state: AppState): Promise<{
         case 'completed':
         case 'failed':
         case 'killed':
-          // Evict terminal tasks — they've been consumed and can be GC'd
+          // Enqueue marks notified before delivery; queued results are not consumed.
+          if (hasPendingTaskNotification(taskState.id)) continue
           evictedTaskIds.push(taskState.id)
           continue
         case 'pending':
@@ -244,9 +249,11 @@ export function applyTaskOffsetsAndEvictions(
       if (!fresh || !isTerminalTaskStatus(fresh.status) || !fresh.notified) {
         continue
       }
+      if (hasPendingTaskNotification(id)) continue
       if ('retain' in fresh && (fresh.evictAfter ?? Infinity) > Date.now()) {
         continue
       }
+      if (fresh.type === 'local_agent') terminalAgentReceipts.record(fresh)
       delete newTasks[id]
       changed = true
     }

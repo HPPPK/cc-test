@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'bun:test'
 import type { ExpertRuntimeBinding, ExpertSessionMetadata } from './expertPackRegistryService.js'
@@ -90,9 +91,9 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).toContain('after reasonable attempts')
     expect(instruction).toContain('The Desktop-owned entry welcome is ordinary text')
     expect(instruction).toContain('Question routing for this turn: after the Desktop-owned entry welcome')
-    expect(instruction).toContain('every user-facing question or request for information, confirmation, a URL, pasted material, or a free-form description must call AskUserQuestion')
-    expect(instruction).toContain('users always have the built-in “Other” path for custom text')
-    expect(instruction).toContain('must not ask the user to reply')
+    expect(instruction).toContain('use AskUserQuestion whenever an answer, confirmation or material is needed')
+    expect(instruction).toContain('Each item needs 2–4 concrete choices and supports the built-in Other response')
+    expect(instruction).toContain('Ordinary prose reports progress; it does not ask for a reply')
     expect(instruction).toContain('Never call AskUserQuestion to resolve a deterministic internal tool, schema, runtime, filename, path, or destination validation error')
     expect(instruction).toContain('<expert-question-routing-contract>')
     expect(instruction).toContain('never send a user-facing question or request for a reply in normal prose')
@@ -139,7 +140,7 @@ describe('Expert Runtime tool availability', () => {
     expect(available).toContain('- Playwright')
     expect(available).toContain('use Playwright with 显式浏览器动作')
     expect(available).toContain('never silently default a country or language')
-    expect(available).toContain('search-result page is discovery only')
+    expect(available).toContain('Relevant search summaries may be used with original text not verified')
   })
 
   test('preserves Playwright for legacy strict visual ZIPs that still declare BrowserResearch', () => {
@@ -188,7 +189,7 @@ describe('Expert Runtime tool availability', () => {
     const protocol = readFileSync(root + 'outputs/material-protocol.json', 'utf8')
     const expert = readFileSync(root + 'expert.json', 'utf8')
     for (const text of [prompt, protocol, expert, readFileSync(root + 'manifest.json', 'utf8'), readFileSync(root + 'tools/write/tool.json', 'utf8')]) {
-      expect(text).toContain('cc-jiangxia expert-template-fill')
+      expect(text).toContain('claude expert-template-fill')
       expect(text).not.toMatch(/structured Write|结构化.?`?Write/)
     }
     expect(prompt).toContain('--data-stdin')
@@ -204,7 +205,7 @@ describe('Expert Runtime tool availability', () => {
     runtimeBinding.outputMode = 'template-fill'
     runtimeBinding.outputTemplate = { path: 'fixed.html', content: '<html data-template-id="fixed-v1"><body>{{REPORT_TITLE}}</body></html>' }
     const instruction = buildExpertRuntimeTurnInstruction(activeSession(runtimeBinding), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
-    expect(instruction).toContain('cc-jiangxia expert-template-fill')
+    expect(instruction).toContain('claude expert-template-fill')
     expect(instruction).toContain('--data-stdin')
     expect(instruction).toContain('--commit-receipt')
     expect(instruction).toContain('CLAUDE_CLI_PATH')
@@ -215,6 +216,18 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).toContain('Research Markdown')
     expect(instruction).not.toContain('call Write with file_path')
     expect(instruction).not.toContain('Do not replace structured Write')
+  })
+
+  test('teaches the app-owned CLI wrapper instead of invoking a sidecar without its mode', () => {
+    const runtimeBinding = binding()
+    runtimeBinding.outputMode = 'template-fill'
+    runtimeBinding.outputTemplate = { path: 'fixed.html', content: '<html data-template-id="fixed-v1">{{REPORT_TITLE}}</html>' }
+    const instruction = buildExpertRuntimeTurnInstruction(activeSession(runtimeBinding), { enabledToolNames: ['Read', 'Write', 'Bash', 'Playwright'] })!
+    expect(instruction).toContain('claude expert-template-fill --schema')
+    expect(instruction).toContain('application-owned shell function')
+    expect(instruction).not.toContain('"$CLAUDE_CLI_PATH" expert-template-fill')
+    expect(instruction).not.toContain('& $env:CLAUDE_CLI_PATH expert-template-fill')
+    expect(instruction).toContain('Do not probe alternative executable names')
   })
 
   test('keeps template-fill draft review and finalization consistent with the active output protocol for other experts', () => {
@@ -257,10 +270,10 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).toContain('table-rows')
     expect(instruction).not.toContain('<style>body{color:#111}</style>')
     expect(instruction).not.toContain('Mandatory expert output template:')
-    expect(instruction.lastIndexOf('<expert-question-routing-contract>'))
-      .toBeGreaterThan(instruction.lastIndexOf('Allowed field schema'))
-    expect(instruction.lastIndexOf('<expert-question-routing-contract>'))
-      .toBeGreaterThan(instruction.lastIndexOf('When a durable expert report is required'))
+    expect(requireFixtureValue(instruction).lastIndexOf('<expert-question-routing-contract>'))
+      .toBeGreaterThan(requireFixtureValue(instruction).lastIndexOf('Allowed field schema'))
+    expect(requireFixtureValue(instruction).lastIndexOf('<expert-question-routing-contract>'))
+      .toBeGreaterThan(requireFixtureValue(instruction).lastIndexOf('When a durable expert report is required'))
   })
 
   test('keeps the complete host tool pool for template-fill and ordinary Experts', () => {
@@ -708,7 +721,7 @@ describe('Expert Runtime tool availability', () => {
     expect(instruction).toContain('optional-')
     expect(instruction).toContain('strict aggregate context budget')
     // The cap applies to injected Skill sections, independently of evolving host-tool guidance.
-    const skillBlock = instruction.split('Expert package-local skills:\n\n')[1]
+    const skillBlock = requireFixtureValue(instruction).split('Expert package-local skills:\n\n')[1]
       .split('## Package-local Skill index')[0]
     const injectedSections = skillBlock.split('\n\n---\n\n').map(section => section.trim()).filter(Boolean)
     expect(injectedSections.every(section => section.startsWith('## Skill:'))).toBe(true)
@@ -810,7 +823,7 @@ describe('Expert Runtime tool availability', () => {
     const session = activeSession(legacy)
     const upgradedSession = upgradeCommercializationResearchChannelRuntime(session, '2026-08-20T08:30:00.000Z')
     expect(upgradedSession.updatedAt).toBe('2026-08-20T08:30:00.000Z')
-    expect(upgradedSession.runtimeBinding.researchArtifactPolicy).not.toHaveProperty('routeCompletion')
+    expect(requireFixtureValue(upgradedSession.runtimeBinding).researchArtifactPolicy).not.toHaveProperty('routeCompletion')
 
     const foreignBinding = { ...legacy, expertId: 'other-expert', packId: 'other-pack' }
     expect(upgradeCommercializationResearchChannelBinding(foreignBinding)).toBe(foreignBinding)
@@ -818,6 +831,24 @@ describe('Expert Runtime tool availability', () => {
     expect(upgradeCommercializationResearchChannelRuntime(foreignSession)).toBe(foreignSession)
   })
 
+
+  test('legacy audit guidance never upgrades challenge content merely because navigation was opened', () => {
+    const legacy = { ...binding(), promptSnapshot: '每份研究 Markdown 末尾还必须有旧格式。不应重新读取原始浏览台账。' }
+    const upgraded = upgradeCommercializationResearchChannelBinding(legacy)
+    expect(upgraded.promptSnapshot).toContain('opened 仅代表导航状态')
+    expect(upgraded.promptSnapshot).toContain('保留争议')
+    expect(upgraded.promptSnapshot).not.toContain('不得把已打开或已观察到结果的搜索改写成访问受限')
+  })
+
+  test('updates an already upgraded saved prompt without the oldest audit markers', () => {
+    const saved = { ...binding(), promptSnapshot: '保留前文。D、E 与主代理必须以 06 的真实 URL 与最终状态校正限制措辞：不得把已打开或已观察到结果的搜索改写成访问受限、安全验证、CAPTCHA 或已完成人工验证；反之亦然。保留后文。' }
+    const upgraded = upgradeCommercializationResearchChannelBinding(saved)
+    expect(upgraded.promptSnapshot).toContain('opened 仅代表导航状态')
+    expect(upgraded.promptSnapshot).toContain('保留前文。')
+    expect(upgraded.promptSnapshot).toContain('保留后文。')
+    expect(upgraded.promptSnapshot).not.toContain('不得把已打开或已观察到结果的搜索改写成访问受限')
+    expect(upgradeCommercializationResearchChannelBinding(upgraded)).toBe(upgraded)
+  })
 
   test('preserves the current brief-selected route contract while still removing legacy fixed-domain lanes', () => {
     const current: ExpertRuntimeBinding = {
@@ -892,7 +923,7 @@ test('migrates the known commercial patch atomically without mixing old prompts 
   const restored = await restoreTruncatedExpertRuntime(old, async () => context)
   expect(restored.packVersion).toBe('0.13.46-local')
   expect(restored.runtimeBinding!.packVersion).toBe('0.13.46-local')
-  expect(restored.runtimeBinding!.promptSnapshot).toBe(context.prompts.system)
+  expect(restored.runtimeBinding!.promptSnapshot).toBe(requireFixtureValue(context.prompts.system))
   expect(restored.runtimeBinding!.outputProtocol!.content).toBe(context.outputProtocol!.content)
   expect(restored.researchEvidence).toBe(old.researchEvidence)
   expect(restored.runtimeBinding!.activatedAt).toBe(old.runtimeBinding!.activatedAt)
@@ -911,7 +942,7 @@ test.each(['0.13.45-local', '0.13.46-local'])('upgrades %s to the task-purpose p
   const context = { expert: { id: old.expertId, name: 'Commercial', packId: old.packId, packVersion: '0.13.47-local', tools: [] }, prompts: { system: 'research_task_kind source-batch / targeted-evidence' }, skills: [], forms: [], hostTools: [], permissions: [], outputProtocol: { path: 'outputs/material-protocol.json', content: '{"taskPurpose":"same contract"}' } } as unknown as ExpertRuntimeContext
   const restored = await restoreTruncatedExpertRuntime(old, async () => context)
   expect(restored.packVersion).toBe('0.13.47-local')
-  expect(restored.runtimeBinding!.promptSnapshot).toBe(context.prompts.system)
+  expect(restored.runtimeBinding!.promptSnapshot).toBe(requireFixtureValue(context.prompts.system))
   expect(restored.runtimeBinding!.outputProtocol!.content).toBe(context.outputProtocol!.content)
   expect(restored.researchEvidence).toBe(old.researchEvidence)
   expect(restored.researchSourceDispatches).toBe(old.researchSourceDispatches)
@@ -940,7 +971,7 @@ describe('commercialization 0.13.55 prompt consistency upgrade', () => {
     const restored = await restoreTruncatedExpertRuntime(old, async () => context)
     expect(restored.packVersion).toBe('0.13.55-local')
     expect(restored.runtimeBinding!.packVersion).toBe('0.13.55-local')
-    expect(restored.runtimeBinding!.promptSnapshot).toBe(context.prompts.system)
+    expect(restored.runtimeBinding!.promptSnapshot).toBe(requireFixtureValue(context.prompts.system))
     expect(restored.runtimeBinding!.outputProtocol!.content).toBe(context.outputProtocol!.content)
     expect(restored.runtimeBinding!.skills[0]!.content).toBe(context.skills[0]!.content)
     expect(restored.researchEvidence).toBe(old.researchEvidence)
@@ -1076,4 +1107,212 @@ describe('commercialization question routing consistency', () => {
     const instruction = buildExpertRuntimeTurnInstruction(activeSession(visual), { enabledToolNames: ['AskUserQuestion', 'Read', 'Playwright'] })!
     expect(instruction).toContain('Use exactly two task-relevant, role-distinct concrete URLs')
   })
+})
+
+test.each(['commercialization-research-report', 'custom-imported-pack'])('overrides stored canonical catalog-drain prompts and skills with bounded research regardless of pack ID (%s)', (packId) => {
+  const legacy = { ...binding(), packId }
+  legacy.promptSnapshot = '必须全量扫描119个来源，全部路线结束才允许D。'
+  legacy.skills[0]!.content = 'Repeat every catalog wave until all entries are terminal.'
+  const options = { enabledToolNames: ['Read', 'Write', 'Playwright', 'AskUserQuestion'] }
+  const instruction = buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: legacy } as ExpertSessionMetadata, options)!
+  expect(instruction).toContain('<commercialization-bounded-research-policy>')
+  expect(instruction).toContain('session-selected model only')
+  expect(instruction).toContain('never auto-fallback to another model')
+  expect(instruction).toContain('07-to-HTML evidence clusters')
+  expect(instruction).toContain('wait for actual user-assisted login or CAPTCHA')
+  expect(instruction).toContain('pause all research searches and browsing, including sibling workers')
+  expect(instruction).toContain('excluding runtime-confirmed human-verification wait')
+  expect(instruction).toContain('Budget exhaustion requires an authoritative runtime budget-denial receipt')
+  expect(instruction).toContain('never infer exhaustion from wall-clock elapsed time')
+  expect(instruction).toContain('never replace pending workers with cleanup-only researchers')
+  expect(instruction).toContain('resume the same workers after actual verification')
+  expect(instruction).toContain('A twelve-call denial stops only that researcher')
+  expect(instruction).toContain('a start-limit denial prevents new researchers but does not cancel allowed running workers')
+  expect(instruction).toContain('Identity/input errors or ordinary tool failures are not a global budget expiry')
+  expect(instruction).toContain('six researcher starts')
+  expect(instruction).toContain('twelve browser tool calls per researcher')
+  expect(instruction).toContain('fifteen-minute research window')
+  expect(instruction).toContain('not twelve unique pages')
+  expect(instruction).toContain('D, E, F/08 and CLI delivery remain required')
+  expect(instruction).toContain(legacy.promptSnapshot)
+  expect(instruction).toContain(legacy.skills[0]!.content)
+  expect(instruction.lastIndexOf('<commercialization-bounded-research-policy>')).toBeGreaterThan(instruction.indexOf(legacy.promptSnapshot))
+  expect(instruction.lastIndexOf('<commercialization-bounded-research-policy>')).toBeGreaterThan(instruction.indexOf(legacy.skills[0]!.content))
+  const foreign = { ...legacy, expertId: 'other-expert', packId: 'commercialization-research-report' }
+  expect(buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: foreign } as ExpertSessionMetadata, options)).not.toContain('<commercialization-bounded-research-policy>')
+})
+
+
+describe('commercialization autonomous planning and source-level price review', () => {
+  test('overrides stale snapshots with consequential intake and comparable price rules', () => {
+    const legacy = { ...binding(), promptSnapshot: 'Ask every user to choose a research direction. Treat all different prices as contradictions.' }
+    const instruction = buildExpertRuntimeTurnInstruction(activeSession(legacy), { enabledToolNames: ['Read', 'Write', 'AskUserQuestion', 'Playwright'] })!
+    for (const rule of [
+      'Consequential intake only', 'autonomously plan complementary A/B/C',
+      'product platform/environment', 'not the report format',
+      'Follow already discovered relevant discussion or issue links',
+      'navigation success is not usable evidence',
+      'Report an audit/result conflict',
+      'region, currency, tax, billing period, payment cadence, promotion eligibility and renewal',
+      'For first year X after that', 'not a contradiction', 'monthly equivalent billed yearly is not a monthly checkout',
+      'D/E/F verify consequential claims against original quotes and adjacent conditions',
+      'Same engine with different queries is different evidence',
+      'never merges it into another query citation',
+      'Esc, backdrop and dismiss keep human verification pending',
+    ]) expect(instruction).toContain(rule)
+    expect(instruction.indexOf('Consequential intake only')).toBeGreaterThan(instruction.indexOf(legacy.promptSnapshot))
+  })
+
+  test('source package teaches generic intake and source-based price normalization without category coaching', () => {
+    const root = 'experts/commercialization-research-report/'
+    const prompt = readFileSync(root + 'prompts/system.md', 'utf8')
+    const pricing = readFileSync(root + 'skills/pricing-strategy/SKILL.md', 'utf8')
+    const protocol = readFileSync(root + 'outputs/material-protocol.json', 'utf8')
+    expect(prompt).toContain('只澄清会实质改变产品定义、目标用户、交付边界或研究可行性的缺失信息')
+    expect(prompt).not.toContain('例如老照片修复')
+    expect(prompt).not.toContain('按 Esc、点击背景时，都视为选择改查其他入口')
+    for (const content of [prompt, pricing, protocol]) {
+      expect(content).toContain('For first year X after that')
+      expect(content).toContain('首年与续费')
+      expect(content).toContain('地区、币种、税费、计费周期、付款频率、优惠资格和续费')
+      expect(content).toContain('年付折算月价不等于按月结账')
+      expect(content).toContain('原始')
+    }
+  })
+})
+
+test('commercialization recovers exact structured fields with CLI instead of guessing from HTML', () => {
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  expect(prompt).toContain('claude expert-template-fill --recover-fields')
+  expect(prompt).toContain('EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE')
+  expect(prompt).toContain('EXPERT_TEMPLATE_FILL_FIELDS_CHANGED')
+  expect(runtime).toContain('Recover the full field base')
+  expect(runtime).toContain('format, templateId, fields and optional evidenceAbsorption')
+  expect(runtime).toContain('no mode and no wrapper')
+  expect(runtime).toContain('finalized revision requires a complete new draft and a new F review')
+  expect(runtime).toContain('does not verify or repair semantic claims')
+})
+
+test('commercialization requires structured correction coverage despite stale optional-error guidance', () => {
+  const stale = { ...binding(), promptSnapshot: 'F may mark a factual error optional if the recommendation is unchanged. No JSON review block is required.' }
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(stale), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const protocol = readFileSync('experts/commercialization-research-report/outputs/material-protocol.json', 'utf8')
+  for (const content of [runtime, prompt, protocol]) {
+    expect(content).toContain('expert-report-review')
+    expect(content).toContain('factual-error')
+    expect(content).toContain('source-error')
+    expect(content).toContain('supported-omission')
+  }
+  expect(runtime).toContain('exactly one fenced JSON block')
+  expect(runtime).toContain('every affected fieldId')
+  expect(runtime).toContain('even when the overall recommendation is unchanged')
+  expect(runtime).toContain('summary and body')
+  expect(runtime.lastIndexOf('exactly one fenced JSON block')).toBeGreaterThan(runtime.indexOf(stale.promptSnapshot))
+  expect(prompt).toContain('实际 schema 字段 ID')
+  expect(prompt).toContain('findings: []')
+})
+
+test('commercialization review reconciles all derived unit costs with explicit periods and operands', () => {
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  const protocol = readFileSync('experts/commercialization-research-report/outputs/material-protocol.json', 'utf8')
+  for (const content of [runtime, prompt, protocol]) {
+    for (const key of ['calculations', 'amountPeriod', 'allowancePeriod', 'unitsPerTask', 'reportedCost']) expect(content).toContain(key)
+  }
+  expect(runtime).toContain('including AI inferences')
+  expect(runtime).toContain('annual spend against monthly allowance requires allowance * 12')
+  expect(runtime).toContain('one-time and recurring terms require an explicit comparison horizon')
+  const example = prompt.match(/```expert-report-review\r?\n([^`]+)\r?\n```/)
+  expect(example).not.toBeNull()
+  expect(JSON.parse(example![1]!)).toEqual({ version: 1, findings: [], calculations: [] })
+})
+
+test('commercial review contract errors recover the same artifacts without browser research', () => {
+  const runtime = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'Bash'] })!
+  const prompt = readFileSync('experts/commercialization-research-report/prompts/system.md', 'utf8')
+  for (const content of [runtime, prompt]) {
+    expect(content).toContain('EXPERT_REPORT_REVIEW_CONTRACT_INVALID')
+    expect(content).toContain('EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING')
+    expect(content).toContain('expectedCost')
+  }
+  expect(runtime).toContain('rewrite only the same 08')
+  expect(runtime).toContain('not a browser-audit repair')
+  expect(runtime).toContain('all required changed fields')
+})
+
+
+test('quality-enabled runtime tells the main agent the actual 25-minute window and evidence checkpoint', () => {
+  const current = binding()
+  current.outputProtocol = { path: 'outputs/material-protocol.json', content: JSON.stringify({ researchQualityCheckpoint: { version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 2 } }) }
+  const instruction = buildExpertRuntimeTurnInstruction({ status: 'active', runtimeBinding: current } as ExpertSessionMetadata, { enabledToolNames: ['Read', 'Write', 'Agent'] })!
+  expect(instruction).toContain('twenty-five-minute research window')
+  expect(instruction).toContain('EXPERT_RESEARCH_TARGETED_FOLLOWUP_REQUIRED')
+  expect(instruction).toContain('Evidence counts are advisory')
+})
+
+
+test('normalizes CLI advice in a restored legacy output protocol without mutating its snapshot', () => {
+  const stored = binding()
+  stored.outputProtocol = { path: 'outputs/protocol.json', content: '{"instruction":"Run cc-jiangxia expert-template-fill --schema"}' }
+  const prompt = buildExpertRuntimeTurnInstruction(activeSession(stored), { enabledToolNames: ['Bash', 'Playwright', 'Read'] })!
+  expect(prompt).not.toContain('cc-jiangxia expert-template-fill')
+  expect(prompt).toContain('claude expert-template-fill --schema')
+  expect(stored.outputProtocol.content).toContain('cc-jiangxia expert-template-fill')
+})
+
+test('configured API discovery precedes browser search but cannot stand in for page or SERP evidence', () => {
+  const prompt = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'Agent', 'WebSearch', 'Playwright'] })!
+  expect(prompt).toContain('Prefer WebSearch for candidate-link discovery')
+  expect(prompt).toContain('API search results are not Google/Baidu SERP evidence')
+  expect(prompt).toContain('original pages with Playwright')
+})
+
+
+test('commercialization adaptive intake is evidence-bound and enforced before dispatch', () => {
+  const instruction = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Write', 'AskUserQuestion', 'Playwright', 'assess_expert_research_scope'] })!
+  expect(instruction).toContain('assess_expert_research_scope')
+  expect(instruction).toContain('actual human message IDs and exact quotes')
+  expect(instruction).toContain('server-owned answer receipt')
+  expect(instruction).toContain('delegate')
+  expect(instruction).toContain('requiresAssessment=false')
+  expect(instruction).toContain('EXPERT_INTAKE_UNAVAILABLE does not mean an answer was not saved')
+  expect(instruction).not.toContain('call assess_expert_research_scope inspect and assess.')
+})
+
+test('existing expert sessions receive actionable link, research-priority and writing guidance', () => {
+  const instruction = buildExpertRuntimeTurnInstruction(activeSession(binding()), { enabledToolNames: ['Read', 'Playwright'] })!
+  expect(instruction).toContain('exact returned links')
+  expect(instruction).toContain('known facts, decision-changing gaps and the next observed link')
+  expect(instruction).toContain('Shared limitations belong in one place')
+  expect(instruction).toContain('A partial audit summary is not the full source')
+  expect(instruction).toContain('Do not loop on duplicate quote formatting')
+})
+
+
+test('parent runtime exposes stable catalog identifiers before planning, including legacy source skills', () => {
+  const runtime = binding()
+  runtime.skills.push({ skillId: 'research-source-library', title: 'Sources', path: 'skills/sources.md', sha256: 'old', content: '<!-- research-source-library-tier: core -->\n### Research\n- Trends：http://www.google.com/trends' })
+  const instruction = buildExpertRuntimeTurnInstruction(activeSession(runtime), { enabledToolNames: ['Read', 'Agent', 'AskUserQuestion'] })!
+  expect(instruction).toContain('<expert-source-selection-catalog>')
+  expect(instruction).toContain('candidateId')
+  expect(instruction).toContain('http://www.google.com/trends')
+})
+
+test('uses the same permissive provenance policy for runtime, source prompt and browser skill', () => {
+  const runtime = readFileSync(new URL('./expertRuntimeBindingService.ts', import.meta.url), 'utf8')
+  const prompt = readFileSync(new URL('../../../experts/commercialization-research-report/prompts/system.md', import.meta.url), 'utf8')
+  const browser = readFileSync(new URL('../../../experts/commercialization-research-report/skills/browser-information-retrieval/SKILL.md', import.meta.url), 'utf8')
+  expect(runtime).toContain('Full-text access, source counts, payment evidence and proven acquisition outcomes are not admission gates')
+  expect(prompt).toContain('真实取得、与当前问题相关的资料可以进入报告')
+  expect(browser).toContain('摘要引用真实搜索结果页')
+  expect(browser).not.toContain('最终使用的网页必须单独打开')
+})
+
+test('does not inject the old full-text-only rule into a commercial research turn', () => {
+  const runtime = { ...binding(), expertId: 'commercialization-research-report' }
+  const instruction = buildExpertRuntimeTurnInstruction(activeSession(runtime), { enabledToolNames: ['Read', 'Playwright', 'AskUserQuestion'] })
+  expect(instruction).not.toContain('Final report citations must come from individually opened concrete content pages')
+  expect(instruction).toContain('relevant search summaries')
 })

@@ -1,3 +1,5 @@
+import { upgradeWebSearchSettings } from '../../utils/settings/webSearchSettings.js'
+import { createHash } from 'node:crypto'
 import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import type { SettingsJson } from '../../utils/settings/types.js'
 import type { Input, Output, SearchResult } from './WebSearchTool.js'
@@ -6,10 +8,11 @@ export type WebSearchMode =
   | 'auto'
   | 'anthropic'
   | 'tavily'
+  | 'tavily-keyless'
   | 'brave'
   | 'disabled'
 
-export type WebSearchProvider = 'anthropic' | 'tavily' | 'brave' | 'disabled'
+export type WebSearchProvider = 'anthropic' | 'tavily' | 'tavily-keyless' | 'brave' | 'disabled'
 
 export type WebSearchSettings = {
   mode?: WebSearchMode
@@ -31,6 +34,7 @@ const WEB_SEARCH_MODES = new Set<WebSearchMode>([
   'auto',
   'anthropic',
   'tavily',
+  'tavily-keyless',
   'brave',
   'disabled',
 ])
@@ -53,7 +57,8 @@ export function getConfiguredWebSearchSettings(
     return {}
   }
 
-  const modeCandidate = raw.mode ?? 'auto'
+  const upgraded = upgradeWebSearchSettings(raw)
+  const modeCandidate = upgraded.mode as WebSearchMode
 
   return {
     mode: WEB_SEARCH_MODES.has(modeCandidate) ? modeCandidate : 'auto',
@@ -71,6 +76,8 @@ export function resolveWebSearchProvider(
   if (mode === 'disabled') {
     return { provider: 'disabled', settings }
   }
+
+  if (mode === 'tavily-keyless') return { provider: 'tavily-keyless', settings }
 
   if (mode === 'tavily') {
     return { provider: settings.tavilyApiKey ? 'tavily' : 'disabled', settings }
@@ -132,14 +139,52 @@ export async function searchWithExternalProvider(
   apiKey: string,
   signal: AbortSignal,
 ): Promise<Output> {
+  signal.throwIfAborted()
+  const key = createHash('sha256').update(JSON.stringify([provider, apiKey, input.query.trim(), [...(input.allowed_domains ?? [])].sort(), [...(input.blocked_domains ?? [])].sort()])).digest('hex')
+  const cached = discoveryCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return structuredClone(cached.output)
+  const providerKey = createHash('sha256').update(provider + ':' + apiKey).digest('hex')
+  const until = providerCooldown.get(providerKey) ?? 0
+  if (until > Date.now()) throw new Error(`SEARCH_PROVIDER_COOLDOWN: ${provider}; retry after ${Math.ceil((until - Date.now()) / 1000)} seconds. Preserve existing sources; do not retry unchanged requests now.`)
   const startTime = performance.now()
-  const hits =
-    provider === 'tavily'
-      ? await searchWithTavily(input, apiKey, signal)
-      : await searchWithBrave(input, apiKey, signal)
-  const durationSeconds = (performance.now() - startTime) / 1000
+  let hits: ExternalSearchHit[]
+  try {
+    const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+    hits = provider === 'brave'
+      ? await searchWithBrave(input, apiKey, boundedSignal)
+      : await searchWithTavily(input, apiKey, boundedSignal, provider === 'tavily-keyless')
+  } catch (error) {
+    if (error instanceof SearchProviderRateLimitError) providerCooldown.set(providerKey, Date.now() + error.retryAfterSeconds * 1000)
+    throw error
+  }
+  hits = hits.filter(hit => isAllowedSearchHit(hit, input))
+  const output = makeExternalSearchOutput(provider, input.query, hits, (performance.now() - startTime) / 1000)
+  if (discoveryCache.size >= 128) discoveryCache.delete(discoveryCache.keys().next().value!)
+  discoveryCache.set(key, { expiresAt: Date.now() + 120_000, output })
+  return structuredClone(output)
+}
 
-  return makeExternalSearchOutput(provider, input.query, hits, durationSeconds)
+const discoveryCache = new Map<string, { expiresAt: number; output: Output }>()
+const providerCooldown = new Map<string, number>()
+class SearchProviderRateLimitError extends Error {
+  constructor(provider: string, readonly retryAfterSeconds: number) {
+    super(`SEARCH_PROVIDER_RATE_LIMITED: ${provider}; retry after ${retryAfterSeconds} seconds. This is an API limit, not browser verification. Preserve sources; wait or explicitly select another configured search service.`)
+  }
+}
+function isAllowedSearchHit(hit: ExternalSearchHit, input: Input): boolean {
+  let url: URL
+  try { url = new URL(hit.url) } catch { return false }
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return false
+  const matches = (domain: string) => url.hostname === domain.toLowerCase() || url.hostname.endsWith('.' + domain.toLowerCase())
+  return (!input.allowed_domains?.length || input.allowed_domains.some(matches)) && !input.blocked_domains?.some(matches)
+}
+function assertSearchResponse(response: Response, provider: string): void {
+  if (response.status === 429) {
+    const raw = response.headers.get('Retry-After')
+    const seconds = raw && /^\d+$/.test(raw) ? Number(raw) : raw ? Math.ceil((Date.parse(raw) - Date.now()) / 1000) : 30
+    throw new SearchProviderRateLimitError(provider, Number.isFinite(seconds) ? Math.max(1, Math.min(seconds, 3600)) : 30)
+  }
+  if (!response.ok) throw new Error(`SEARCH_PROVIDER_FAILED: ${provider}; HTTP ${response.status}. Check the selected search service and its quota; existing evidence is preserved.`)
 }
 
 export function getFallbackProvider(
@@ -158,9 +203,8 @@ export function getApiKeyForProvider(
   provider: Exclude<WebSearchProvider, 'anthropic' | 'disabled'>,
   settings: WebSearchSettings,
 ): string | null {
-  return provider === 'tavily'
-    ? settings.tavilyApiKey ?? null
-    : settings.braveApiKey ?? null
+  if (provider === 'tavily-keyless') return ''
+  return provider === 'tavily' ? settings.tavilyApiKey ?? null : settings.braveApiKey ?? null
 }
 
 export function makeWebSearchUnavailableOutput(
@@ -197,11 +241,12 @@ async function searchWithTavily(
   input: Input,
   apiKey: string,
   signal: AbortSignal,
+  keyless = false,
 ): Promise<ExternalSearchHit[]> {
   const response = await fetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      ...(keyless ? { 'X-Tavily-Access-Mode': 'keyless', 'X-Client-Source': 'cc-jiangxia-keyless-trial' } : { Authorization: `Bearer ${apiKey}` }),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -215,9 +260,7 @@ async function searchWithTavily(
     signal,
   })
 
-  if (!response.ok) {
-    throw new Error(`Tavily search failed: ${response.status} ${await readErrorBody(response)}`)
-  }
+  assertSearchResponse(response, keyless ? 'tavily-keyless' : 'tavily')
 
   const body = (await response.json()) as {
     results?: Array<{ title?: unknown; url?: unknown }>
@@ -245,9 +288,7 @@ async function searchWithBrave(
     signal,
   })
 
-  if (!response.ok) {
-    throw new Error(`Brave search failed: ${response.status} ${await readErrorBody(response)}`)
-  }
+  assertSearchResponse(response, 'brave')
 
   const body = (await response.json()) as {
     web?: { results?: Array<{ title?: unknown; url?: unknown }> }
@@ -292,12 +333,7 @@ function makeExternalSearchOutput(
 
   return {
     query,
-    results: [`Search provider: ${provider}`, result],
+    results: [`Search provider: ${provider}. Discovery only: these are candidate URLs, not verified page evidence or Google/Baidu SERP observations. Open the relevant original pages with Playwright before citing.`, result],
     durationSeconds,
   }
-}
-
-async function readErrorBody(response: Response): Promise<string> {
-  const text = await response.text().catch(() => '')
-  return text.slice(0, 500)
 }

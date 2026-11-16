@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import type {
   ToolResultBlockParam,
   ToolUseBlockParam,
@@ -156,6 +157,8 @@ export type CompactProgressEvent =
   | { type: 'compact_end' }
 
 export type ToolUseContext = {
+  /** Ephemeral workflow worker authority; never serialized into user settings. */
+  workflowWorkerContract?: import('./server/services/developmentToolExecutionPolicy.js').DevelopmentWorkerContract
   options: {
     commands: Command[]
     debug: boolean

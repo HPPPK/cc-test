@@ -40,6 +40,8 @@ import {
 } from './workflowSummary.js'
 import {
   phaseAppliesToRoute,
+  requestsCompleteDevelopmentWorkflow,
+  WorkflowRouteConflictError,
   routeWorkflowTask,
 } from './workflowTaskRouter.js'
 import {
@@ -187,11 +189,14 @@ function resolveWorkflowRoute(
     ...baseRouter.secondaryLabels,
   ]))
   const secondaryLabels = labels.filter((label) => label !== labels[0])
-  const effort = workflowOptions?.effort ?? baseRouter.effort
+  const completeCanonicalFlow = template.id === 'efficient-constrained-dev-debug-workflow-v5' && requestsCompleteDevelopmentWorkflow(request)
+  const requestedEffort = workflowOptions?.effort ?? baseRouter.effort
+  const effort = completeCanonicalFlow && (requestedEffort === 'light' || requestedEffort === 'auto') ? 'standard' : requestedEffort
   const routingMode = workflowOptions?.routingMode ?? 'manual'
   const brainstormingMode = workflowOptions?.brainstormingMode ?? 'auto'
   const skippedPhases: Array<{ phaseId: string; reason: string }> = []
   const applicablePhases = template.phases.filter((phase) => {
+    if (completeCanonicalFlow) return true
     const result = phaseAppliesToRoute({
       phase,
       labels,
@@ -334,7 +339,13 @@ export class WorkflowSessionCreateService {
     }
 
     const now = new Date().toISOString()
-    const route = resolveWorkflowRoute(registryTemplate, workflowOptions)
+    let route: ReturnType<typeof resolveWorkflowRoute>
+    try {
+      route = resolveWorkflowRoute(registryTemplate, workflowOptions)
+    } catch (error) {
+      if (error instanceof WorkflowRouteConflictError) throw workflowError(400, error.code, error.message)
+      throw error
+    }
     const templatePhases = route.applicablePhases.length ? route.applicablePhases : registryTemplate.phases
     const runtimeTemplate = this.toWorkflowTemplate(registryTemplate, templatePhases)
     const templateVersionId = `${registryTemplate.id}-v${registryTemplate.version}`
@@ -540,14 +551,20 @@ export class WorkflowSessionCreateService {
           ...(phase.toolPolicy ? { toolPolicy: phase.toolPolicy } : {}),
           ...(phase.intent ? { intent: phase.intent } : {}),
           ...(phase.contract ? { contract: phase.contract } : {}),
-          ...(phase.evidencePolicy ? { evidencePolicy: phase.evidencePolicy } : {}),
+          ...(phase.evidencePolicy ? { evidencePolicy: {
+        ...phase.evidencePolicy,
+        requiredArtifacts: phase.evidencePolicy.requiredArtifacts.map(artifact => ({
+          ...artifact, kind: typeof artifact.kind === 'string' ? artifact.kind : 'json',
+          description: artifact.description || artifact.name || artifact.id,
+        })),
+      } } : {}),
           ...(phase.phasePrompt ? { phasePrompt: phase.phasePrompt } : {}),
           ...(phase.runtimeContract ? { runtimeContract: phase.runtimeContract } : {}),
           ...(phase.outputArtifacts ? { outputArtifacts: phase.outputArtifacts } : {}),
         }
       }),
       registryKey: `${template.source}:${template.id}`,
-      ...(template.contentHash ? { contentHash: template.contentHash } : {}),
+      ...(typeof template.contentHash === 'string' ? { contentHash: template.contentHash } : {}),
       ...(typeof template.packId === 'string' ? { packId: template.packId } : {}),
       ...(typeof template.packName === 'string' ? { packName: template.packName } : {}),
       ...(typeof template.packVersion === 'string' ? { packVersion: template.packVersion } : {}),

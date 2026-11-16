@@ -8,6 +8,7 @@ import type {
 } from 'src/types/message.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { PermissionMode } from '../../types/permissions.js'
+import { messageKindMetadata, type MessageKindMetadata } from '../messageKind.js'
 import { createUserMessage } from '../messages.js'
 import { logOTelEvent, redactIfDisabled } from '../telemetry/events.js'
 import { startInteractionSpan } from '../telemetry/sessionTracing.js'
@@ -24,10 +25,12 @@ export function processTextPrompt(
   uuid?: string,
   permissionMode?: PermissionMode,
   isMeta?: boolean,
+  metadata?: Partial<MessageKindMetadata>,
 ): {
   messages: (UserMessage | AttachmentMessage | SystemMessage)[]
   shouldQuery: boolean
 } {
+  const inputMetadata = messageKindMetadata({ type: 'user', isMeta, ...metadata })
   const promptId = randomUUID()
   setPromptId(promptId)
 
@@ -77,7 +80,7 @@ export function processTextPrompt(
       uuid: uuid,
       imagePasteIds: imagePasteIds.length > 0 ? imagePasteIds : undefined,
       permissionMode,
-      isMeta: isMeta || undefined,
+      ...inputMetadata,
     })
 
     return {
@@ -90,7 +93,7 @@ export function processTextPrompt(
     content: input,
     uuid,
     permissionMode,
-    isMeta: isMeta || undefined,
+    ...inputMetadata,
   })
 
   return {

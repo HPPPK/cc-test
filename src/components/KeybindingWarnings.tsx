@@ -10,7 +10,7 @@ import { getCachedKeybindingWarnings, getKeybindingsPath, isKeybindingCustomizat
  *
  * Only shown when keybinding customization is enabled (ant users + feature gate).
  */
-export function KeybindingWarnings() {
+export function KeybindingWarnings(): React.ReactNode {
   const $ = _c(2);
   if (!isKeybindingCustomizationEnabled()) {
     return null;

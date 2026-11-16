@@ -9,6 +9,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
+import { installContractEnvironment, reserveContractPort, exchangeContractMessages } from '../fixtures/contract-environment.js'
+
+let restoreEnvironment: () => Promise<void>
 
 let server: ReturnType<typeof Bun.serve>
 let baseUrl: string
@@ -16,16 +19,17 @@ let wsUrl: string
 let tmpDir: string
 
 async function startTestServer() {
+  restoreEnvironment = installContractEnvironment()
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-biz-'))
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
   await fs.mkdir(path.join(tmpDir, 'agents'), { recursive: true })
 
   const { startServer } = await import('../../index.js')
-  const port = 14000 + Math.floor(Math.random() * 1000)
+  const port = reserveContractPort()
   server = startServer(port, '127.0.0.1')
-  baseUrl = `http://127.0.0.1:${port}`
-  wsUrl = `ws://127.0.0.1:${port}`
+  baseUrl = `http://127.0.0.1:${server.port}`
+  wsUrl = `ws://127.0.0.1:${server.port}`
 }
 
 async function api(method: string, urlPath: string, body?: unknown) {
@@ -41,7 +45,8 @@ async function api(method: string, urlPath: string, body?: unknown) {
 describe('Business Flow: Scheduled Tasks', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -161,7 +166,8 @@ describe('Business Flow: Scheduled Tasks', () => {
 describe('Business Flow: Permission Modes', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -207,7 +213,8 @@ describe('Business Flow: Permission Modes', () => {
 describe('Business Flow: Task Lists API', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -265,7 +272,8 @@ describe('Business Flow: Task Lists API', () => {
 describe('Business Flow: Agent Management', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -373,23 +381,25 @@ describe('Business Flow: Agent Management', () => {
 describe('Business Flow: Models & Effort', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('should return 4 available models', async () => {
+  it('should return the standalone model catalog', async () => {
     const { data } = await api('GET', '/api/models')
-    expect(data.models.length).toBe(4)
+    expect(data.models.map((model: any) => model.id)).toEqual([
+      'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+    ])
     const names = data.models.map((m: any) => m.name)
     expect(names).toContain('Opus 4.7')
-    expect(names).toContain('Opus 4.7 1M')
     expect(names).toContain('Sonnet 4.6')
     expect(names).toContain('Haiku 4.5')
   })
 
-  it('should default to Sonnet model', async () => {
+  it('should default to Opus model', async () => {
     const { data } = await api('GET', '/api/models/current')
-    expect(data.model.id).toBe('claude-sonnet-4-6')
+    expect(data.model.id).toBe('claude-opus-4-7')
   })
 
   it('should switch to Opus 4.7', async () => {
@@ -461,7 +471,8 @@ describe('Business Flow: Models & Effort', () => {
 describe('Business Flow: Sessions & CLI Interop', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -469,11 +480,21 @@ describe('Business Flow: Sessions & CLI Interop', () => {
 
   it('should create a session', async () => {
     const { status, data } = await api('POST', '/api/sessions', {
-      workDir: '/Users/dev/my-project',
+      workDir: tmpDir,
     })
     expect(status).toBe(201)
     expect(data.sessionId).toMatch(/^[0-9a-f-]{36}$/)
     sessionId = data.sessionId
+  })
+
+  it('should reject a nonexistent workspace without creating a session', async () => {
+    const { status, data } = await api('POST', '/api/sessions', {
+      workDir: path.join(tmpDir, 'missing-workspace'),
+    })
+    expect(status).toBe(400)
+    expect(data.error).toBeDefined()
+    const { data: listed } = await api('GET', '/api/sessions')
+    expect(listed.sessions.map((session: any) => session.id)).toEqual([sessionId])
   })
 
   it('should create session JSONL file on disk (CLI compatible)', async () => {
@@ -585,7 +606,8 @@ describe('Business Flow: Search', () => {
     await fs.writeFile(path.join(testDir, 'config.json'), '{"port": 3456}\n')
   })
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -628,130 +650,58 @@ describe('Business Flow: Search', () => {
 describe('Business Flow: WebSocket Chat', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
+  async function createChatSession() {
+    const { status, data } = await api('POST', '/api/sessions', { workDir: tmpDir })
+    expect(status).toBe(201)
+    return data.sessionId as string
+  }
+
   it('should establish WebSocket connection and receive connected event', async () => {
-    const messages: any[] = []
-    const ws = new WebSocket(`${wsUrl}/ws/ws-test-1`)
-
-    await new Promise<void>((resolve) => {
-      ws.onmessage = (event) => {
-        messages.push(JSON.parse(event.data as string))
-        if (messages.length >= 1) {
-          ws.close()
-          resolve()
-        }
-      }
-      ws.onerror = () => { ws.close(); resolve() }
-      setTimeout(() => { ws.close(); resolve() }, 3000)
-    })
-
-    expect(messages[0].type).toBe('connected')
-    expect(messages[0].sessionId).toBe('ws-test-1')
+    const sessionId = await createChatSession()
+    const messages = await exchangeContractMessages(`${wsUrl}/ws/${sessionId}`, undefined,
+      messages => messages.some(message => message.type === 'connected'))
+    expect(messages[0]).toMatchObject({ type: 'connected', sessionId })
   })
 
-  it('should echo message and transition through states', async () => {
-    const messages: any[] = []
-    const ws = new WebSocket(`${wsUrl}/ws/ws-test-2`)
-
-    await new Promise<void>((resolve) => {
-      ws.onopen = () => {}
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data as string)
-        messages.push(msg)
-        if (msg.type === 'connected') {
-          ws.send(JSON.stringify({ type: 'user_message', content: 'test message' }))
-        }
-        if (msg.type === 'status' && msg.state === 'idle' && messages.length > 3) {
-          ws.close()
-          resolve()
-        }
-      }
-      ws.onerror = () => { ws.close(); resolve() }
-      setTimeout(() => { ws.close(); resolve() }, 5000)
-    })
-
-    const types = messages.map((m) => m.type)
-    expect(types).toContain('connected')
-    expect(types).toContain('status')
-    expect(types).toContain('content_start')
-    expect(types).toContain('content_delta')
-    expect(types).toContain('message_complete')
-
-    // Should have thinking state first
-    const statusMsgs = messages.filter((m) => m.type === 'status')
-    expect(statusMsgs[0].state).toBe('thinking')
-  })
+  it('should stream local SDK message and transition through states', async () => {
+    const sessionId = await createChatSession()
+    const messages = await exchangeContractMessages(`${wsUrl}/ws/${sessionId}`,
+      { type: 'user_message', content: 'test message' },
+      messages => messages.some(message => message.type === 'message_complete'))
+    expect(messages.map(message => message.type)).toEqual(expect.arrayContaining([
+      'connected', 'status', 'content_start', 'content_delta', 'message_complete',
+    ]))
+    expect(messages.find(message => message.type === 'status').state).toBe('thinking')
+    expect(messages.filter(message => message.type === 'content_delta').map(message => message.text).join('')).toContain('Echo: test message')
+    expect(messages.filter(message => message.type === 'message_complete')).toHaveLength(1)
+    const { data } = await api('GET', `/api/sessions/${sessionId}/chat/status`)
+    expect(data.state).toBe('idle')
+  }, 15000)
 
   it('should handle ping/pong', async () => {
-    const messages: any[] = []
-    const ws = new WebSocket(`${wsUrl}/ws/ws-test-3`)
-
-    await new Promise<void>((resolve) => {
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data as string)
-        messages.push(msg)
-        if (msg.type === 'connected') {
-          ws.send(JSON.stringify({ type: 'ping' }))
-        }
-        if (msg.type === 'pong') {
-          ws.close()
-          resolve()
-        }
-      }
-      setTimeout(() => { ws.close(); resolve() }, 3000)
-    })
-
-    expect(messages.some((m) => m.type === 'pong')).toBe(true)
+    const sessionId = await createChatSession()
+    const messages = await exchangeContractMessages(`${wsUrl}/ws/${sessionId}`, { type: 'ping' },
+      messages => messages.some(message => message.type === 'pong'))
+    expect(messages.some(message => message.type === 'pong')).toBe(true)
   })
 
   it('should handle stop_generation', async () => {
-    const messages: any[] = []
-    const ws = new WebSocket(`${wsUrl}/ws/ws-test-4`)
-
-    await new Promise<void>((resolve) => {
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data as string)
-        messages.push(msg)
-        if (msg.type === 'connected') {
-          ws.send(JSON.stringify({ type: 'stop_generation' }))
-        }
-        if (msg.type === 'status' && msg.state === 'idle') {
-          ws.close()
-          resolve()
-        }
-      }
-      setTimeout(() => { ws.close(); resolve() }, 3000)
-    })
-
-    const idleStatus = messages.find((m) => m.type === 'status' && m.state === 'idle')
-    expect(idleStatus).toBeDefined()
+    const sessionId = await createChatSession()
+    const messages = await exchangeContractMessages(`${wsUrl}/ws/${sessionId}`, { type: 'stop_generation' },
+      messages => messages.some(message => message.type === 'status' && message.state === 'idle'))
+    expect(messages.find(message => message.type === 'status')).toMatchObject({ state: 'idle' })
   })
 
   it('should handle invalid message gracefully', async () => {
-    const messages: any[] = []
-    const ws = new WebSocket(`${wsUrl}/ws/ws-test-5`)
-
-    await new Promise<void>((resolve) => {
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data as string)
-        messages.push(msg)
-        if (msg.type === 'connected') {
-          ws.send('not valid json {{{')
-        }
-        if (msg.type === 'error') {
-          ws.close()
-          resolve()
-        }
-      }
-      setTimeout(() => { ws.close(); resolve() }, 3000)
-    })
-
-    const errorMsg = messages.find((m) => m.type === 'error')
-    expect(errorMsg).toBeDefined()
-    expect(errorMsg.code).toBe('PARSE_ERROR')
+    const sessionId = await createChatSession()
+    const messages = await exchangeContractMessages(`${wsUrl}/ws/${sessionId}`, 'not valid json {{{',
+      messages => messages.some(message => message.type === 'error'))
+    expect(messages.find(message => message.type === 'error')).toMatchObject({ code: 'PARSE_ERROR' })
   })
 
   it('should reject invalid session ID in WebSocket URL', async () => {
@@ -767,7 +717,8 @@ describe('Business Flow: WebSocket Chat', () => {
 describe('Business Flow: Settings Persistence', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -827,7 +778,8 @@ describe('Business Flow: Settings Persistence', () => {
 describe('Business Flow: Status & Diagnostics', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -867,7 +819,8 @@ describe('Business Flow: Status & Diagnostics', () => {
 describe('Business Flow: Error Handling', () => {
   beforeAll(startTestServer)
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 

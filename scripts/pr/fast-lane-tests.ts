@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { basename, dirname, extname, join, relative, sep } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import picomatch from 'picomatch'
 import { changedFilesForLocalPrCheck } from './changed-files.js'
 import { selectFastLaneTests } from './change-policy.js'
@@ -143,7 +143,7 @@ if (testFiles.length === 0) {
 let exitCode = 0
 
 if (rootTestFiles.length > 0) {
-  const proc = Bun.spawn(['bun', 'test', ...rootTestFiles], {
+  const proc = Bun.spawn(['bun', 'test', ...rootTestFiles.map(file => resolve(root, file))], {
     cwd: root,
     stdout: 'inherit',
     stderr: 'inherit',

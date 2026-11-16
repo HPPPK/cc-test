@@ -1,3 +1,4 @@
+import { requireFixtureValue } from './fixtureAssertions.js'
 import { afterEach, describe, expect, it } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -9,21 +10,20 @@ const cleanupDirs = new Set<string>()
 const ONE_MIB = 1024 * 1024
 const symlinkIt = process.platform === 'win32' ? it.skip : it
 
-type TestableWorkspaceService = WorkspaceService & {
-  runGit: (workDir: string, args: string[]) => Promise<{
-    stdout: string
-    stderr: string
-    code: number
-  }>
+function setRunGitForTests(
+  service: WorkspaceService,
+  implementation: (workDir: string, args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>,
+): void {
+  Object.defineProperty(service, "runGit", { value: implementation, configurable: true, writable: true })
 }
 
 function forceNonGit(service: WorkspaceService): WorkspaceService {
-  const testable = service as TestableWorkspaceService
-  testable.runGit = async () => ({
+  const testable = service
+  setRunGitForTests(testable, async () => ({
     stdout: '',
     stderr: 'fatal: not a git repository',
     code: 128,
-  })
+  }))
   return service
 }
 
@@ -451,22 +451,22 @@ describe('WorkspaceService', () => {
     const modified = await service.getDiff('session-1', 'tracked.txt')
     expect(modified.state).toBe('ok')
     expect(modified.diff).toContain('tracked.txt')
-    expect(modified.diff.length).toBeGreaterThan(0)
+    expect(requireFixtureValue(modified.diff).length).toBeGreaterThan(0)
 
     const added = await service.getDiff('session-1', 'new.txt')
     expect(added.state).toBe('ok')
     expect(added.diff).toContain('new.txt')
-    expect(added.diff.length).toBeGreaterThan(0)
+    expect(requireFixtureValue(added.diff).length).toBeGreaterThan(0)
 
     const deleted = await service.getDiff('session-1', 'deleted.txt')
     expect(deleted.state).toBe('ok')
     expect(deleted.diff).toContain('deleted.txt')
-    expect(deleted.diff.length).toBeGreaterThan(0)
+    expect(requireFixtureValue(deleted.diff).length).toBeGreaterThan(0)
 
     const untracked = await service.getDiff('session-1', 'untracked.txt')
     expect(untracked.state).toBe('ok')
     expect(untracked.diff).toContain('untracked.txt')
-    expect(untracked.diff.length).toBeGreaterThan(0)
+    expect(requireFixtureValue(untracked.diff).length).toBeGreaterThan(0)
 
     await expect(service.getDiff('session-1', 'clean.txt')).resolves.toMatchObject({
       state: 'missing',
@@ -483,15 +483,9 @@ describe('WorkspaceService', () => {
 
   it('returns explicit error state when git status fails instead of ok-empty', async () => {
     const repoDir = await createGitWorkspace()
-    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
-      runGit: (workDir: string, args: string[]) => Promise<{
-        stdout: string
-        stderr: string
-        code: number
-      }>
-    }
+    const service = new WorkspaceService(async () => repoDir)
 
-    service.runGit = async (workDir, args) => {
+    setRunGitForTests(service, async (workDir, args) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
         return { stdout: `${workDir}\n`, stderr: '', code: 0 }
       }
@@ -502,7 +496,7 @@ describe('WorkspaceService', () => {
         return { stdout: '', stderr: 'fatal: synthetic git failure', code: 1 }
       }
       return { stdout: '', stderr: 'unexpected call', code: 1 }
-    }
+    })
 
     await expect(service.getStatus('session-1')).resolves.toMatchObject({
       state: 'error',
@@ -520,15 +514,9 @@ describe('WorkspaceService', () => {
     const repoDir = await createGitWorkspace()
     await fs.mkdir(path.join(repoDir, 'AppData'))
     const statusCalls: string[][] = []
-    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
-      runGit: (workDir: string, args: string[]) => Promise<{
-        stdout: string
-        stderr: string
-        code: number
-      }>
-    }
+    const service = new WorkspaceService(async () => repoDir)
 
-    service.runGit = async (workDir, args) => {
+    setRunGitForTests(service, async (workDir, args) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
         return { stdout: `${workDir}\n`, stderr: '', code: 0 }
       }
@@ -550,7 +538,7 @@ describe('WorkspaceService', () => {
         return { stdout: '1\t0\ttracked.txt\n', stderr: '', code: 0 }
       }
       return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
-    }
+    })
 
     const result = await service.getStatus('session-1')
 
@@ -568,15 +556,9 @@ describe('WorkspaceService', () => {
   it('falls back to top-level untracked status when recursive untracked scan times out without stderr', async () => {
     const repoDir = await createGitWorkspace()
     const statusCalls: string[][] = []
-    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
-      runGit: (workDir: string, args: string[]) => Promise<{
-        stdout: string
-        stderr: string
-        code: number
-      }>
-    }
+    const service = new WorkspaceService(async () => repoDir)
 
-    service.runGit = async (workDir, args) => {
+    setRunGitForTests(service, async (workDir, args) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
         return { stdout: `${workDir}\n`, stderr: '', code: 0 }
       }
@@ -594,7 +576,7 @@ describe('WorkspaceService', () => {
         return { stdout: '1\t0\ttracked.txt\n', stderr: '', code: 0 }
       }
       return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
-    }
+    })
 
     const result = await service.getStatus('session-1')
 
@@ -610,15 +592,9 @@ describe('WorkspaceService', () => {
 
   it('reports the fallback git status command when top-level untracked retry also fails', async () => {
     const repoDir = await createGitWorkspace()
-    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
-      runGit: (workDir: string, args: string[]) => Promise<{
-        stdout: string
-        stderr: string
-        code: number
-      }>
-    }
+    const service = new WorkspaceService(async () => repoDir)
 
-    service.runGit = async (workDir, args) => {
+    setRunGitForTests(service, async (workDir, args) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
         return { stdout: `${workDir}\n`, stderr: '', code: 0 }
       }
@@ -635,7 +611,7 @@ describe('WorkspaceService', () => {
         }
       }
       return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
-    }
+    })
 
     const result = await service.getStatus('session-1')
 
@@ -649,15 +625,9 @@ describe('WorkspaceService', () => {
     await fs.writeFile(path.join(repoDir, 'a.txt'), 'a\n')
     await fs.writeFile(path.join(repoDir, 'b.txt'), 'b\n')
     const diffStatCalls: string[][] = []
-    const service = new WorkspaceService(async () => repoDir) as WorkspaceService & {
-      runGit: (workDir: string, args: string[]) => Promise<{
-        stdout: string
-        stderr: string
-        code: number
-      }>
-    }
+    const service = new WorkspaceService(async () => repoDir)
 
-    service.runGit = async (_workDir, args) => {
+    setRunGitForTests(service, async (_workDir, args) => {
       if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {
         return { stdout: `${repoDir}\n`, stderr: '', code: 0 }
       }
@@ -672,7 +642,7 @@ describe('WorkspaceService', () => {
         return { stdout: '1\t0\ta.txt\n2\t3\tb.txt\n', stderr: '', code: 0 }
       }
       return { stdout: '', stderr: `unexpected git call: ${args.join(' ')}`, code: 1 }
-    }
+    })
 
     const result = await service.getStatus('session-1')
 

@@ -11,7 +11,7 @@ type Props = {
   files: DiffFile[];
   selectedIndex: number;
 };
-export function DiffFileList(t0) {
+export function DiffFileList(t0: Props): React.ReactNode {
   const $ = _c(36);
   const {
     files,
@@ -149,7 +149,11 @@ export function DiffFileList(t0) {
   }
   return t6;
 }
-function FileItem(t0) {
+function FileItem(t0: {
+  file: DiffFile
+  isSelected: boolean
+  maxPathWidth: number
+}): React.ReactNode {
   const $ = _c(14);
   const {
     file,
@@ -206,7 +210,10 @@ function FileItem(t0) {
   }
   return t6;
 }
-function FileStats(t0) {
+function FileStats(t0: {
+  file: DiffFile
+  isSelected: boolean
+}): React.ReactNode {
   const $ = _c(20);
   const {
     file,

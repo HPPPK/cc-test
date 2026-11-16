@@ -2,6 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessageEntry, WorkflowSessionSummary } from '../types/session'
 import { useSessionRuntimeStore } from './sessionRuntimeStore'
 
+describe('global Expert verification notification', () => {
+  it('notifies an inactive session once without opening the browser or requiring its modal', () => {
+    notifyDesktopMock.mockClear()
+    useChatStore.setState({ sessions: { 'background-research': makeSession() } })
+    const frame = { type: 'permission_request', requestId: 'auth-gate', toolName: 'Playwright', input: {
+      kind: 'expert-playwright-verification', verification: { url: 'https://example.org/login', detail: 'login verification' },
+    } } as never
+    useChatStore.getState().handleServerMessage('background-research', frame)
+    useChatStore.getState().handleServerMessage('background-research', frame)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
+      dedupeKey: 'session-lifecycle:background-research:permission:auth-gate',
+      body: expect.stringContaining('打开验证浏览器'),
+      target: { type: 'session', sessionId: 'background-research' },
+    }))
+    expect(notifyDesktopMock.mock.calls[0]?.[0]).not.toHaveProperty('cooldownScope')
+    expect(useChatStore.getState().sessions['background-research']?.pendingPermission?.requestId).toBe('auth-gate')
+  })
+})
+
 const {
   sendMock,
   sendWorkflowTransitionMock,
@@ -425,6 +445,46 @@ describe('chatStore history mapping', () => {
     ]))
   })
 
+  it('fills ordinary history around remaining question cards without resetting a live turn', async () => {
+    const sid = 'partial-history-restoration'
+    const stamp = Date.parse('2026-04-06T00:00:00Z')
+    const response: Awaited<ReturnType<typeof sessionsApi.getMessages>> = { messages: [
+      { id: 'history-user-1', type: 'user', timestamp: new Date(stamp).toISOString(), content: '继续' },
+      { id: 'history-answer', type: 'assistant', timestamp: new Date(stamp + 1000).toISOString(), content: [{ type: 'text', text: '普通历史回答' }] },
+      { id: 'history-read', type: 'assistant', timestamp: new Date(stamp + 2000).toISOString(), content: [{ type: 'tool_use', name: 'Read', id: 'restored-read', input: {} }] },
+      { id: 'history-result', type: 'user', timestamp: new Date(stamp + 3000).toISOString(), content: [{ type: 'tool_result', tool_use_id: 'restored-read', content: 'file contents' }] },
+      { id: 'history-user-2', type: 'user', timestamp: new Date(stamp + 4000).toISOString(), content: '继续' },
+    ] }
+    const permission = { requestId: 'live-permission', toolName: 'Bash', input: {} }
+    useChatStore.setState({ sessions: { [sid]: makeSession({
+      messages: [
+        { id: 'question', type: 'tool_use', toolName: 'AskUserQuestion', toolUseId: 'live-question', input: {}, timestamp: stamp + 500 },
+        { id: 'live-answer', type: 'assistant_text', content: '普通历史回答', timestamp: stamp + 999 },
+      ],
+      streamingText: '实时输出', activeToolName: 'Bash', activeToolUseId: 'live-tool',
+      pendingPermission: permission,
+    }) } })
+    let resolve!: (value: typeof response) => void
+    vi.mocked(sessionsApi.getMessages).mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const loading = useChatStore.getState().loadHistory(sid)
+    useChatStore.setState(state => ({ sessions: { ...state.sessions, [sid]: {
+      ...state.sessions[sid]!, messages: [...state.sessions[sid]!.messages,
+        { id: 'new-live-user', type: 'user_text', content: '继续', timestamp: stamp + 10_000 }],
+    } } }))
+    resolve(response)
+    await loading
+    vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce(response)
+    await useChatStore.getState().loadHistory(sid)
+    const session = useChatStore.getState().sessions[sid]!
+    expect(session.messages.filter(m => m.type === 'user_text' && m.content === '继续')).toHaveLength(3)
+    expect(session.messages.filter(m => m.type === 'assistant_text' && m.content === '普通历史回答')).toHaveLength(1)
+    expect(session.messages.filter(m => m.type === 'tool_use' && m.toolUseId === 'restored-read')).toHaveLength(1)
+    expect(session.messages.filter(m => m.type === 'tool_result' && m.toolUseId === 'restored-read')).toHaveLength(1)
+    expect(session.messages.some(m => m.id === 'new-live-user')).toBe(true)
+    expect(session.messages.some(m => m.id === 'live-answer')).toBe(true)
+    expect(session).toMatchObject({ chatState: 'streaming', streamingText: '实时输出', activeToolName: 'Bash', activeToolUseId: 'live-tool', pendingPermission: permission })
+  })
+
   it('replaces a live unanswered AskUserQuestion card with its persisted answered pair after history reload', async () => {
     vi.mocked(sessionsApi.getMessages).mockResolvedValueOnce({
       messages: [
@@ -702,6 +762,7 @@ describe('chatStore history mapping', () => {
     const session = useChatStore.getState().sessions[TEST_SESSION_ID]
     expect(session?.messages).toMatchObject([
       { id: 'visible-message', type: 'assistant_text', content: 'already rendered' },
+      { id: 'goal-command', type: 'user_text', content: '/goal ship the smoke test' },
       {
         id: 'goal-complete',
         type: 'goal_event',
@@ -2578,7 +2639,7 @@ Phase instructions: collect inputs
     })
     // The structured in-chat card is the actionable control. Do not also send a
     // generic operating-system permission toast that can linger after answer.
-    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({ requestAttention: true, target: { type: 'session', sessionId: TEST_SESSION_ID } }))
   })
 
   it('retains an acknowledged AskUserQuestion answer while history has not persisted its tool result', async () => {
@@ -3782,10 +3843,9 @@ Phase instructions: collect inputs
       useChatStore.getState().sessions[TEST_SESSION_ID]?.chatState,
     ).toBe('permission_pending')
     expect(notifyDesktopMock).toHaveBeenCalledWith({
-      dedupeKey: 'computer-use-permission:cu-1',
-      cooldownScope: 'permission-prompt',
+      dedupeKey: `session-lifecycle:${TEST_SESSION_ID}:computer-use:cu-1`,
       requestAttention: true,
-      title: 'Claude Code Jiangxia 需要你的确认',
+      title: 'Claude Code Jiangxia',
       body: 'Open Finder and inspect a file',
       target: { type: 'session', sessionId: TEST_SESSION_ID },
     })
@@ -4325,20 +4385,19 @@ Phase instructions: collect inputs
     })
 
     expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
-      cooldownScope: 'agent-completion',
-      title: 'Claude Code Jiangxia 已完成回复',
-      body: '结果 修复完成 bun test 已通过',
+      title: 'Claude Code Jiangxia',
+      body: '本轮执行已结束。 结果 修复完成 bun test 已通过',
       target: { type: 'session', sessionId: TEST_SESSION_ID },
     }))
     expect(notifyDesktopMock.mock.calls[0]?.[0].dedupeKey).toMatch(
-      /^agent-completion:test-session-1:msg-/,
+      /^session-lifecycle:test-session-1:msg-/,
     )
 
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
   })
 
-  it('does not notify when completion has no assistant text', () => {
+  it('notifies when completion has no assistant text', () => {
     useChatStore.setState({
       sessions: {
         [TEST_SESSION_ID]: {
@@ -4367,7 +4426,7 @@ Phase instructions: collect inputs
       usage: { input_tokens: 1, output_tokens: 0 },
     })
 
-    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
   })
 
   it('does not notify when a completion arrives after the session is already idle', () => {
@@ -4810,11 +4869,10 @@ describe('chatStore concurrent permission queue', () => {
     expect(state().pendingPermissions).toHaveLength(2)
   })
 
-  it.each(['stop', 'complete', 'error', 'clear', 'settle'] as const)('clears the entire queue on %s without reviving old requests', (action) => {
+  it.each(['stop', 'error', 'clear', 'settle'] as const)('clears the entire queue on %s without reviving old requests', (action) => {
     emit(request('1'))
     emit(request('2'))
     if (action === 'stop') useChatStore.getState().stopGeneration(id)
-    if (action === 'complete') emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
     if (action === 'error') emit({ type: 'error', message: 'Terminated', code: 'CLI_ERROR' })
     if (action === 'clear') emit({ type: 'system_notification', subtype: 'session_cleared' })
     if (action === 'settle') useChatStore.getState().settleSessionIdle(id)
@@ -4851,4 +4909,157 @@ describe('chatStore concurrent permission queue', () => {
     expect(useChatStore.getState().sessions.other!.pendingPermission?.requestId).toBe('request-other')
   })
 
+})
+
+describe('session lifecycle notification regression', () => {
+  const sid = 'background-lifecycle'
+  const wf = (patch: Record<string, unknown> = {}) => ({
+    mode: 'workflow', templateId: 'test', status: 'running', runStatus: 'active',
+    activePhaseId: 'plan', activePhaseIndex: 0, phaseCount: 2, pendingConfirmation: false,
+    ...patch,
+  })
+  beforeEach(() => {
+    vi.useRealTimers()
+    notifyDesktopMock.mockClear()
+    sessionStoreSnapshot.sessions = [{ id: sid, title: '修复登录问题', messageCount: 1 } as any]
+    useChatStore.setState({ sessions: { [sid]: makeSession({ chatState: 'thinking' }) } })
+  })
+  const emit = (message: any) => useChatStore.getState().handleServerMessage(sid, message)
+  const snapshot = (patch: Record<string, unknown>) => emit({ type: 'system_notification', subtype: 'workflow_state', data: wf(patch) })
+
+  it('notifies once after Expert continuation settles, not for internal rounds or late acknowledgements', () => {
+    sessionStoreSnapshot.sessions[0] = { ...sessionStoreSnapshot.sessions[0], expert: { mode: 'expert', status: 'active' } } as any
+    for (let round = 0; round < 6; round++) {
+      emit({ type: 'status', state: 'thinking' })
+      emit({ type: 'text_delta', text: `内部回合 ${round}` })
+      emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+      emit({ type: 'status', state: 'idle' })
+    }
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    const settled = { type: 'system_notification', subtype: 'expert_execution_settled' }
+    emit(settled)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    for (let round = 0; round < 3; round++) {
+      emit({ type: 'status', state: 'thinking' })
+      emit({ type: 'tool_result', toolUseId: `late-${round}`, result: '子任务已收到' })
+      emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+      emit(settled)
+    }
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('ended')
+    useChatStore.getState().sendMessage(sid, '继续处理下一项')
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    emit(settled)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('still notifies Expert questions and a terminal failure, without repeating after internal progress', () => {
+    sessionStoreSnapshot.sessions[0] = { ...sessionStoreSnapshot.sessions[0], expert: { mode: 'expert', status: 'active' } } as any
+    emit({ type: 'permission_request', requestId: 'expert-question', toolName: 'AskUserQuestion', input: {} })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    emit({ type: 'permission_response_ack', requestId: 'expert-question', status: 'accepted' })
+    emit({ type: 'error', code: 'EXPERT_REPORT_DELIVERY_STALLED', message: '停止无进展的自动重试' })
+    emit({ type: 'status', state: 'thinking' })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    emit({ type: 'system_notification', subtype: 'expert_execution_settled' })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(2)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.endReason).toBe('failed')
+  })
+
+  it('notifies an unmounted background question using its session title, once per request', () => {
+    const frame = { type: 'permission_request', requestId: 'q1', toolName: 'AskUserQuestion', toolUseId: 'tool-q1', input: { questions: [{ question: '部署到哪里？' }] } }
+    emit(frame)
+    emit(frame)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({ title: '修复登录问题', body: expect.stringContaining('部署到哪里'), target: { type: 'session', sessionId: sid } }))
+    emit({ ...frame, requestId: 'q2', toolUseId: 'tool-q2' })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(2)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('waiting_for_user')
+  })
+  it('announces an empty completion and does not repeat on trailing idle', () => {
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    emit({ type: 'status', state: 'idle' })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({ title: '修复登录问题', body: expect.stringContaining('执行已结束') }))
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('ended')
+  })
+  it('announces idle before completion even if text was already flushed', () => {
+    emit({ type: 'status', state: 'idle' })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+  })
+  it('notifies a background workflow wait and final completion, not intermediate results', () => {
+    snapshot({ pendingConfirmation: true, pendingConfirmationId: 'confirm1', status: 'pending-confirmation', runStatus: 'waiting_for_user' })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    snapshot({ runStatus: 'active', pendingConfirmation: false })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    snapshot({ status: 'completed', runStatus: 'completed', activePhaseId: null })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(2)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('ended')
+  })
+  it('does not confuse error and stop with successful completion', () => {
+    emit({ type: 'error', code: 'CLI_ERROR', message: 'boom' })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.endReason).toBe('failed')
+    useChatStore.setState({ sessions: { [sid]: makeSession({ chatState: 'thinking' }) } })
+    notifyDesktopMock.mockClear()
+    useChatStore.getState().stopGeneration(sid)
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.endReason).toBe('stopped')
+  })
+  it('notifies when background automatic recovery expires, without rendering controls', () => {
+    vi.useFakeTimers()
+    snapshot({ runStatus: 'blocked', blockedReason: '请检查本地文件', autoRecovery: { expiresAt: new Date(Date.now() + 500).toISOString() } })
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(500)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('请检查本地文件') }))
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('waiting_for_user')
+    vi.useRealTimers()
+  })
+  it('does not prewarm CLI processes for restored background listeners', () => {
+    sendMock.mockClear()
+    onMessageMock.mockClear()
+    useChatStore.getState().connectToSession(sid, { prewarm: false })
+    onMessageMock.mock.calls.find(([id]) => id === sid)?.[1]({ type: 'connected', sessionId: sid })
+    expect(sendMock).not.toHaveBeenCalledWith(sid, { type: 'prewarm_session' })
+  })
+  it('uses a fresh completion identity when a closed session is reopened', () => {
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    const first = notifyDesktopMock.mock.calls[0]?.[0].dedupeKey
+    useChatStore.getState().disconnectSession(sid)
+    useChatStore.setState({ sessions: { [sid]: makeSession({ chatState: 'thinking' }) } })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(notifyDesktopMock.mock.calls[1]?.[0].dedupeKey).not.toBe(first)
+  })
+  it('does not announce historical idle or replay an already announced finish on reconnect', () => {
+    useChatStore.setState({ sessions: { [sid]: makeSession({ chatState: 'idle' }) } })
+    emit({ type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true } })
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    emit({ type: 'status', state: 'thinking' })
+    emit({ type: 'status', state: 'idle' })
+    emit({ type: 'system_notification', subtype: 'session_state', data: { state: 'idle', reconnected: true } })
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+  })
+  it('can retry a waiting notification after native delivery was denied', async () => {
+    notifyDesktopMock.mockResolvedValueOnce(false).mockResolvedValue(true)
+    const frame = { type: 'permission_request', requestId: 'denied-q', toolName: 'AskUserQuestion', toolUseId: 'denied-tool', input: {} }
+    emit(frame)
+    await Promise.resolve()
+    emit(frame)
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(2)
+  })
+  it('retains a real user wait when an incidental result arrives', () => {
+    emit({ type: 'permission_request', requestId: 'q3', toolName: 'AskUserQuestion', toolUseId: 'tool-q3', input: {} })
+    emit({ type: 'message_complete', usage: { input_tokens: 0, output_tokens: 0 } })
+    expect(useChatStore.getState().sessions[sid]?.pendingPermission?.requestId).toBe('q3')
+    expect(useChatStore.getState().sessions[sid]?.lifecycle?.status).toBe('waiting_for_user')
+    expect(notifyDesktopMock).toHaveBeenCalledTimes(1)
+  })
 })

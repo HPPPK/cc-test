@@ -218,12 +218,30 @@ export function parseManagedBrowserNativeWindowRestoreResult(stdout: string): bo
  * Explicit user-requested display recovery for the managed Chromium instance only. This
  * does not recreate a page, BrowserContext, or user-owned Chrome/Edge window.
  */
+export function buildMacManagedBrowserRestoreInvocation(processId: number): ManagedBrowserNativeWindowRestoreInvocation {
+  if (!Number.isInteger(processId) || processId <= 0) throw new Error('A positive managed Chromium process id is required.')
+  const script = [
+    "ObjC.import('AppKit');",
+    'var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(' + processId + ');',
+    'if (!app || app.isNil()) { JSON.stringify({restored:false}); } else {',
+    '  app.unhide;',
+    '  var accepted = app.activateWithOptions(3);',
+    '  delay(0.2);',
+    '  var foreground = Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier) === ' + processId + ';',
+    '  JSON.stringify({restored:!!accepted, visible:!app.hidden, minimized:false, foreground:foreground});',
+    '}',
+  ].join('\n')
+  return { executable: '/usr/bin/osascript', args: ['-l', 'JavaScript', '-e', script], script }
+}
+
 export async function restoreManagedBrowserWindowNatively(
   managedBrowserProcessId: number | undefined,
   bounds: ManagedBrowserWindowBounds,
 ): Promise<boolean> {
-  if (process.platform !== 'win32' || !managedBrowserProcessId) return false
-  const invocation = buildManagedBrowserNativeWindowRestoreInvocation(managedBrowserProcessId, bounds)
+  if (!['win32', 'darwin'].includes(process.platform) || !managedBrowserProcessId || !validBounds(bounds)) return false
+  const invocation = process.platform === 'darwin'
+    ? buildMacManagedBrowserRestoreInvocation(managedBrowserProcessId)
+    : buildManagedBrowserNativeWindowRestoreInvocation(managedBrowserProcessId, bounds)
   try {
     const { stdout } = await execFileAsync(invocation.executable, invocation.args, {
       windowsHide: true,

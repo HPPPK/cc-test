@@ -1,3 +1,4 @@
+import type { ExpertResearchIntakeState } from './expertResearchIntakeService.js'
 import * as fs from 'node:fs/promises'
 import type { ExpertTemplateFillOutputPolicy } from './expertTemplateOutputPolicyService.js'
 import type { ExpertResearchArtifactPolicy } from './expertResearchArtifactPolicyService.js'
@@ -138,6 +139,14 @@ export type ExpertTemplateFillDeliveryState = {
   /** Canonical current-session HTML path when the new runtime supplied one. */
   reportPath?: string
   finalizedAt: string
+  /** Optional additive v1 checkpoint. Legacy delivery markers remain valid without it. */
+  fieldSnapshot?: {
+    schemaVersion: 1
+    templateHash: string
+    contentHash: string
+    payloadHash: string
+    payload: { format: 'cc-jiangxia-expert-template-fill/v1'; templateId: string; fields: Record<string, unknown>; evidenceAbsorption?: unknown }
+  }
 }
 
 export type ExpertResearchSourceDispatchState = {
@@ -155,6 +164,7 @@ export type ExpertSessionMetadata = {
   activeRunId?: string
   runtimeBinding?: ExpertRuntimeBinding
   intakeState?: ExpertIntakeState
+  researchIntake?: ExpertResearchIntakeState
   researchDelivery?: ExpertResearchDeliveryState
   researchCompletion?: ExpertResearchCompletionState
   /** Bounded completed researcher handoffs for a ZIP-designated evidence reviewer. */

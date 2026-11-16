@@ -56,7 +56,7 @@ type Props = {
  * Display keybinding warnings to the user via notifications.
  * Shows a brief message pointing to /doctor for details.
  */
-function useKeybindingWarnings(warnings, isReload) {
+function useKeybindingWarnings(warnings: KeybindingWarning[], isReload: boolean): void {
   const $ = _c(9);
   const {
     addNotification,
@@ -223,7 +223,13 @@ type HandlerRegistration = {
   context: KeybindingContextName;
   handler: () => void;
 };
-function ChordInterceptor(t0) {
+function ChordInterceptor(t0: {
+  bindings: ParsedBinding[]
+  pendingChordRef: React.RefObject<ParsedKeystroke[] | null>
+  setPendingChord: (pending: ParsedKeystroke[] | null) => void
+  activeContexts: Set<KeybindingContextName>
+  handlerRegistryRef: React.RefObject<Map<string, Set<HandlerRegistration>>>
+}): null {
   const $ = _c(6);
   const {
     bindings,
@@ -239,7 +245,7 @@ function ChordInterceptor(t0) {
         return;
       }
       const registry = handlerRegistryRef.current;
-      const handlerContexts = new Set();
+      const handlerContexts = new Set<KeybindingContextName>();
       if (registry) {
         for (const handlers of registry.values()) {
           for (const registration of handlers) {
@@ -247,7 +253,7 @@ function ChordInterceptor(t0) {
           }
         }
       }
-      const contexts = [...handlerContexts, ...activeContexts, "Global"];
+      const contexts: KeybindingContextName[] = [...handlerContexts, ...activeContexts, "Global"];
       const wasInChord = pendingChordRef.current !== null;
       const result = resolveKeyWithChordState(input, key, contexts, bindings, pendingChordRef.current);
       bb23: switch (result.type) {

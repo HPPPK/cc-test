@@ -2,7 +2,7 @@
  * Tests for CronScheduler — cron matching, task execution, log storage, and API endpoints
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, setSystemTime } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
@@ -34,6 +34,24 @@ async function cleanupTmpDir(dir: string): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+// Control only the subprocess boundary: scheduler logging, task updates and
+// output parsing remain real. Never launch the developer's configured CLI.
+function completedProcess(exitCode = 0, output = 'fixture answer', error = '') {
+  return {
+    stdin: { write: mock(() => 0), end: mock(() => {}) },
+    stdout: new Response(JSON.stringify({ type: 'result', result: output }) + '\n').body!,
+    stderr: new Response(error).body!,
+    exited: Promise.resolve(exitCode),
+    kill: mock(() => {}),
+  }
+}
+
+function controlExecution(scheduler: CronScheduler) {
+  // Provider credentials and login-shell discovery are separate contracts.
+  spyOn(scheduler as any, 'buildTaskChildEnv').mockResolvedValue({})
+  return spyOn(Bun, 'spawn').mockImplementation(() => completedProcess() as any)
 }
 
 // ─── fieldMatches tests ────────────────────────────────────────────────────
@@ -164,10 +182,13 @@ describe('CronScheduler', () => {
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     cronService = new CronService()
     scheduler = new CronScheduler(cronService)
+    controlExecution(scheduler)
   })
 
   afterEach(async () => {
     scheduler.stop()
+    mock.restore()
+    setSystemTime()
     if (originalConfigDir) {
       process.env.CLAUDE_CONFIG_DIR = originalConfigDir
     } else {
@@ -177,18 +198,24 @@ describe('CronScheduler', () => {
   })
 
   it('should start and stop without errors', () => {
+    const tick = spyOn(scheduler, 'tick').mockResolvedValue(undefined)
+    spyOn(scheduler as any, 'cleanupStaleRuns').mockResolvedValue(undefined)
     scheduler.start()
     scheduler.stop()
     // Starting again after stop should also work
     scheduler.start()
     scheduler.stop()
+    expect(tick).toHaveBeenCalledTimes(2)
   })
 
   it('should not start twice', () => {
+    const tick = spyOn(scheduler, 'tick').mockResolvedValue(undefined)
+    spyOn(scheduler as any, 'cleanupStaleRuns').mockResolvedValue(undefined)
     scheduler.start()
     // Second start should be a no-op (no error)
     scheduler.start()
     scheduler.stop()
+    expect(tick).toHaveBeenCalledTimes(1)
   })
 
   it('should return empty runs when no tasks have executed', async () => {
@@ -202,24 +229,16 @@ describe('CronScheduler', () => {
   })
 
   it('should persist a task run to the log file', async () => {
-    // Create a task that runs "echo hello" — we'll invoke executeTask directly
-    // with a mock-like approach: create a task then check the log file
     const task = await cronService.createTask({
       cron: '* * * * *',
       prompt: 'echo test',
       name: 'Test Task',
       recurring: true,
     })
-
-    // We can't easily mock Bun.spawn in bun:test, so we'll check the log
-    // file was created by reading it after execution attempt.
-    // The CLI subprocess will likely fail (not a real CLI available in tests),
-    // but the run should still be logged with 'failed' status.
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      // Expected — CLI binary may not be available in test environment
-    }
+    const run = await scheduler.executeTask(task)
+    expect(run.status).toBe('completed')
+    expect(run.output).toBe('fixture answer')
+    expect(run.exitCode).toBe(0)
 
     const logPath = path.join(tmpDir, 'scheduled_tasks_log.json')
     const logExists = await fs
@@ -244,11 +263,7 @@ describe('CronScheduler', () => {
       recurring: false,
     })
 
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      // CLI may not be available
-    }
+    await scheduler.executeTask(task)
 
     // After execution, the task should be disabled
     const tasks = await cronService.listTasks()
@@ -263,11 +278,7 @@ describe('CronScheduler', () => {
       recurring: true,
     })
 
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      // CLI may not be available
-    }
+    await scheduler.executeTask(task)
 
     const tasks = await cronService.listTasks()
     const updated = tasks.find((t) => t.id === task.id)
@@ -282,21 +293,79 @@ describe('CronScheduler', () => {
       recurring: true,
     })
 
-    const beforeExec = new Date().toISOString()
+    const beforeExec = '2026-01-01T12:30:00.000Z'
+    setSystemTime(new Date(beforeExec))
 
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      // CLI may not be available
-    }
+    await scheduler.executeTask(task)
 
     const tasks = await cronService.listTasks()
     const updated = tasks.find((t) => t.id === task.id)
     expect(updated?.lastFiredAt).toBeDefined()
-    // lastFiredAt should be a valid ISO timestamp at or after beforeExec
-    expect(new Date(updated!.lastFiredAt!).getTime()).toBeGreaterThanOrEqual(
-      new Date(beforeExec).getTime() - 1000, // allow 1s tolerance
-    )
+    expect(updated!.lastFiredAt).toBe(beforeExec)
+  })
+
+  it('should persist a failed exit with stderr and disable a one-shot task', async () => {
+    const task = await cronService.createTask({
+      cron: '* * * * *', prompt: 'failure fixture', recurring: false,
+    })
+    spyOn(Bun, 'spawn').mockReturnValueOnce(completedProcess(2, '', 'fixture error') as any)
+
+    const run = await scheduler.executeTask(task)
+
+    expect(run.status).toBe('failed')
+    expect(run.exitCode).toBe(2)
+    expect(run.error).toBe('fixture error')
+    expect(await scheduler.getTaskRuns(task.id)).toEqual([run])
+    expect((await cronService.listTasks()).find((item) => item.id === task.id)?.enabled).toBe(false)
+  })
+
+  it('should deduplicate ticks until the controlled execution completes and the minute advances', async () => {
+    setSystemTime(new Date('2026-01-01T12:30:00.000Z'))
+    const task = await cronService.createTask({
+      cron: '* * * * *', prompt: 'controlled execution', recurring: true,
+    })
+    const spawned = Promise.withResolvers<void>()
+    const exited = Promise.withResolvers<number>()
+    let output: ReadableStreamDefaultController<Uint8Array>
+    const proc = {
+      ...completedProcess(),
+      stdout: new ReadableStream<Uint8Array>({ start(controller) { output = controller } }),
+      exited: exited.promise,
+    }
+    const spawn = spyOn(Bun, 'spawn').mockImplementationOnce(() => {
+      spawned.resolve()
+      return proc as any
+    })
+    const executeTask = scheduler.executeTask.bind(scheduler)
+    const executions: Promise<TaskRun>[] = []
+    spyOn(scheduler, 'executeTask').mockImplementation((...args) => {
+      const execution = executeTask(...args)
+      executions.push(execution)
+      return execution
+    })
+
+    try {
+      await scheduler.tick()
+      await spawned.promise
+      expect((await scheduler.getTaskRuns(task.id))[0].status).toBe('running')
+      await scheduler.tick()
+      expect(spawn).toHaveBeenCalledTimes(1)
+    } finally {
+      // Resolve process events before fixture teardown, even if an assertion fails.
+      output!.close()
+      exited.resolve(0)
+      await Promise.all(executions)
+    }
+
+    await scheduler.tick()
+    expect(spawn).toHaveBeenCalledTimes(1)
+    setSystemTime(new Date('2026-01-01T12:31:00.000Z'))
+    await scheduler.tick()
+    await Promise.all(executions)
+    expect(spawn).toHaveBeenCalledTimes(2)
+    expect((await scheduler.getTaskRuns(task.id)).map((run) => run.status)).toEqual(['completed', 'completed'])
+    expect(proc.stdin.write).toHaveBeenCalledWith(expect.stringContaining(task.prompt))
+    expect(proc.stdin.end).toHaveBeenCalledTimes(1)
   })
 
   it('should skip disabled tasks during tick', async () => {
@@ -322,26 +391,13 @@ describe('CronScheduler', () => {
       recurring: true,
     })
 
-    // Execute twice
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      /* ignore */
-    }
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      /* ignore */
-    }
+    setSystemTime(new Date('2026-01-01T12:30:00.000Z'))
+    const first = await scheduler.executeTask(task)
+    setSystemTime(new Date('2026-01-01T12:31:00.000Z'))
+    const second = await scheduler.executeTask(task)
 
     const runs = await scheduler.getTaskRuns(task.id)
-    expect(runs.length).toBeGreaterThanOrEqual(2)
-    // Should be sorted newest first
-    if (runs.length >= 2) {
-      expect(
-        new Date(runs[0].startedAt).getTime(),
-      ).toBeGreaterThanOrEqual(new Date(runs[1].startedAt).getTime())
-    }
+    expect(runs.map((run) => run.id)).toEqual([second.id, first.id])
   })
 
   it('getRecentRuns should respect limit parameter', async () => {
@@ -353,15 +409,11 @@ describe('CronScheduler', () => {
 
     // Execute 3 times
     for (let i = 0; i < 3; i++) {
-      try {
-        await scheduler.executeTask(task)
-      } catch {
-        /* ignore */
-      }
+      await scheduler.executeTask(task)
     }
 
     const runs = await scheduler.getRecentRuns(2)
-    expect(runs.length).toBeLessThanOrEqual(2)
+    expect(runs).toHaveLength(2)
   })
 })
 
@@ -376,10 +428,13 @@ describe('Execution log trimming', () => {
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     cronService = new CronService()
     scheduler = new CronScheduler(cronService)
+    controlExecution(scheduler)
   })
 
   afterEach(async () => {
     scheduler.stop()
+    mock.restore()
+    setSystemTime()
     if (originalConfigDir) {
       process.env.CLAUDE_CONFIG_DIR = originalConfigDir
     } else {
@@ -414,11 +469,7 @@ describe('Execution log trimming', () => {
       recurring: true,
     })
 
-    try {
-      await scheduler.executeTask(task)
-    } catch {
-      /* ignore */
-    }
+    await scheduler.executeTask(task)
 
     // Read back the log
     const logContent = JSON.parse(await fs.readFile(logPath, 'utf-8')) as {
@@ -426,7 +477,8 @@ describe('Execution log trimming', () => {
     }
     const task1Runs = logContent.runs.filter((r) => r.taskId === 'task-1')
     // Should have been trimmed to at most 100
-    expect(task1Runs.length).toBeLessThanOrEqual(100)
+    expect(task1Runs).toHaveLength(100)
+    expect(task1Runs[0].id).toBe('run-5')
   })
 })
 

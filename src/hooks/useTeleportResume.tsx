@@ -12,11 +12,11 @@ export type TeleportResumeError = {
   isOperationError: boolean;
 };
 export type TeleportSource = 'cliArg' | 'localCommand';
-export function useTeleportResume(source) {
+export function useTeleportResume(source: TeleportSource) {
   const $ = _c(8);
   const [isResuming, setIsResuming] = useState(false);
-  const [error, setError] = useState(null);
-  const [selectedSession, setSelectedSession] = useState(null);
+  const [error, setError] = useState<TeleportResumeError | null>(null);
+  const [selectedSession, setSelectedSession] = useState<CodeSession | null>(null);
   let t0;
   if ($[0] !== source) {
     t0 = async session => {

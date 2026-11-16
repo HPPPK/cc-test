@@ -25,7 +25,7 @@ type Props = {
   width?: number | string;
   onOpenRateLimitOptions?: () => void;
 };
-function InvalidApiKeyMessage() {
+function InvalidApiKeyMessage(): React.ReactNode {
   const $ = _c(2);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -44,7 +44,7 @@ function InvalidApiKeyMessage() {
   }
   return t1;
 }
-export function AssistantTextMessage(t0) {
+export function AssistantTextMessage(t0: Props): React.ReactNode {
   const $ = _c(34);
   const {
     param: t1,

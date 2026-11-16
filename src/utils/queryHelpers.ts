@@ -1,3 +1,4 @@
+import { messageKindMetadata } from './messageKind.js'
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import last from 'lodash-es/last.js'
 import {
@@ -109,6 +110,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         }
         yield {
           type: 'assistant',
+          ...messageKindMetadata(message),
           message: _.message,
           parent_tool_use_id: null,
           session_id: getSessionId(),
@@ -131,6 +133,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
               }
               yield {
                 type: 'assistant',
+                ...messageKindMetadata(message.data.message),
                 message: _.message,
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
@@ -141,12 +144,12 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
             case 'user':
               yield {
                 type: 'user',
+                ...messageKindMetadata(message.data.message),
                 message: _.message,
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
                 uuid: _.uuid,
                 timestamp: _.timestamp,
-                isSynthetic: _.isMeta || _.isVisibleInTranscriptOnly,
                 tool_use_result: _.mcpMeta
                   ? { content: _.toolUseResult, ..._.mcpMeta }
                   : _.toolUseResult,
@@ -188,6 +191,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
           toolProgressLastSentTime.set(trackingKey, now)
           yield {
             type: 'tool_progress',
+            messageKind: 'system_event',
             tool_use_id: message.toolUseID,
             tool_name:
               message.data.type === 'bash_progress' ? 'Bash' : 'PowerShell',
@@ -204,12 +208,12 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
       for (const _ of normalizeMessages([message])) {
         yield {
           type: 'user',
+          ...messageKindMetadata(message),
           message: _.message,
           parent_tool_use_id: null,
           session_id: getSessionId(),
           uuid: _.uuid,
           timestamp: _.timestamp,
-          isSynthetic: _.isMeta || _.isVisibleInTranscriptOnly,
           tool_use_result: _.mcpMeta
             ? { content: _.toolUseResult, ..._.mcpMeta }
             : _.toolUseResult,

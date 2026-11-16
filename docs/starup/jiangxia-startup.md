@@ -82,6 +82,25 @@ SERVER_PORT=3456 bun run src/server/index.ts
 
 Use another port when `3456` is already owned by an unrelated process.
 
+## Managed Research Browser Driver
+
+The built-in research browser uses pinned Patchright with the bundled Chromium
+executable. Playwright remains available for rollback and authorized CDP
+connections; prototype previews keep their existing driver. No daily browser
+profile or cookies are imported. Website challenges still require the existing
+human-verification flow.
+
+For a compatibility rollback, set `CC_JIANGXIA_BROWSER_DRIVER=playwright` in the
+App/server launch environment and restart that runtime. The default is
+`patchright`; other values produce an explicit error. Changing the variable does
+not replace a browser already running in another process. There is no automatic
+driver switch after a challenge or failed launch.
+
+Desktop packaging must copy `patchright` and `patchright-core` beside the Node
+browser runner, alongside the original Playwright packages. Recheck actual
+browser actions and verification pause/resume after updating either the browser
+or driver; successful requests do not guarantee every website will allow access.
+
 ## Process Safety
 
 Before stopping any process that owns a port, identify the exact PID and

@@ -1,3 +1,4 @@
+import type { DisplayQuestion } from './normalizeQuestion.js'
 import { c as _c } from "react/compiler-runtime";
 import figures from 'figures';
 import React from 'react';
@@ -10,7 +11,7 @@ import { PermissionRequestTitle } from '../PermissionRequestTitle.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 import { QuestionNavigationBar } from './QuestionNavigationBar.js';
 type Props = {
-  questions: Question[];
+  questions: DisplayQuestion[];
   currentQuestionIndex: number;
   answers: Record<string, string>;
   allQuestionsAnswered: boolean;
@@ -18,7 +19,7 @@ type Props = {
   minContentHeight?: number;
   onFinalResponse: (value: 'submit' | 'cancel') => void;
 };
-export function SubmitQuestionsView(t0) {
+export function SubmitQuestionsView(t0: Props): React.ReactNode {
   const $ = _c(27);
   const {
     questions,

@@ -102,7 +102,7 @@ export function MCPAgentServerMenu({
         </Box>
       </Box>;
   }
-  const menuOptions = [];
+  const menuOptions: { label: string; value: string }[] = [];
 
   // Only show authenticate option for HTTP/SSE servers
   if (agentServer.needsAuth) {

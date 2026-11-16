@@ -13,6 +13,7 @@ import { useTerminalPanelStore } from '../../stores/terminalPanelStore'
 import { useTranslation } from '../../i18n'
 import { WindowControls, showWindowControls } from './WindowControls'
 import { OpenProjectMenu } from './OpenProjectMenu'
+import { ContentOverlay } from '../shared/ContentOverlay'
 import { Folder, FolderOpen, SquareTerminal } from 'lucide-react'
 
 const TAB_WIDTH = 180
@@ -431,8 +432,8 @@ export function TabBar() {
       )}
 
       {pendingCloseRequest && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/30">
-          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-6 max-w-sm w-full mx-4" style={{ boxShadow: 'var(--shadow-dropdown)' }}>
+        <ContentOverlay className="bg-black/30" style={{ zIndex: 100 }}>
+          <div className="bg-[var(--color-surface)] max-h-full overflow-y-auto rounded-xl border border-[var(--color-border)] p-6 max-w-sm w-full" style={{ boxShadow: 'var(--shadow-dropdown)' }}>
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-2">
               {pendingCloseRequest.runningSessionIds.length > 1
                 ? t('tabs.closeAllConfirmTitle')
@@ -469,7 +470,7 @@ export function TabBar() {
               </button>
             </div>
           </div>
-        </div>
+        </ContentOverlay>
       )}
     </div>
   )

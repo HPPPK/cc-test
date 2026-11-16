@@ -204,7 +204,7 @@ async function exportWorkflow(req: Request): Promise<Response> {
     })
 
     // Return as downloadable ZIP
-    return new Response(zipData, {
+    return new Response(Uint8Array.from(zipData), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

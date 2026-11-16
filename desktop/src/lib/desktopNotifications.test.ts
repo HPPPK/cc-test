@@ -64,6 +64,17 @@ describe('desktopNotifications', () => {
     })
   })
 
+  it('does not suppress simultaneous notifications for different sessions', async () => {
+    const sender = vi.fn(async () => true)
+    setNativeNotificationSenderForTests(sender)
+    const results = await Promise.all(['one', 'two'].map(sessionId => notifyDesktop({
+      title: sessionId, dedupeKey: `end:${sessionId}`, cooldownScope: 'agent-completion',
+      target: { type: 'session', sessionId },
+    })))
+    expect(results).toEqual([true, true])
+    expect(sender).toHaveBeenCalledTimes(2)
+  })
+
   it('sends through the Tauri plugin when native notification permission is already granted', async () => {
     notificationPluginMock.isPermissionGranted.mockResolvedValue(true)
 
@@ -275,6 +286,20 @@ describe('desktopNotifications', () => {
     })
   })
 
+  it('opens the exact macOS notification settings pane through the shell', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+    shellApiMock.open.mockResolvedValueOnce(undefined)
+    await expect(openDesktopNotificationSettings()).resolves.toBe(true)
+    expect(shellApiMock.open).toHaveBeenCalledWith('x-apple.systempreferences:com.apple.preference.notifications')
+  })
+  it('does not report a blocked settings-window fallback as successfully opened', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+    shellApiMock.open.mockRejectedValueOnce(new Error('unavailable'))
+    const open = vi.spyOn(window, 'open').mockReturnValueOnce(null)
+    await expect(openDesktopNotificationSettings()).resolves.toBe(false)
+    open.mockRestore()
+  })
+
   it('opens Windows notification settings through the native command', async () => {
     Object.defineProperty(navigator, 'platform', {
       configurable: true,
@@ -314,12 +339,31 @@ describe('desktopNotifications', () => {
     coreApiMock.invoke.mockRejectedValueOnce(new Error('bridge unavailable'))
     notificationPluginMock.isPermissionGranted.mockResolvedValue(true)
 
-    await expect(getDesktopNotificationPermission()).resolves.toBe('unsupported')
+    await expect(getDesktopNotificationPermission()).resolves.toBe('error')
 
     expect(notificationPluginMock.isPermissionGranted).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
+  it.each(['MacIntel', 'Win32'])('reports permission read/request failures as retryable errors on %s', async (platform) => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: platform })
+    coreApiMock.invoke.mockRejectedValue(new Error('native service unavailable'))
+    await expect(getDesktopNotificationPermission()).resolves.toBe('error')
+    await expect(requestDesktopNotificationPermission()).resolves.toBe('error')
+    warnSpy.mockRestore()
+  })
+
+  it('keeps a valid system denial distinct from a bridge failure', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+    coreApiMock.invoke.mockResolvedValueOnce('denied')
+    await expect(requestDesktopNotificationPermission()).resolves.toBe('denied')
+  })
+  it('does not call an invalid native permission response an unsupported environment', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
+    coreApiMock.invoke.mockResolvedValueOnce({ invalid: true })
+    await expect(getDesktopNotificationPermission()).resolves.toBe('error')
+  })
   it('sends a native notification once for a dedupe key', async () => {
     const sender = vi.fn(async () => true)
     setNativeNotificationSenderForTests(sender)

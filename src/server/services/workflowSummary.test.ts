@@ -370,7 +370,7 @@ describe('workflow summary runtime provenance and blocked evidence', () => {
   test('reports no model source when resolution failed before an active model was recorded', () => {
     const state = makeState({ pendingConfirmation: null, runStatus: 'blocked' })
     state.phases[0]!.requestedModel = 'unavailable-model'
-    state.phases[0]!.actualModel = null
+    delete state.phases[0]!.actualModel
     state.phases[0]!.blockedReason = 'No workflow phase model can be resolved.'
     expect(workflowSummaryFromState(state).model).toMatchObject({
       requestedModel: 'unavailable-model',

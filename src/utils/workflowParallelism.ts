@@ -47,8 +47,19 @@ export function resolveWorkflowParallelism(workflow: unknown, template?: unknown
   const maxParallel = phaseMaxParallel(phase)
   if (maxParallel === null) return null
 
+  const workflowPhases = Array.isArray(workflow.phases) ? workflow.phases : []
+  const activePhaseState = workflowPhases.find((candidate) =>
+    isRecord(candidate) && candidate.id === activePhaseId)
+  const executionStartedAt = isRecord(activePhaseState)
+    ? stringValue(activePhaseState.startedAt)
+    : null
+
   return {
-    key: `${sessionId}:${activePhaseId}`,
+    // A backward route can re-enter the same phase with a revised, newly
+    // accepted plan. Keep the plan immutable within one phase execution while
+    // preventing the abandoned execution's in-memory scheduler from locking
+    // the new one to its old signature.
+    key: [sessionId, activePhaseId, executionStartedAt].filter(Boolean).join(':'),
     maxParallel,
   }
 }

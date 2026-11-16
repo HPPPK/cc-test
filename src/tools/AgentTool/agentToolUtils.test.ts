@@ -1,7 +1,12 @@
+import { toolNameFixture } from '../toolFixtures.test.js'
+import { AgentTool } from './AgentTool.js'
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdir, rm } from 'fs/promises'
+import { getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js'
 import type { AppState } from '../../state/AppState.js'
-import { IDLE_SPECULATION_STATE } from '../../state/AppStateStore.js'
+import { getDefaultAppState, IDLE_SPECULATION_STATE } from '../../state/AppStateStore.js'
 import { createTaskStateBase } from '../../Task.js'
+import { createFileStateCacheWithSizeLimit } from '../../utils/fileStateCache.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { Message } from '../../types/message.js'
@@ -10,7 +15,7 @@ import {
   getCommandQueue,
   resetCommandQueue,
 } from '../../utils/messageQueueManager.js'
-import { createAssistantMessage, createUserMessage } from '../../utils/messages.js'
+import { createAssistantAPIErrorMessage, createAssistantMessage, createUserMessage } from '../../utils/messages.js'
 import {
   buildLargeToolResultMessage,
   extractMachineReadableToolResultArtifacts,
@@ -58,7 +63,7 @@ describe('file-first Expert artifact completion', () => {
 
   test('does not fail a subagent merely because no intermediate artifact handoff was observed', () => {
     const finalMessage = createAssistantMessage({
-      content: [{ type: 'text', text: researcherPath }],
+      content: [{ citations: null, type: 'text', text: researcherPath }],
     }) as Message
 
     expect(() => assertFinalizedExpertResearchArtifactWrite(
@@ -82,7 +87,7 @@ describe('file-first Expert artifact completion', () => {
       content: [{ type: 'tool_result', tool_use_id: 'toolu_actual_write_path', content: 'File written.' }],
     }) as Message
     const naturalHandoff = createAssistantMessage({
-      content: [{ type: 'text', text: '已写入竞品台账；官方定价页可支持免费边界，仍需补用户付费证据。' }],
+      content: [{ citations: null, type: 'text', text: '已写入竞品台账；官方定价页可支持免费边界，仍需补用户付费证据。' }],
     }) as Message
 
     expect(lastWrittenMarkdownArtifactPath([write, writeResult, naturalHandoff])).toBe(researcherPath)
@@ -146,7 +151,7 @@ describe('file-first Expert artifact completion', () => {
         }],
       }) as Message
       const finalMessage = createAssistantMessage({
-        content: [{
+        content: [{ citations: null,
           type: 'text',
           text: '研究已写入。发现了可继续验证的竞品定价线索；交付物：' + researcherPath + '。建议主代理直接读取文件后继续。',
         }],
@@ -191,7 +196,7 @@ describe('file-first Expert artifact completion', () => {
       }],
     }) as Message
     const finalMessage = createAssistantMessage({
-      content: [{ type: 'text', text: researcherPath }],
+      content: [{ citations: null, type: 'text', text: researcherPath }],
     }) as Message
 
     expect(() => assertFinalizedExpertResearchArtifactWrite(
@@ -254,7 +259,7 @@ describe('file-first Expert artifact completion', () => {
         content: [{ type: 'tool_result', tool_use_id: 'toolu_finalize_legacy_audit_write', content: 'The file was created successfully.' }],
       }) as Message
       const finalMessage = createAssistantMessage({
-        content: [{ type: 'text', text: `${researcherPath}\n<tool-audit>Playwright: 10 calls</tool-audit>` }],
+        content: [{ citations: null, type: 'text', text: `${researcherPath}\n<tool-audit>Playwright: 10 calls</tool-audit>` }],
       }) as Message
 
       expect(finalizeAgentTool([write, receipt, finalMessage], 'research-agent-1', {
@@ -363,7 +368,7 @@ describe('file-first Expert artifact completion', () => {
     const result = createUserMessage({
       content: [{ type: 'tool_result', tool_use_id: 'toolu_absorption_write', content: 'The field-absorption file was created successfully.' }],
     }) as Message
-    const finalMessage = createAssistantMessage({ content: [{ type: 'text', text: absorptionPath }] }) as Message
+    const finalMessage = createAssistantMessage({ content: [{ citations: null, type: 'text', text: absorptionPath }] }) as Message
 
     expect(() => assertFinalizedExpertResearchArtifactWrite(
       [write, result, finalMessage],
@@ -377,29 +382,9 @@ describe('file-first Expert artifact completion', () => {
 
 describe('Expert subagent full tool access', () => {
   test('gives every Expert subagent the complete host pool except a package-forbidden AskUserQuestion channel', () => {
-    const availableTools = [
-      { name: 'Playwright' },
-      { name: 'Read' },
-      { name: 'Write' },
-      { name: 'Edit' },
-      { name: 'MultiEdit' },
-      { name: 'Bash' },
-      { name: 'PowerShell' },
-      { name: 'WebSearch' },
-      { name: 'AskUserQuestion' },
-      { name: 'Agent' },
-      { name: 'Skill' },
-      { name: 'mcp__local__research' },
-    ] as never
+    const availableTools = ['Playwright', 'Read', 'Write', 'Edit', 'MultiEdit', 'Bash', 'PowerShell', 'WebSearch', 'AskUserQuestion', 'Agent', 'Skill', 'mcp__local__research'].map(toolNameFixture)
 
-    const resolved = resolveAgentTools({
-      source: 'built-in',
-      baseDir: 'built-in',
-      agentType: 'expert-evidence-researcher',
-      tools: ['Playwright'],
-      disallowedTools: ['Edit', 'Bash', 'AskUserQuestion'],
-      getSystemPrompt: () => '',
-    }, availableTools, true, false, {
+    const resolved = resolveAgentTools({ source: 'built-in', tools: ['Playwright'], disallowedTools: ['Edit', 'Bash', 'AskUserQuestion'] }, availableTools, true, false, {
       CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS: '1',
       CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION: '1',
     })
@@ -412,19 +397,9 @@ describe('Expert subagent full tool access', () => {
   })
 
   test('keeps AskUserQuestion in the full Expert pool when the package does not forbid it', () => {
-    const availableTools = [
-      { name: 'Playwright' },
-      { name: 'AskUserQuestion' },
-      { name: 'Write' },
-    ] as never
+    const availableTools = ['Playwright', 'AskUserQuestion', 'Write'].map(toolNameFixture)
 
-    const resolved = resolveAgentTools({
-      source: 'built-in',
-      baseDir: 'built-in',
-      agentType: 'general-expert-worker',
-      tools: ['Playwright'],
-      getSystemPrompt: () => '',
-    }, availableTools, true, false, {
+    const resolved = resolveAgentTools({ source: 'built-in', tools: ['Playwright'] }, availableTools, true, false, {
       CC_JIANGXIA_EXPERT_FULL_TOOL_ACCESS: '1',
     })
 
@@ -437,19 +412,10 @@ describe('Expert subagent full tool access', () => {
 })
 
 describe('explicit subagent question-card opt-in', () => {
-  const availableTools = [
-    { name: 'Playwright' },
-    { name: 'AskUserQuestion' },
-  ] as never
+  const availableTools = ['Playwright', 'AskUserQuestion'].map(toolNameFixture)
 
   test('allows an async built-in agent to use AskUserQuestion only when it explicitly declares it', () => {
-    const resolved = resolveAgentTools({
-      source: 'built-in',
-      baseDir: 'built-in',
-      agentType: 'expert-evidence-researcher',
-      tools: ['Playwright', 'AskUserQuestion'],
-      getSystemPrompt: () => '',
-    }, availableTools, true)
+    const resolved = resolveAgentTools({ source: 'built-in', tools: ['Playwright', 'AskUserQuestion'] }, availableTools, true)
 
     expect(resolved.validTools).toEqual(['Playwright', 'AskUserQuestion'])
     expect(resolved.resolvedTools.map((tool) => tool.name)).toEqual(['Playwright', 'AskUserQuestion'])
@@ -459,13 +425,7 @@ describe('explicit subagent question-card opt-in', () => {
     const previous = process.env.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
     process.env.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION = '1'
     try {
-      const resolved = resolveAgentTools({
-        source: 'built-in',
-        baseDir: 'built-in',
-        agentType: 'expert-evidence-researcher',
-        tools: ['Playwright', 'AskUserQuestion'],
-        getSystemPrompt: () => '',
-      }, availableTools, true)
+      const resolved = resolveAgentTools({ source: 'built-in', tools: ['Playwright', 'AskUserQuestion'] }, availableTools, true)
       expect(resolved.resolvedTools.map((tool) => tool.name)).toEqual(['Playwright'])
     } finally {
       if (previous === undefined) delete process.env.CC_JIANGXIA_EXPERT_FORBID_SUBAGENT_ASK_USER_QUESTION
@@ -474,13 +434,7 @@ describe('explicit subagent question-card opt-in', () => {
   })
 
   test('keeps AskUserQuestion unavailable to an async built-in agent that did not opt in', () => {
-    const resolved = resolveAgentTools({
-      source: 'built-in',
-      baseDir: 'built-in',
-      agentType: 'ordinary-researcher',
-      tools: ['Playwright'],
-      getSystemPrompt: () => '',
-    }, availableTools, true)
+    const resolved = resolveAgentTools({ source: 'built-in', tools: ['Playwright'] }, availableTools, true)
 
     expect(resolved.resolvedTools.map((tool) => tool.name)).toEqual(['Playwright'])
   })
@@ -522,7 +476,7 @@ describe('Expert Playwright audit', () => {
           name: 'Read',
           input: { file_path: 'notes.md' },
         },
-        { type: 'text', text: 'I listed Playwright in prose too.' },
+        { citations: null, type: 'text', text: 'I listed Playwright in prose too.' },
       ],
     }) as Message
 
@@ -899,6 +853,9 @@ describe('Expert Playwright audit', () => {
       query: 'restore old family photos',
       status: 'access_limited',
       finalUrl: 'https://www.bing.com/search?q=restore+old+family+photos',
+    }), expect.objectContaining({
+      searchEngine: '360', query: 'restore old family photos', status: 'opened',
+      finalUrl: 'https://www.so.com/s?q=restore%20old%20family%20photos', searchResultStatus: 'results_observed',
     })])
   })
 
@@ -972,7 +929,7 @@ describe('Expert Playwright audit', () => {
             ],
           },
         },
-        { type: 'text', text: 'The search page loaded.' },
+        { citations: null, type: 'text', text: 'The search page loaded.' },
       ],
     }) as Message
     const ledger = Buffer.from(JSON.stringify({
@@ -1124,7 +1081,7 @@ describe('Expert Playwright audit', () => {
     ])
   })
 
-  test('records a real Bing query URL as an observed keyword-result SERP', () => {
+  test('records navigation to a Bing query without extraction as entry-only evidence', () => {
     const toolUse = createAssistantMessage({ content: [{
       type: 'tool_use', id: 'toolu_bing_results', name: 'Playwright',
       input: { actions: [{ type: 'navigate', url: 'https://www.bing.com/search?q=markdown+reader' }] },
@@ -1138,7 +1095,7 @@ describe('Expert Playwright audit', () => {
       content: `<playwright-action-ledger encoding="base64">${ledger}</playwright-action-ledger>`,
     }] }) as Message
 
-    expect(buildPlaywrightAudit([toolUse, result])[0]).toMatchObject({ searchResultStatus: 'results_observed', status: 'opened' })
+    expect(buildPlaywrightAudit([toolUse, result])[0]).toMatchObject({ searchResultStatus: 'entry_opened', status: 'opened' })
   })
 
   test('records the post-submit SERP instead of the search engine homepage', () => {
@@ -1190,7 +1147,7 @@ describe('Expert Playwright audit', () => {
           name: 'Playwright',
           input: { actions: [{ type: 'navigate', url: 'https://example.com/evidence' }, { type: 'extract' }] },
         },
-        { type: 'text', text: 'Evidence ledger complete.' },
+        { citations: null, type: 'text', text: 'Evidence ledger complete.' },
       ],
     }) as Message
     const ledger = Buffer.from(JSON.stringify({
@@ -1224,11 +1181,93 @@ describe('runAsyncAgentLifecycle', () => {
     resetCommandQueue()
   })
 
+  test.each(['api-error', 'recovered-api', 'blocked'] as const)('preserves runtime error authority and normal business blocking: %s', async scenario => {
+    const taskId = `agent-terminal-${scenario}-${crypto.randomUUID()}`
+    const task: LocalAgentTaskState = {
+      ...createTaskStateBase(taskId, 'local_agent', 'Scoped work'), type: 'local_agent', status: 'running',
+      agentId: taskId, prompt: 'Scoped work', agentType: 'general-purpose', retrieved: false,
+      lastReportedToolCount: 0, lastReportedTokenCount: 0, isBackgrounded: true,
+      pendingMessages: [], retain: false, diskLoaded: false,
+    }
+    let app: AppState = { ...getDefaultAppState(), tasks: { [taskId]: task } }
+    const context: ToolUseContext = {
+      options: { commands: [], debug: false, mainLoopModel: 'test-model', tools: [], verbose: false, thinkingConfig: { type: 'disabled' }, mcpClients: [], mcpResources: {}, isNonInteractiveSession: true, agentDefinitions: { activeAgents: [], allAgents: [] } },
+      abortController: new AbortController(), readFileState: createFileStateCacheWithSizeLimit(10),
+      getAppState: () => app, setAppState: update => { app = update(app) },
+      setInProgressToolUseIDs() {}, setResponseLength() {}, updateFileHistoryState() {}, updateAttributionState() {}, messages: [],
+    }
+    let validationCalls = 0
+    const receipts: string[] = []
+    const report = 'Scoped work is saved.\n`readyForReview: false`，HTTP check remains unverified.'
+    const outcome = await runAsyncAgentLifecycle({
+      taskId, abortController: context.abortController,
+      makeStream: async function* () {
+        if (scenario !== 'blocked') yield createAssistantAPIErrorMessage({ content: 'Path contains null bytes' })
+        if (scenario !== 'api-error') yield createAssistantMessage({ content: report })
+      },
+      metadata: { prompt: 'Scoped work', resolvedAgentModel: 'test', isBuiltInAgent: true, startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+      description: 'Scoped work', toolUseContext: context, rootSetAppState: context.setAppState,
+      agentIdForCleanup: taskId, enableSummarization: false, getWorktreeResult: async () => ({}),
+      validateFinalMessage: () => { validationCalls++; return scenario === 'recovered-api' ? null : { status: 'blocked', reason: 'The promised HTTP check remains unverified.' } },
+      beforeTerminal: async result => { receipts.push(result.status) },
+    })
+    if (scenario === 'api-error') {
+      expect(outcome).toEqual({ status: 'failed', reason: 'Path contains null bytes' })
+      expect(validationCalls).toBe(0)
+      expect(receipts).toEqual(['failed'])
+      expect(JSON.stringify(getCommandQueue())).not.toContain('readyForReview is missing')
+    } else if (scenario === 'blocked') {
+      expect(outcome).toEqual({ status: 'blocked', reason: 'The promised HTTP check remains unverified.' })
+      expect(receipts).toEqual(['blocked'])
+      expect(app.tasks[taskId]!.status).toBe('completed')
+      expect(JSON.stringify(getCommandQueue())).toContain('HTTP check remains unverified')
+      expect(JSON.stringify(getCommandQueue())).toContain('readyForReview: false')
+      expect(JSON.stringify(getCommandQueue())).not.toContain('<status>failed</status>')
+    } else {
+      expect(outcome).toEqual({ status: 'succeeded' })
+      expect(validationCalls).toBe(1)
+      expect(receipts).toEqual(['succeeded'])
+    }
+  })
+
+  test('fails and notifies instead of publishing success when real output initialization failed', async () => {
+    const taskId = `agent-output-failed-${crypto.randomUUID()}`
+    const path = getTaskOutputPath(taskId)
+    await mkdir(path, { recursive: true })
+    try {
+      await expect(initTaskOutputAsSymlink(taskId, 'unused-target')).rejects.toThrow()
+      let state = { tasks: { [taskId]: {
+        ...createTaskStateBase(taskId, 'local_agent', 'Output failure'),
+        type: 'local_agent', status: 'running', agentId: taskId, prompt: 'Implement', agentType: 'general-purpose',
+        retrieved: false, lastReportedToolCount: 0, lastReportedTokenCount: 0,
+        isBackgrounded: true, pendingMessages: [], retain: false, diskLoaded: false,
+      } }, speculation: IDLE_SPECULATION_STATE } as unknown as AppState
+      const receipts: string[] = []
+      const outcome = await runAsyncAgentLifecycle({
+        taskId, abortController: new AbortController(),
+        makeStream: async function* () { yield createAssistantMessage({ content: 'Done' }) as Message },
+        metadata: { prompt: 'Implement', resolvedAgentModel: 'test', isBuiltInAgent: true,
+          startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+        description: 'Output failure', toolUseContext: { options: { tools: [] }, getAppState: () => state } as unknown as ToolUseContext,
+        rootSetAppState: fn => { state = fn(state) }, agentIdForCleanup: taskId,
+        enableSummarization: false, getWorktreeResult: async () => ({}),
+        beforeTerminal: async outcome => { receipts.push(outcome.status) },
+      })
+      expect(outcome.status).toBe('failed')
+      expect(receipts).toEqual(['failed'])
+      expect(state.tasks[taskId]?.status).toBe('failed')
+      expect(String(getCommandQueue()[0]?.value)).toContain('<status>failed</status>')
+    } finally {
+      await rm(path, { recursive: true, force: true })
+    }
+  })
+
   test('notifies the parent before post-completion cleanup finishes', async () => {
     const taskId = 'agent-notify-first'
     const abortController = new AbortController()
     const task: LocalAgentTaskState = {
       ...createTaskStateBase(taskId, 'local_agent', 'Review code', 'toolu_agent'),
+      type: 'local_agent',
       status: 'running',
       agentId: taskId,
       prompt: 'Review code',
@@ -1251,7 +1290,7 @@ describe('runAsyncAgentLifecycle', () => {
       appState = updater(appState)
     }
     const message = createAssistantMessage({
-      content: [{ type: 'text', text: 'Review complete.' }],
+      content: [{ citations: null, type: 'text', text: 'Review complete.' }],
     }) as Message
     let cleanupStarted = false
 
@@ -1299,11 +1338,58 @@ describe('runAsyncAgentLifecycle', () => {
     expect(String(getCommandQueue()[0]?.value)).toContain('Review complete.')
   })
 
+  test.each(['suspended', 'stale', 'quoted', 'resumed', 'resumed-read', 'control-output', 'control-stop', 'unmatched', 'stale-suspended-resumed', 'contract-resumed'] as const)('managed worker settles from actual tool execution receipts: %s', async scenario => {
+    const taskId = `agent-workflow-execution-${scenario}`
+    const abortController = new AbortController()
+    let appState = {
+      tasks: { [taskId]: {
+        ...createTaskStateBase(taskId, 'local_agent', 'Implement rules', 'toolu_rules'),
+        type: 'local_agent', status: 'running', agentId: taskId, prompt: 'Implement rules', agentType: 'general-purpose',
+        abortController, retrieved: false, lastReportedToolCount: 0, lastReportedTokenCount: 0,
+        isBackgrounded: true, pendingMessages: [], retain: false, diskLoaded: false,
+      } },
+      toolPermissionContext: getEmptyToolPermissionContext(), speculation: IDLE_SPECULATION_STATE,
+    } as unknown as AppState
+    const code = scenario.startsWith('stale') ? 'WORKFLOW_WORKER_STALE' : scenario === 'contract-resumed' ? 'WORKFLOW_WORKER_CONTRACT_REQUIRED' : 'WORKFLOW_EXECUTION_SUSPENDED'
+    async function* makeStream(): AsyncGenerator<Message, void> {
+      yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_skill', name: 'Skill', input: { skill: 'test-driven-development' } }] }) as Message
+      yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_skill',
+        content: `<tool_use_error>${code}: No business tool was executed.</tool_use_error>`, is_error: scenario !== 'quoted' }] }) as Message
+      if (scenario === 'stale-suspended-resumed') {
+        yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_second_skill', name: 'Skill', input: { skill: 'test-driven-development' } }] }) as Message
+        yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_second_skill', content: 'WORKFLOW_EXECUTION_SUSPENDED: paused again', is_error: true }] }) as Message
+      }
+      if (!['suspended', 'stale', 'quoted'].includes(scenario)) {
+        const name = scenario === 'control-output' ? 'TaskOutput' : scenario === 'control-stop' ? 'TaskStop' : scenario === 'resumed-read' ? 'Read' : 'Edit'
+        if (scenario !== 'unmatched') yield createAssistantMessage({ content: [{ type: 'tool_use', id: 'toolu_edit', name, input: { file_path: 'rules.js' } }] }) as Message
+        yield createUserMessage({ content: [{ type: 'tool_result', tool_use_id: 'toolu_edit', content: 'File updated.' }] }) as Message
+      }
+      yield createAssistantMessage({ content: 'The workflow paused. I have not changed files.' }) as Message
+    }
+    const result = await runAsyncAgentLifecycle({
+      taskId, abortController, makeStream,
+      metadata: { prompt: 'Implement rules', resolvedAgentModel: 'test-model', isBuiltInAgent: true,
+        startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
+      description: 'Implement rules',
+      toolUseContext: { options: { tools: [] }, toolUseId: 'toolu_rules', getAppState: () => appState } as unknown as ToolUseContext,
+      rootSetAppState: update => { appState = update(appState) }, agentIdForCleanup: taskId,
+      enableSummarization: false, getWorktreeResult: async () => ({}), validateWorkflowExecution: true,
+    })
+    if (!['quoted', 'resumed', 'resumed-read'].includes(scenario)) {
+      expect(result).toMatchObject({ status: 'failed', reason: expect.stringContaining(code) })
+      expect(appState.tasks[taskId]!.status).toBe('failed')
+      expect(JSON.stringify(getCommandQueue())).not.toContain('<status>completed</status>')
+    } else {
+      expect(result).toEqual({ status: 'succeeded' })
+    }
+  })
+
   test('fails the agent before completion when its final message violates the Reviewer contract', async () => {
     const taskId = 'agent-invalid-review-receipt'
     const abortController = new AbortController()
     const task: LocalAgentTaskState = {
       ...createTaskStateBase(taskId, 'local_agent', 'Review code', 'toolu_invalid_review'),
+      type: 'local_agent',
       status: 'running',
       agentId: taskId,
       prompt: 'Review code',
@@ -1326,7 +1412,7 @@ describe('runAsyncAgentLifecycle', () => {
       appState = updater(appState)
     }
     const message = createAssistantMessage({
-      content: [{ type: 'text', text: 'Looks good, but no structured workflowReview receipt.' }],
+      content: [{ citations: null, type: 'text', text: 'Looks good, but no structured workflowReview receipt.' }],
     }) as Message
 
     async function* makeStream(): AsyncGenerator<Message, void> {
@@ -1373,6 +1459,7 @@ describe('runAsyncAgentLifecycle', () => {
     const abortController = new AbortController()
     const task: LocalAgentTaskState = {
       ...createTaskStateBase(taskId, 'local_agent', 'Failing agent', 'toolu_failure'),
+      type: 'local_agent',
       status: 'running',
       agentId: taskId,
       prompt: 'Fail deliberately',
@@ -1427,6 +1514,16 @@ describe('runAsyncAgentLifecycle', () => {
 })
 
 describe('post-review evidence absorption handoff', () => {
+  test('preserves a server-authorized targeted follow-up receipt after file-first researcher completion', () => {
+    const result = { agentType: 'expert-evidence-researcher', content: [{ type: 'text' as const, text: '文件交接：02.md' }] }
+    const instruction = '<expert-post-review-evidence-absorption><expert-research-follow-up>Read 02 then assign a relevant targeted-evidence follow-up.</expert-research-follow-up></expert-post-review-evidence-absorption>'
+    appendExpertPostReviewEvidenceAbsorptionContext(result, instruction)
+    appendExpertPostReviewEvidenceAbsorptionContext(result, instruction)
+    expect(result.content).toHaveLength(2)
+    expect(result.content[1]!.text).toBe(instruction)
+    const mapped = AgentTool.mapToolResultToToolResultBlockParam({ ...result, status: 'completed', agentId: 'original-a', artifactPath: 'commercialization-research/02-competitors.md', totalTokens: 0, totalDurationMs: 1, totalToolUseCount: 1 } as never, 'parent-visible-follow-up')
+    expect(JSON.stringify(mapped.content)).toContain('<expert-research-follow-up>')
+  })
   test('never appends a server instruction to a file-first Expert completion receipt', () => {
     const fileFirst = {
       agentType: 'expert-evidence-reviewer',
@@ -1450,11 +1547,16 @@ test('records shared verification zero-step requests as interrupted rather than 
 })
 
 
-test('researcher prompt agrees with bounded runtime recovery and file-only handoff', async () => {
+test('researcher prompt bounds research retries while preserving pending human verification and file-only handoff', async () => {
   const { EXPERT_EVIDENCE_RESEARCH_AGENT } = await import('./built-in/expertEvidenceResearchAgent.js')
   const prompt = await EXPERT_EVIDENCE_RESEARCH_AGENT.getSystemPrompt({} as never)
   expect(prompt).toContain('one targeted retry')
-  expect(prompt).toContain('two-minute wait budget')
+  expect(prompt).toContain('Keep all research searches and browsing paused while the runtime waits for actual human verification, including API searches')
+  expect(prompt).toContain('If verified, resume the same page')
+  expect(prompt).toContain('A timeout or legacy verification_deferred remains pending, never consent to skip')
+  expect(prompt).toContain('Only an explicit user skip or cancel allows another public entry')
+  expect(prompt).toContain('do not bypass it, close the page, reload it, or ask the user')
+  expect(prompt).not.toContain('two-minute wait budget')
   expect(prompt).toContain('Markdown is the only research handoff')
   expect(prompt).not.toContain('or delivery blocker is created')
 })
@@ -1512,4 +1614,9 @@ test('a legacy general-purpose final research receipt preserves its terminal sig
     content: [{ type: 'text', text: '已写入' }], playwrightAudit: [{ target: 'https://www.v2ex.com/t/1171074', status: 'opened', kind: 'url' }],
   }, 'general-purpose', async (input) => { calls.push(input) }, async () => undefined)
   expect(calls).toEqual([expect.objectContaining({ completed: true, artifactPath: 'commercialization-research/03-user-needs.md', entries: [expect.objectContaining({ target: 'https://www.v2ex.com/t/1171074' })] })])
+})
+
+
+test('file-first completion without a successful write does not direct the parent to read a nonexistent artifact', () => {
+  expect(normalizeFinalizedExpertResearchArtifactContent('expert-evidence-researcher', [{ type: 'text', text: '研究暂停，未保存。' }])).toEqual([{ type: 'text', text: '文件交接：未确认 Markdown 写入；状态：子代理已结束，结果与写入状态需另行核验。' }])
 })

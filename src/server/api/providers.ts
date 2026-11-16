@@ -125,11 +125,13 @@ export async function handleProvidersApi(
     // /api/providers/:id/test
     if (action === 'test') {
       if (req.method !== 'POST') throw methodNotAllowed(req.method)
-      let overrides: { baseUrl?: string; modelId?: string; apiFormat?: string; authStrategy?: string } | undefined
-      try {
-        const body = await req.json()
-        if (body && typeof body === 'object') overrides = body as typeof overrides
-      } catch { /* no body is fine — uses saved values */ }
+      let overrides: Parameters<ProviderService['testProvider']>[1]
+      const body = await req.json().catch(() => undefined)
+      if (body && typeof body === 'object') {
+        const parsed = TestProviderSchema.omit({ apiKey: true }).partial().safeParse(body)
+        if (!parsed.success) throw ApiError.badRequest('Invalid provider test overrides')
+        overrides = parsed.data
+      }
       const result = await providerService.testProvider(id, overrides)
       if (!result.connectivity.success || result.proxy?.success === false) {
         void diagnosticsService.recordEvent({

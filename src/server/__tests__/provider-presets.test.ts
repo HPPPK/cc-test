@@ -54,6 +54,12 @@ describe('provider presets API', () => {
     expect(PROVIDER_PRESETS.some((preset) => preset.id === 'custom')).toBe(true)
   })
 
+  test('preset context-window defaults follow the application 1M policy', () => {
+    const windows = PROVIDER_PRESETS.flatMap(preset => Object.values(preset.modelContextWindows ?? {}))
+    expect(windows.length).toBeGreaterThan(0)
+    for (const window of windows) expect(window).toBe(1_000_000)
+  })
+
   test('local Anthropic-compatible presets appear immediately before custom', () => {
     expect(PROVIDER_PRESETS.at(-3)?.id).toBe('lmstudio')
     expect(PROVIDER_PRESETS.at(-2)?.id).toBe('ollama')
@@ -99,7 +105,7 @@ describe('provider presets API', () => {
     expect(minimax?.authStrategy).toBe('auth_token')
     expect(minimax?.defaultModels.main).toBe('MiniMax-M3')
     expect(minimax?.modelContextWindows?.['MiniMax-M3']).toBe(1000000)
-    expect(minimax?.modelContextWindows?.['MiniMax-M2.7']).toBe(204800)
+    expect(minimax?.modelContextWindows?.['MiniMax-M2.7']).toBe(1000000)
     expect(jiekouai?.baseUrl).toBe('https://api.jiekou.ai/anthropic')
     expect(jiekouai?.authStrategy).toBe('auth_token')
     expect(jiekouai?.defaultModels.main).toBe('claude-sonnet-4-6')
@@ -142,10 +148,10 @@ describe('provider presets API', () => {
     expect(zhipu?.apiKeyUrl).toBe('https://www.bigmodel.cn/invite?icode=d41B2qi8Z5xNwTGLNPPF3OZLO2QH3C0EBTSr%2BArzMw4%3D')
     expect(zhipu?.promoText).toContain('cc-jiangxia')
     expect(zhipu?.defaultEnv?.CC_JIANGXIA_SEND_DISABLED_THINKING).toBe('1')
-    expect(zhipu?.modelContextWindows?.['glm-5.1']).toBe(200000)
-    expect(zhipu?.modelContextWindows?.['glm-4.5-air']).toBe(128000)
+    expect(zhipu?.modelContextWindows?.['glm-5.1']).toBe(1000000)
+    expect(zhipu?.modelContextWindows?.['glm-4.5-air']).toBe(1000000)
     expect(kimi?.apiKeyUrl).toBe('https://platform.kimi.com/console/api-keys')
-    expect(kimi?.modelContextWindows?.['kimi-k2.6']).toBe(262144)
+    expect(kimi?.modelContextWindows?.['kimi-k2.6']).toBe(1000000)
     expect(minimax?.apiKeyUrl).toBe('https://platform.minimaxi.com/subscribe/token-plan?code=1TG2Cseab2&source=link')
     expect(jiekouai?.apiKeyUrl).toBe('https://jiekou.ai/referral?invited_code=OBNU3K')
     expect(jiekouai?.promoText).toContain('官方 8 折')

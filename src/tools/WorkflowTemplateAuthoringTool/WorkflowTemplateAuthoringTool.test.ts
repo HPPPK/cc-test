@@ -1,3 +1,5 @@
+import { getDefaultAppState } from '../../state/AppStateStore.js'
+import { customToolSchemaFixture, toolPromptFixture } from '../toolFixtures.test.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -21,8 +23,10 @@ let tempConfigDir: string
 
 const editableDefaultTemplateIds = new Set([
   'efficient-constrained-dev-debug-workflow-v5',
+  'skills-development',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
 ])
 
 const zipAdapter = new ZipPackAdapter()
@@ -51,10 +55,8 @@ afterEach(async () => {
   await fs.rm(tempConfigDir, { recursive: true, force: true })
 })
 
-async function loadTool(): Promise<Tool> {
-  const mod = await import('./WorkflowTemplateAuthoringTool.js') as {
-    WorkflowTemplateAuthoringTool?: Tool
-  }
+async function loadTool(): Promise<typeof import('./WorkflowTemplateAuthoringTool.js')['WorkflowTemplateAuthoringTool']> {
+  const mod = await import('./WorkflowTemplateAuthoringTool.js')
 
   expect(mod.WorkflowTemplateAuthoringTool).toBeDefined()
   if (!mod.WorkflowTemplateAuthoringTool) {
@@ -119,15 +121,15 @@ function contextFor(activePhaseId: string | null = null): ToolUseContext {
       mainLoopModel: 'claude-sonnet-4',
       tools: [],
       verbose: false,
-      thinkingConfig: {},
+      thinkingConfig: { type: 'disabled' },
       mcpClients: [],
       mcpResources: {},
       isNonInteractiveSession: false,
-      agentDefinitions: { activeAgents: [], inactiveAgents: [] },
+      agentDefinitions: { activeAgents: [], allAgents: [] },
     },
     abortController: new AbortController(),
     readFileState: {} as ToolUseContext['readFileState'],
-    getAppState: () => ({
+    getAppState: () => (({ ...getDefaultAppState(),
       workflow: activePhaseId
         ? {
             mode: 'workflow',
@@ -138,7 +140,7 @@ function contextFor(activePhaseId: string | null = null): ToolUseContext {
           }
         : undefined,
       toolPermissionContext: getEmptyToolPermissionContext(),
-    } as unknown as ReturnType<ToolUseContext['getAppState']>),
+     })),
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -276,17 +278,17 @@ describe('WorkflowTemplateAuthoringTool', () => {
 
     expect(tool.name).toBe(TOOL_NAME)
     expect(tool.searchHint).toBe('workflow template authoring and validation')
-    expect(tool.isConcurrencySafe({ operation: 'list' })).toBe(false)
+    expect(tool.isConcurrencySafe()).toBe(false)
     expect(tool.maxResultSizeChars).toBeGreaterThan(0)
   })
 
   test('exports an API-bound input schema with an object root', async () => {
     const tool = await loadTool()
-    const schema = await toolToAPISchema(tool, {
+    const schema = customToolSchemaFixture(await toolToAPISchema(tool, {
       getToolPermissionContext: async () => getEmptyToolPermissionContext(),
       tools: [],
       agents: [],
-    })
+    }))
 
     const inputSchema = schema.input_schema as Record<string, unknown>
     const properties = inputSchema.properties as Record<string, unknown>
@@ -318,11 +320,11 @@ describe('WorkflowTemplateAuthoringTool', () => {
 
     try {
       const tool = await loadTool()
-      const schema = await toolToAPISchema(tool, {
+      const schema = customToolSchemaFixture(await toolToAPISchema(tool, {
         getToolPermissionContext: async () => getEmptyToolPermissionContext(),
         tools: [],
         agents: [],
-      }) as { eager_input_streaming?: boolean }
+      })) as { eager_input_streaming?: boolean }
 
       expect(schema.eager_input_streaming).toBe(true)
     } finally {
@@ -360,9 +362,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
 
     const result = await tool.call(
       input,
-      contextFor(),
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
 
     expect(result.data).toMatchObject({
@@ -401,8 +400,8 @@ describe('WorkflowTemplateAuthoringTool', () => {
         : { operation }
 
     expect(tool.inputSchema.safeParse(input).success).toBe(true)
-    expect(tool.isReadOnly(input)).toBe(true)
-    expect(tool.isDestructive?.(input)).toBe(false)
+    expect(tool.isReadOnly(tool.inputSchema.parse(input))).toBe(true)
+    expect(tool.isDestructive?.(tool.inputSchema.parse(input))).toBe(false)
   })
 
   test('calls the direct authoring service path for the read-only skill catalog', async () => {
@@ -425,9 +424,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
     const tool = await loadTool()
     const result = await tool.call(
       { operation: 'skill_catalog', query: 'release', source: 'user' },
-      contextFor(),
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const block = tool.mapToolResultToToolResultBlockParam(result.data, 'tool-use-skill-catalog')
 
@@ -462,9 +458,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
         description: 'Use when a workflow phase needs helper guidance.',
         body: 'Use this skill for workflow helper phases.',
       },
-      contextFor(),
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const block = tool.mapToolResultToToolResultBlockParam(result.data, 'tool-use-skill-create')
 
@@ -496,7 +489,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
 
   test('guides agents to create missing skills instead of guessing phase skill names', async () => {
     const tool = await loadTool()
-    const prompt = await tool.prompt?.({})
+    const prompt = await tool.prompt?.()
 
     expect(prompt).toContain('Use skill_catalog before assigning phases[].skills')
     expect(prompt).toContain('If the needed skill is missing, use skill_create first')
@@ -530,8 +523,8 @@ describe('WorkflowTemplateAuthoringTool', () => {
           }
 
     expect(tool.inputSchema.safeParse(input).success).toBe(true)
-    expect(tool.isReadOnly(input)).toBe(false)
-    expect(tool.isDestructive?.(input)).toBe(false)
+    expect(tool.isReadOnly(tool.inputSchema.parse(input))).toBe(false)
+    expect(tool.isDestructive?.(tool.inputSchema.parse(input))).toBe(false)
   })
 
   test('marks delete as mutating and destructive', async () => {
@@ -543,8 +536,8 @@ describe('WorkflowTemplateAuthoringTool', () => {
     }
 
     expect(tool.inputSchema.safeParse(input).success).toBe(true)
-    expect(tool.isReadOnly(input)).toBe(false)
-    expect(tool.isDestructive?.(input)).toBe(true)
+    expect(tool.isReadOnly(tool.inputSchema.parse(input))).toBe(false)
+    expect(tool.isDestructive?.(tool.inputSchema.parse(input))).toBe(true)
   })
 
   test('calls the direct authoring service path for create and list when desktop server URL is absent', async () => {
@@ -554,15 +547,9 @@ describe('WorkflowTemplateAuthoringTool', () => {
 
     const createResult = await tool.call(
       { operation: 'create', template: validTemplate('direct-created-workflow') },
-      context,
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const listResult = await tool.call(
       { operation: 'list', source: 'user' },
-      context,
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
 
     expect(createResult.data).toMatchObject({
@@ -618,9 +605,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
           id: 'agent-development',
         },
       },
-      context,
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const block = tool.mapToolResultToToolResultBlockParam(result.data, 'tool-use-duplicate')
 
@@ -680,12 +664,10 @@ describe('WorkflowTemplateAuthoringTool', () => {
           id: 'direct-deleted-workflow',
         },
       },
-      context,
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const basisHash = inspectResult.data.affectedTemplate?.basisHash
     expect(basisHash).toMatch(/^sha256:[a-f0-9]{64}$/)
+    if (!basisHash) throw new Error('Expected basis hash')
 
     const deleteResult = await tool.call(
       {
@@ -696,9 +678,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
         },
         basisHash,
       },
-      context,
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
     const block = tool.mapToolResultToToolResultBlockParam(deleteResult.data, 'tool-use-delete')
 
@@ -729,6 +708,7 @@ describe('WorkflowTemplateAuthoringTool', () => {
     expect(block.content).toContain('affected=user:direct-deleted-workflow')
     const updatedConfig = await readWorkflowConfig()
     expect(updatedConfig).toMatchObject({ schemaVersion: 1 })
+    if (!updatedConfig || typeof updatedConfig !== "object" || !("templates" in updatedConfig)) throw new Error("Expected workflow config")
     expect(updatedConfig.templates).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'direct-deleted-workflow' }),
     ]))
@@ -744,9 +724,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
           phases: [],
         },
       },
-      contextFor(),
-      async () => ({ behavior: 'allow', updatedInput: {} }),
-      {} as never,
     )
 
     expect(result.data).toMatchObject({
@@ -845,9 +822,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
       for (const testCase of cases) {
         const result = await tool.call(
           testCase.input,
-          contextFor(),
-          async () => ({ behavior: 'allow', updatedInput: {} }),
-          {} as never,
         )
         const block = tool.mapToolResultToToolResultBlockParam(result.data, `tool-use-${testCase.operation}`)
 
@@ -963,9 +937,6 @@ describe('WorkflowTemplateAuthoringTool', () => {
       for (const testCase of cases) {
         const result = await tool.call(
           testCase.input,
-          contextFor(),
-          async () => ({ behavior: 'allow', updatedInput: {} }),
-          {} as never,
         )
         const block = tool.mapToolResultToToolResultBlockParam(result.data, `tool-use-${testCase.operation}`)
 

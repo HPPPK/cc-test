@@ -49,7 +49,7 @@ export function AutoUpdater({
     if (isUpdatingRef.current) {
       return;
     }
-    if ("production" === 'test' || "production" === 'development') {
+    if (false || false) {
       logForDebugging('AutoUpdater: Skipping update check in test/dev environment');
       return;
     }

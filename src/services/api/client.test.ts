@@ -1,3 +1,4 @@
+import type Anthropic from '@anthropic-ai/sdk'
 import { describe, expect, mock, test } from 'bun:test'
 import { runWithRuntimeEnv } from '../../utils/runtimeEnv.js'
 
@@ -17,6 +18,18 @@ mock.module('src/services/openaiAuth/fetch.js', () => ({
   buildOpenAICodexFetch: buildOpenAICodexFetchMock,
   shouldUseOpenAICodexAuth: shouldUseOpenAICodexAuthMock,
 }))
+
+async function captureClientRequestHeaders(client: Anthropic): Promise<Headers> {
+  const requests: Headers[] = []
+  const probe = client.withOptions({ fetch: async (input, init) => {
+    requests.push(new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)))
+    return new Response(JSON.stringify({ id: 'msg_test', type: 'message', role: 'assistant', model: 'test-model', content: [], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } }), { headers: { 'content-type': 'application/json' } })
+  } })
+  await probe.messages.create({ model: 'test-model', max_tokens: 1, messages: [{ role: 'user', content: 'test' }] })
+  const headers = requests[0]
+  if (!headers) throw new Error('Expected the mock transport to receive a request')
+  return headers
+}
 
 describe('resolveAnthropicClientApiKey', () => {
   test('does not inherit a local api key when a provider auth token is explicit', async () => {
@@ -80,9 +93,7 @@ describe('getAnthropicClient', () => {
       })
 
       expect(client.apiKey).toBeNull()
-      expect(client._options.defaultHeaders).toMatchObject({
-        Authorization: 'Bearer provider-bearer-token',
-      })
+      expect((await captureClientRequestHeaders(client)).get('authorization')).toBe('Bearer provider-bearer-token')
     } finally {
       if (originalAuthToken === undefined) delete process.env.ANTHROPIC_AUTH_TOKEN
       else process.env.ANTHROPIC_AUTH_TOKEN = originalAuthToken
@@ -111,10 +122,8 @@ describe('getAnthropicClient', () => {
         })
 
         expect(client.apiKey).toBeNull()
-        expect(client._options.baseURL).toBe('http://runtime.example/v1')
-        expect(client._options.defaultHeaders).toMatchObject({
-          Authorization: 'Bearer runtime-bearer-token',
-        })
+        expect(client.baseURL).toBe('http://runtime.example/v1')
+        expect((await captureClientRequestHeaders(client)).get('authorization')).toBe('Bearer runtime-bearer-token')
       },
     )
 
@@ -139,7 +148,7 @@ describe('getAnthropicClient', () => {
         })
 
         expect(client.apiKey).toBe('runtime-provider-key')
-        expect(client._options.baseURL).toBe('http://provider.example/v1')
+        expect(client.baseURL).toBe('http://provider.example/v1')
       },
     )
 

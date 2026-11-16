@@ -10,17 +10,17 @@ import TextInput from '../../../TextInput.js';
 import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import type { AgentWizardData } from '../types.js';
-export function DescriptionStep() {
+export function DescriptionStep(): ReactNode {
   const $ = _c(18);
   const {
     goNext,
     goBack,
     updateWizardData,
     wizardData
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
   const [whenToUse, setWhenToUse] = useState(wizardData.whenToUse || "");
   const [cursorOffset, setCursorOffset] = useState(whenToUse.length);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {

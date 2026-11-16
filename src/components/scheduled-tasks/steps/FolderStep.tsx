@@ -1,3 +1,4 @@
+import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import React, { type ReactNode, useMemo, useState } from 'react'
 import { Box, Text } from '../../../ink.js'
 import { getProjectRoot } from '../../../bootstrap/state.js'
@@ -25,6 +26,8 @@ export function FolderStep(): ReactNode {
     useWizard<ScheduledTaskWizardData>()
   const [customPath, setCustomPath] = useState(false)
   const [pathValue, setPathValue] = useState(wizardData.folder ?? '')
+  const [cursorOffset, setCursorOffset] = useState(pathValue.length)
+  const { columns } = useTerminalSize()
   const [pathError, setPathError] = useState<string | null>(null)
 
   const currentProject = getProjectRoot()
@@ -59,6 +62,9 @@ export function FolderStep(): ReactNode {
             <Text dimColor>Enter the full path to the working directory:</Text>
           </Box>
           <TextInput
+            columns={columns}
+            cursorOffset={Math.min(cursorOffset, pathValue.length)}
+            onChangeCursorOffset={setCursorOffset}
             value={pathValue}
             onChange={(v) => {
               setPathValue(v)
@@ -82,7 +88,7 @@ export function FolderStep(): ReactNode {
           />
           {pathError && (
             <Box marginTop={1}>
-              <Text color="red">{pathError}</Text>
+              <Text color="error">{pathError}</Text>
             </Box>
           )}
         </Box>

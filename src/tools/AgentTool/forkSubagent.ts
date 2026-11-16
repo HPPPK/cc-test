@@ -12,7 +12,7 @@ import type {
   Message as MessageType,
 } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { createUserMessage } from '../../utils/messages.js'
+import { createRuntimeUserMessage } from '../../utils/messages.js'
 import type { BuiltInAgentDefinition } from './loadAgentsDir.js'
 
 /**
@@ -130,7 +130,7 @@ export function buildForkedMessages(
       { level: 'error' },
     )
     return [
-      createUserMessage({
+      createRuntimeUserMessage({
         content: [
           { type: 'text' as const, text: buildChildMessage(directive) },
         ],
@@ -155,7 +155,7 @@ export function buildForkedMessages(
   // (renders as </function_results>\n\nHuman:<text>). One-off per-child construction,
   // not a repeated teacher, so low-priority. If we ever care, use smooshIntoToolResult
   // from src/utils/messages.ts to fold the directive into the last tool_result.content.
-  const toolResultMessage = createUserMessage({
+  const toolResultMessage = createRuntimeUserMessage({
     content: [
       ...toolResultBlocks,
       {

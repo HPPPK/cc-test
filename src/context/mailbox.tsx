@@ -5,7 +5,7 @@ const MailboxContext = createContext<Mailbox | undefined>(undefined);
 type Props = {
   children: React.ReactNode;
 };
-export function MailboxProvider(t0) {
+export function MailboxProvider(t0: Props): React.ReactNode {
   const $ = _c(3);
   const {
     children
@@ -28,7 +28,7 @@ export function MailboxProvider(t0) {
   }
   return t2;
 }
-export function useMailbox() {
+export function useMailbox(): Mailbox {
   const mailbox = useContext(MailboxContext);
   if (!mailbox) {
     throw new Error("useMailbox must be used within a MailboxProvider");

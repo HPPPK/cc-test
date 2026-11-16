@@ -8,6 +8,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
+import { installContractEnvironment, reserveContractPort, exchangeContractMessages } from '../fixtures/contract-environment.js'
+
+let restoreEnvironment: () => Promise<void>
 
 let server: ReturnType<typeof Bun.serve>
 let baseUrl: string
@@ -15,6 +18,7 @@ let tmpDir: string
 
 // Use dynamic import to avoid bundling issues
 async function startTestServer() {
+  restoreEnvironment = installContractEnvironment()
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-e2e-'))
   process.env.CLAUDE_CONFIG_DIR = tmpDir
 
@@ -22,9 +26,9 @@ async function startTestServer() {
   await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
 
   const { startServer } = await import('../../index.js')
-  const port = 13456 + Math.floor(Math.random() * 1000)
+  const port = reserveContractPort()
   server = startServer(port, '127.0.0.1')
-  baseUrl = `http://127.0.0.1:${port}`
+  baseUrl = `http://127.0.0.1:${server.port}`
 }
 
 async function api(method: string, path: string, body?: unknown): Promise<{ status: number; data: any }> {
@@ -43,7 +47,8 @@ describe('E2E: Full Flow', () => {
   })
 
   afterAll(async () => {
-    server?.stop()
+    server?.stop(true)
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -65,7 +70,7 @@ describe('E2E: Full Flow', () => {
 
   it('should return diagnostics', async () => {
     const { data } = await api('GET', '/api/status/diagnostics')
-    expect(data.platform).toBe('darwin')
+    expect(data.platform).toBe(process.platform)
     expect(data.configDir).toBe(tmpDir)
   })
 
@@ -158,7 +163,9 @@ describe('E2E: Full Flow', () => {
 
   it('should list available models', async () => {
     const { data } = await api('GET', '/api/models')
-    expect(data.models.length).toBe(4)
+    expect(data.models.map((model: any) => model.id)).toEqual([
+      'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+    ])
     expect(data.models[0].name).toBe('Opus 4.7')
   })
 
@@ -279,38 +286,16 @@ describe('E2E: Full Flow', () => {
   // 8. WebSocket Chat
   // =============================================
 
-  it('should connect via WebSocket', async () => {
-    const wsUrl = baseUrl.replace('http://', 'ws://') + '/ws/test-ws-session'
-
-    const messages: any[] = []
-    const ws = new WebSocket(wsUrl)
-
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => {
-        // Should receive connected message
-      }
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data as string)
-        messages.push(msg)
-        if (msg.type === 'connected') {
-          // Send a test message
-          ws.send(JSON.stringify({ type: 'user_message', content: 'Hello' }))
-        }
-        if (msg.type === 'status' && msg.state === 'idle' && messages.length > 2) {
-          ws.close()
-          resolve()
-        }
-      }
-      ws.onerror = reject
-      setTimeout(() => {
-        ws.close()
-        resolve()
-      }, 3000)
-    })
-
-    expect(messages[0].type).toBe('connected')
-    expect(messages[0].sessionId).toBe('test-ws-session')
-  })
+  it('should complete a local SDK chat over WebSocket', async () => {
+    const { status, data: created } = await api('POST', '/api/sessions', { workDir: tmpDir })
+    expect(status).toBe(201)
+    const messages = await exchangeContractMessages(`${baseUrl.replace('http://', 'ws://')}/ws/${created.sessionId}`,
+      { type: 'user_message', content: 'Hello' },
+      messages => messages.some(message => message.type === 'message_complete'))
+    expect(messages[0]).toMatchObject({ type: 'connected', sessionId: created.sessionId })
+    expect(messages.filter(message => message.type === 'content_delta').map(message => message.text).join('')).toContain('Echo: Hello')
+    expect(messages.filter(message => message.type === 'message_complete')).toHaveLength(1)
+  }, 15000)
 
   // =============================================
   // 9. Conversation Status

@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, spyOn, test } from 'bun:test'
 import { sessionService } from './sessionService.js'
 import * as fs from 'node:fs/promises'
@@ -6,6 +7,7 @@ import * as path from 'node:path'
 import { getPlaywrightExecutablePathFromRuntimeDir } from '../../tools/PlaywrightTool/runtime.js'
 import {
   ConversationService,
+  type SessionStartOptions,
   removeSessionRuntimePromptFile,
   writeSessionRuntimePromptFile,
 } from './conversationService.js'
@@ -25,33 +27,7 @@ type CliArgBuilder = {
 }
 
 type ChildEnvBuilder = {
-  buildChildEnv(
-    workDir: string,
-    sdkUrl?: string,
-    options?: {
-      expertSystemPrompt?: string
-      sessionId?: string
-      expertSessionId?: string
-      expertSharedPlaywrightSessionId?: string
-      expertPlaywrightCdpEndpoint?: string
-      expertForceVisiblePlaywright?: boolean
-      expertBrowserHumanVerificationHandoff?: boolean
-      expertBrowserVerificationFallbackSearchEngines?: Array<'Google' | '百度' | 'Bing' | '360'>
-      expertClosePlaywrightWhenAgentDone?: boolean
-      expertForbidSubagentAskUserQuestion?: boolean
-      expertFullToolAccess?: boolean
-      uiuxImageOnlyDelivery?: boolean
-      expertTemplateFillWrite?: boolean
-      expertResearchDeliveryPolicy?: {
-        questionId: string
-        acceptedChoiceId: string
-        continueChoiceIds: string[]
-        pauseChoiceIds: string[]
-      }
-      appendSystemPromptFile?: string
-      expertRuntimeActive?: boolean
-    },
-  ): Promise<Record<string, string>>
+  buildChildEnv(workDir: string, sdkUrl?: string, options?: SessionStartOptions): Promise<Record<string, string>>
 }
 
 describe('ConversationService expert tool policy', () => {
@@ -132,7 +108,7 @@ describe('ConversationService expert tool policy', () => {
 
       const expectedExecutable = getPlaywrightExecutablePathFromRuntimeDir(runtimeDir)
       expect(expectedExecutable).toBe(executable)
-      expect(childEnv.CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE).toBe(expectedExecutable)
+      expect(childEnv.CC_JIANGXIA_VISUAL_QA_BROWSER_EXECUTABLE).toBe(requireFixtureValue(expectedExecutable))
     } finally {
       if (previousRuntimeDir === undefined) delete process.env.CLAUDE_BROWSER_RUNTIME_DIR
       else process.env.CLAUDE_BROWSER_RUNTIME_DIR = previousRuntimeDir

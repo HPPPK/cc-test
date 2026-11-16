@@ -58,6 +58,7 @@ import {
   hasUltraplanKeyword,
   replaceUltraplanKeyword,
 } from '../ultraplan/keyword.js'
+import { messageKindMetadata, type MessageKindMetadata } from '../messageKind.js'
 import { processTextPrompt } from './processTextPrompt.js'
 export type ProcessUserInputContext = ToolUseContext & LocalJSXCommandContext
 
@@ -99,6 +100,10 @@ export async function processUserInput({
   skipSlashCommands,
   bridgeOrigin,
   isMeta,
+  messageKind,
+  isCompactSummary,
+  isVisibleInTranscriptOnly,
+  isSynthetic,
   skipAttachments,
 }: {
   input: string | Array<ContentBlockParam>
@@ -136,8 +141,21 @@ export async function processUserInput({
    * system-generated prompts.
    */
   isMeta?: boolean
+  messageKind?: MessageKindMetadata['messageKind']
+  isCompactSummary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isSynthetic?: boolean
   skipAttachments?: boolean
 }): Promise<ProcessUserInputBaseResult> {
+  const inputMetadata = messageKindMetadata({
+    type: 'user',
+    mode,
+    messageKind,
+    isMeta,
+    isCompactSummary,
+    isVisibleInTranscriptOnly,
+    isSynthetic,
+  })
   const inputString = typeof input === 'string' ? input : null
   // Immediately show the user input prompt while we are still processing the input.
   // Skip for isMeta (system-generated prompts like scheduled tasks) — those
@@ -168,6 +186,7 @@ export async function processUserInput({
     isMeta,
     skipAttachments,
     preExpansionInput,
+    inputMetadata,
   )
   queryCheckpoint('query_process_user_input_base_end')
 
@@ -216,6 +235,7 @@ export async function processUserInput({
         : 'Operation stopped by hook'
       result.messages.push(
         createUserMessage({
+          messageKind: 'internal_notification',
           content: message,
         }),
       )
@@ -296,6 +316,7 @@ async function processUserInputBase(
   isMeta?: boolean,
   skipAttachments?: boolean,
   preExpansionInput?: string,
+  inputMetadata?: Partial<MessageKindMetadata>,
 ): Promise<ProcessUserInputBaseResult> {
   let inputString: string | null = null
   let precedingInputBlocks: ContentBlockParam[] = []
@@ -438,7 +459,12 @@ async function processUserInputBase(
         const msg = `/${getCommandName(cmd)} isn't available over Remote Control.`
         return {
           messages: [
-            createUserMessage({ content: inputString, uuid }),
+            createUserMessage({
+              messageKind: 'user_input',
+              ...inputMetadata,
+              content: inputString,
+              uuid,
+            }),
             createCommandInputMessage(
               `<local-command-stdout>${msg}</local-command-stdout>`,
             ),
@@ -488,6 +514,7 @@ async function processUserInputBase(
       uuid,
       isAlreadyProcessing,
       canUseTool,
+      inputMetadata,
     )
     return addImageMetadataMessage(slashResult, imageMetadataTexts)
   }
@@ -523,6 +550,7 @@ async function processUserInputBase(
         attachmentMessages,
         context,
         setToolJSX,
+        inputMetadata,
       ),
       imageMetadataTexts,
     )
@@ -546,6 +574,7 @@ async function processUserInputBase(
       uuid,
       isAlreadyProcessing,
       canUseTool,
+      inputMetadata,
     )
     return addImageMetadataMessage(slashResult, imageMetadataTexts)
   }
@@ -583,6 +612,7 @@ async function processUserInputBase(
       uuid,
       permissionMode,
       isMeta,
+      inputMetadata,
     ),
     imageMetadataTexts,
   )
@@ -596,6 +626,7 @@ function addImageMetadataMessage(
   if (imageMetadataTexts.length > 0) {
     result.messages.push(
       createUserMessage({
+        messageKind: 'internal_notification',
         content: imageMetadataTexts.map(text => ({ type: 'text', text })),
         isMeta: true,
       }),

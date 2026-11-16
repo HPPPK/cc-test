@@ -35,7 +35,7 @@ const NON_MODAL_OVERLAYS = new Set(['autocomplete']);
  *   // ...
  * }
  */
-export function useRegisterOverlay(id, t0) {
+export function useRegisterOverlay(id: string, t0?: boolean): void {
   const $ = _c(8);
   const enabled = t0 === undefined ? true : t0;
   const store = useContext(AppStoreContext);
@@ -119,7 +119,7 @@ export function useRegisterOverlay(id, t0) {
 function _temp() {
   return instances.get(process.stdout)?.invalidatePrevFrame();
 }
-export function useIsOverlayActive() {
+export function useIsOverlayActive(): boolean {
   return useAppState(_temp2);
 }
 
@@ -137,7 +137,7 @@ export function useIsOverlayActive() {
 function _temp2(s) {
   return s.activeOverlays.size > 0;
 }
-export function useIsModalOverlayActive() {
+export function useIsModalOverlayActive(): boolean {
   return useAppState(_temp3);
 }
 function _temp3(s) {

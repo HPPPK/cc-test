@@ -23,6 +23,38 @@ describe('workflow parallelism', () => {
     })
   })
 
+  test('uses a fresh lane when the same workflow phase is entered again', () => {
+    const workflow = {
+      sessionId: 'session-1',
+      activePhaseId: 'delegate-implement',
+      phases: [{
+        id: 'delegate-implement',
+        startedAt: '2026-11-13T07:24:30.000Z',
+      }],
+      template: {
+        phases: [{
+          id: 'delegate-implement',
+          subagentPolicy: { maxParallel: 2 },
+        }],
+      },
+    }
+
+    expect(resolveWorkflowParallelism(workflow)).toEqual({
+      key: 'session-1:delegate-implement:2026-11-13T07:24:30.000Z',
+      maxParallel: 2,
+    })
+    expect(resolveWorkflowParallelism({
+      ...workflow,
+      phases: [{
+        id: 'delegate-implement',
+        startedAt: '2026-11-13T07:30:00.000Z',
+      }],
+    })).toEqual({
+      key: 'session-1:delegate-implement:2026-11-13T07:30:00.000Z',
+      maxParallel: 2,
+    })
+  })
+
   test('supports policy copied into a phase contract and ignores invalid workflow values', () => {
     expect(resolveWorkflowParallelism({
       sessionId: 'session-1',

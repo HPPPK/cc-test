@@ -4,16 +4,24 @@ import { expiredQuarantineEntries, loadQuarantineManifest, quarantinedPathSet, r
 describe('quarantine manifest', () => {
   test('loads the default manifest', () => {
     const manifest = loadQuarantineManifest()
-    expect(manifest.quarantined.length).toBeGreaterThan(0)
+    expect(Array.isArray(manifest.quarantined)).toBe(true)
   })
 
   test('default manifest review dates are still active', () => {
     validateQuarantineManifest(loadQuarantineManifest(), { enforceReviewDate: true })
   })
 
-  test('exposes quarantined paths as a set', () => {
-    const paths = quarantinedPathSet()
-    expect(paths.has('src/server/__tests__/providers-real.test.ts')).toBe(true)
+  test('an empty reviewed manifest is valid and excludes no tests', () => {
+    const manifest = { quarantined: [] }
+    validateQuarantineManifest(manifest, { enforceReviewDate: true })
+    expect(quarantinedPathSet(manifest).size).toBe(0)
+    expect(renderQuarantineSummary(manifest)).toContain('Entries: 0')
+  })
+
+  test('exposes only declared quarantined paths as a set', () => {
+    const paths = quarantinedPathSet({ quarantined: [{ id: 'fixture', path: 'fixture.test.ts', owner: 'maintainers', reason: 'fixture', reviewAfter: '2099-01-01', exitCriteria: 'pass deterministic suite' }] })
+    expect([...paths]).toEqual(['fixture.test.ts'])
+    expect(paths.has('src/server/__tests__/providers-real.test.ts')).toBe(false)
   })
 
   test('rejects duplicate ids', () => {

@@ -16,7 +16,7 @@ type Props = {
   scope: ConfigScope;
   onDone(): void;
 };
-export function MCPServerDesktopImportDialog(t0) {
+export function MCPServerDesktopImportDialog(t0: Props): React.ReactNode {
   const $ = _c(36);
   const {
     servers,
@@ -39,7 +39,7 @@ export function MCPServerDesktopImportDialog(t0) {
   } else {
     t2 = $[2];
   }
-  const [existingServers, setExistingServers] = useState(t2);
+  const [existingServers, setExistingServers] = useState<Record<string, ScopedMcpServerConfig>>(t2);
   let t3;
   let t4;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {

@@ -25,7 +25,7 @@ type Props = {
   onSelect: (matcher: string) => void;
   onCancel: () => void;
 };
-export function SelectMatcherMode(t0) {
+export function SelectMatcherMode(t0: Props): React.ReactNode {
   const $ = _c(25);
   const {
     selectedEvent,
@@ -62,7 +62,7 @@ export function SelectMatcherMode(t0) {
   } else {
     t1 = $[3];
   }
-  const matchersWithSources = t1;
+  const matchersWithSources: MatcherWithSource[] = t1;
   if (matchersForSelectedEvent.length === 0) {
     const t2 = `${selectedEvent} - Matchers`;
     let t3;

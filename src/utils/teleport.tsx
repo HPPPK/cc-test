@@ -31,7 +31,7 @@ import { truncateToWidth } from './format.js';
 import { findGitRoot, getDefaultBranch, getIsClean, gitExe } from './git.js';
 import { safeParseJSON } from './json.js';
 import { logError } from './log.js';
-import { createSystemMessage, createUserMessage } from './messages.js';
+import { createSystemMessage, createRuntimeUserMessage } from './messages.js';
 import { getMainLoopModel } from './model/model.js';
 import { isTranscriptMessage } from './sessionStorage.js';
 import { getSettings_DEPRECATED } from './settings/settings.js';
@@ -64,7 +64,7 @@ function createTeleportResumeSystemMessage(branchError: Error | null): SystemMes
  * @returns User message indicating session was resumed from another machine
  */
 function createTeleportResumeUserMessage() {
-  return createUserMessage({
+  return createRuntimeUserMessage({
     content: `This session is being continued from another machine. Application state may have changed. The updated working directory is ${getOriginalCwd()}`,
     isMeta: true
   });

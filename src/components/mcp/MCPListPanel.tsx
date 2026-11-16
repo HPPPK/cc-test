@@ -89,7 +89,7 @@ function groupServersByScope(serverList: ServerInfo[]): Map<ConfigScope, ServerI
   }
   return groups;
 }
-export function MCPListPanel(t0) {
+export function MCPListPanel(t0: Props): React.ReactNode {
   const $ = _c(78);
   const {
     servers,
@@ -405,7 +405,7 @@ export function MCPListPanel(t0) {
   }
   let t24;
   if ($[54] !== agentServers || $[55] !== renderAgentServerItem) {
-    t24 = agentServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>Agent MCPs</Text></Box>{[...new Set(agentServers.flatMap(_temp6))].map(agentName => <Box key={agentName} flexDirection="column" marginTop={1}><Box paddingLeft={2}><Text dimColor={true}>@{agentName}</Text></Box>{agentServers.filter(s_3 => s_3.sourceAgents.includes(agentName)).map(agentServer_2 => renderAgentServerItem(agentServer_2))}</Box>)}</Box>;
+    t24 = agentServers.length > 0 && <Box flexDirection="column" marginBottom={1}><Box paddingLeft={2}><Text bold={true}>Agent MCPs</Text></Box>{[...new Set<string>(agentServers.flatMap(_temp6))].map(agentName => <Box key={agentName} flexDirection="column" marginTop={1}><Box paddingLeft={2}><Text dimColor={true}>@{agentName}</Text></Box>{agentServers.filter(s_3 => s_3.sourceAgents.includes(agentName)).map(agentServer_2 => renderAgentServerItem(agentServer_2))}</Box>)}</Box>;
     $[54] = agentServers;
     $[55] = renderAgentServerItem;
     $[56] = t24;
@@ -483,7 +483,7 @@ export function MCPListPanel(t0) {
   }
   return t32;
 }
-function _temp6(s_2) {
+function _temp6(s_2: AgentMcpServerInfo) {
   return s_2.sourceAgents;
 }
 function _temp5(s_1) {

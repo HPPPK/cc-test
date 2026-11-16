@@ -22,7 +22,7 @@ type Props = {
   onKillAgent?: () => void;
   onBack?: () => void;
 };
-export function AsyncAgentDetailDialog(t0) {
+export function AsyncAgentDetailDialog(t0: Props): React.ReactNode {
   const $ = _c(54);
   const {
     agent,
@@ -165,9 +165,10 @@ export function AsyncAgentDetailDialog(t0) {
   } else {
     t14 = $[30];
   }
+  const recentActivities = agent.progress?.recentActivities
   let t15;
   if ($[31] !== agent.progress || $[32] !== agent.status || $[33] !== theme) {
-    t15 = agent.status === "running" && agent.progress?.recentActivities && agent.progress.recentActivities.length > 0 && <Box flexDirection="column"><Text bold={true} dimColor={true}>Progress</Text>{agent.progress.recentActivities.map((activity, i) => <Text key={i} dimColor={i < agent.progress.recentActivities.length - 1} wrap="truncate-end">{i === agent.progress.recentActivities.length - 1 ? "\u203A " : "  "}{renderToolActivity(activity, tools, theme)}</Text>)}</Box>;
+    t15 = agent.status === "running" && recentActivities && recentActivities.length > 0 && <Box flexDirection="column"><Text bold={true} dimColor={true}>Progress</Text>{recentActivities.map((activity, i) => <Text key={i} dimColor={i < recentActivities.length - 1} wrap="truncate-end">{i === recentActivities.length - 1 ? "\u203A " : "  "}{renderToolActivity(activity, tools, theme)}</Text>)}</Box>;
     $[31] = agent.progress;
     $[32] = agent.status;
     $[33] = theme;

@@ -77,6 +77,16 @@ import { getRuntimeEnvValue } from '../../utils/runtimeEnv.js'
  * 4. Fallback region (us-east5)
  */
 
+
+/** @internal Keep imports lazy and preserve their exact module types. */
+export async function loadOptionalProviderModule<T>(packageName: string, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load()
+  } catch (cause) {
+    throw new Error(`OPTIONAL_INTEGRATION_UNAVAILABLE: ${packageName}. Install the matching optional package to enable this integration.`, { cause })
+  }
+}
+
 function createStderrLogger(): ClientOptions['logger'] {
   return {
     error: (msg, ...args) =>
@@ -193,7 +203,7 @@ export async function getAnthropicClient({
     }),
   }
   if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_BEDROCK'))) {
-    const { AnthropicBedrock } = await import('@anthropic-ai/bedrock-sdk')
+    const { AnthropicBedrock } = await loadOptionalProviderModule('@anthropic-ai/bedrock-sdk', () => import('@anthropic-ai/bedrock-sdk'))
     // Use region override for small fast model if specified
     const awsRegion =
       model === getSmallFastModel() &&
@@ -232,7 +242,7 @@ export async function getAnthropicClient({
     return new AnthropicBedrock(bedrockArgs) as unknown as Anthropic
   }
   if (isEnvTruthy(getRuntimeEnvValue('CLAUDE_CODE_USE_FOUNDRY'))) {
-    const { AnthropicFoundry } = await import('@anthropic-ai/foundry-sdk')
+    const { AnthropicFoundry } = await loadOptionalProviderModule('@anthropic-ai/foundry-sdk', () => import('@anthropic-ai/foundry-sdk'))
     // Determine Azure AD token provider based on configuration
     // SDK reads ANTHROPIC_FOUNDRY_API_KEY by default
     let azureADTokenProvider: (() => Promise<string>) | undefined
@@ -245,7 +255,7 @@ export async function getAnthropicClient({
         const {
           DefaultAzureCredential: AzureCredential,
           getBearerTokenProvider,
-        } = await import('@azure/identity')
+        } = await loadOptionalProviderModule('@azure/identity', () => import('@azure/identity'))
         azureADTokenProvider = getBearerTokenProvider(
           new AzureCredential(),
           'https://cognitiveservices.azure.com/.default',
@@ -269,7 +279,7 @@ export async function getAnthropicClient({
     }
 
     const [{ AnthropicVertex }, { GoogleAuth }] = await Promise.all([
-      import('@anthropic-ai/vertex-sdk'),
+      loadOptionalProviderModule('@anthropic-ai/vertex-sdk', () => import('@anthropic-ai/vertex-sdk')),
       import('google-auth-library'),
     ])
     // TODO: Cache either GoogleAuth instance or AuthClient to improve performance

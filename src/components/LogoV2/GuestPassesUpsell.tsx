@@ -33,7 +33,7 @@ function shouldShowGuestPassesUpsell(): boolean {
   if (config.hasVisitedPasses) return false;
   return true;
 }
-export function useShowGuestPassesUpsell() {
+export function useShowGuestPassesUpsell(): boolean {
   const [show] = useState(_temp);
   return show;
 }
@@ -55,7 +55,7 @@ export function incrementGuestPassesSeenCount(): void {
 }
 
 // Condensed layout for mini welcome screen
-export function GuestPassesUpsell() {
+export function GuestPassesUpsell(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

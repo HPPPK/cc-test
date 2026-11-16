@@ -88,9 +88,11 @@ export function AppShell() {
           await useTabStore.getState().restoreTabs()
           if (cancelled) return
           const { activeTabId: activeId, tabs } = useTabStore.getState()
-          const activeTab = tabs.find((tab) => tab.sessionId === activeId)
-          if (activeId && activeTab?.type === 'session') {
-            useChatStore.getState().connectToSession(activeId)
+          for (const tab of tabs) {
+            if (tab.type !== 'session') continue
+            // Listen to background sessions without starting idle CLI processes.
+            if (tab.sessionId === activeId) useChatStore.getState().connectToSession(tab.sessionId)
+            else useChatStore.getState().connectToSession(tab.sessionId, { prewarm: false })
           }
           // Restore active team state after page refresh
           await useTeamStore.getState().restoreActiveTeam()

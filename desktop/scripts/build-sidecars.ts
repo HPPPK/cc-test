@@ -1,3 +1,4 @@
+import { getManagedNodeRuntime } from './managed-node-runtime.js'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -21,18 +22,18 @@ const MANAGED_GIT_ARCHIVE = `PortableGit-${MANAGED_GIT_VERSION}-64-bit.7z.exe`
 const MANAGED_GIT_URL = `https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.3/${MANAGED_GIT_ARCHIVE}`
 const MANAGED_GIT_SHA256 = 'ab00566336b5472120f9a52d34f2e79c5406535792acb0548001ffd0bd090e5d'
 
-const MANAGED_NODE_VERSION = '22.23.1'
-const MANAGED_NODE_DIRECTORY = `node-v${MANAGED_NODE_VERSION}-win-x64`
-const MANAGED_NODE_ARCHIVE = `${MANAGED_NODE_DIRECTORY}.zip`
-const MANAGED_NODE_URL = `https://nodejs.org/dist/v${MANAGED_NODE_VERSION}/${MANAGED_NODE_ARCHIVE}`
-const MANAGED_NODE_SHA256 = '7df0bc9375723f4a86b3aa1b7cc73342423d9677a8df4538aca31a049e309c29'
+const managedNode = getManagedNodeRuntime(targetTriple)
 const PLAYWRIGHT_BROWSER_RUNNER_FILE = 'playwright-browser-runner.cjs'
-const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core'] as const
+const PLAYWRIGHT_RUNTIME_PACKAGES = ['playwright', 'playwright-core', 'patchright', 'patchright-core'] as const
 const PLAYWRIGHT_NODE_RUNNER_EXTERNALS = [
   'playwright',
   'playwright/*',
   'playwright-core',
   'playwright-core/*',
+  'patchright',
+  'patchright/*',
+  'patchright-core',
+  'patchright-core/*',
   'chromium-bidi',
   'chromium-bidi/*',
   'chromium-bidi/lib/cjs/bidiMapper/BidiMapper',
@@ -40,11 +41,11 @@ const PLAYWRIGHT_NODE_RUNNER_EXTERNALS = [
 ]
 
 
-// 编译前先扫一遍 src/ 把所有缺失的 ant-internal 模块在磁盘上 stub 出来。
+// 编译前只读检查相对导入；缺失源码或类型契约直接报错，不生成 stub。
 // 见 desktop/scripts/scan-missing-imports.ts。
 console.log('[build-sidecars] scanning for missing imports...')
 const scanProc = Bun.spawn(
-  ['bun', 'run', path.join(desktopRoot, 'scripts/scan-missing-imports.ts')],
+  ['bun', 'run', path.join(desktopRoot, 'scripts/scan-missing-imports.ts'), '--check'],
   { cwd: repoRoot, stdout: 'inherit', stderr: 'inherit' },
 )
 const scanExit = await scanProc.exited
@@ -205,7 +206,7 @@ async function buildBundledPlaywrightRunner() {
 async function buildBundledGitRuntime() {
   const resourceDir = path.join(binariesDir, 'git-runtime')
   if (targetTriple !== 'x86_64-pc-windows-msvc') {
-    // Keep the configured resource path present for macOS builds without shipping a Windows runtime.
+    // Keep the configured resource path present without shipping Windows Git.
     await mkdir(resourceDir, { recursive: true })
     await writeFile(path.join(resourceDir, '.keep'), '')
     return
@@ -280,17 +281,17 @@ async function waitForManagedGitRuntime(runtimeDir: string): Promise<void> {
 
 async function buildBundledNodeRuntime() {
   const resourceDir = path.join(binariesDir, 'node-runtime')
-  if (targetTriple !== 'x86_64-pc-windows-msvc') {
-    // Keep the configured resource path present for macOS builds without shipping a Windows runtime.
+  if (!managedNode) {
+    // Unsupported targets retain an empty resource directory.
     await mkdir(resourceDir, { recursive: true })
     await writeFile(path.join(resourceDir, '.keep'), '')
     return
   }
 
-  const cacheRoot = path.join(desktopRoot, '.managed-node-runtime', 'win-x64')
-  const cacheDir = path.join(cacheRoot, MANAGED_NODE_DIRECTORY)
-  const archivePath = path.join(cacheRoot, MANAGED_NODE_ARCHIVE)
-  const targetDir = path.join(resourceDir, MANAGED_NODE_DIRECTORY)
+  const cacheRoot = path.join(desktopRoot, '.managed-node-runtime', managedNode.platform)
+  const cacheDir = path.join(cacheRoot, managedNode.directory)
+  const archivePath = path.join(cacheRoot, managedNode.archive)
+  const targetDir = path.join(resourceDir, managedNode.directory)
 
   if (!hasManagedNodeRuntime(cacheDir)) {
     await rm(cacheDir, { recursive: true, force: true })
@@ -300,22 +301,23 @@ async function buildBundledNodeRuntime() {
     if (existsSync(archivePath)) {
       archiveBytes = await readFile(archivePath)
     } else {
-      const response = await fetch(MANAGED_NODE_URL)
+      const response = await fetch(managedNode.url)
       if (!response.ok) throw new Error(`[build-sidecars] Node runtime download failed: ${response.status} ${response.statusText}`)
       archiveBytes = new Uint8Array(await response.arrayBuffer())
       await writeFile(archivePath, archiveBytes)
     }
 
     const actualSha256 = createHash('sha256').update(archiveBytes).digest('hex')
-    if (actualSha256 !== MANAGED_NODE_SHA256) {
+    if (actualSha256 !== managedNode.sha256) {
       await rm(archivePath, { force: true })
-      throw new Error(`[build-sidecars] Node runtime checksum mismatch: expected ${MANAGED_NODE_SHA256}, got ${actualSha256}`)
+      throw new Error(`[build-sidecars] Node runtime checksum mismatch: expected ${managedNode.sha256}, got ${actualSha256}`)
     }
 
     const escapePowerShellLiteral = (value: string) => value.replaceAll("'", "''")
-    const proc = Bun.spawn(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
-      `Expand-Archive -LiteralPath '${escapePowerShellLiteral(archivePath)}' -DestinationPath '${escapePowerShellLiteral(cacheRoot)}' -Force`,
-    ], {
+    const extractCommand = managedNode.windows
+      ? ['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', `Expand-Archive -LiteralPath '${escapePowerShellLiteral(archivePath)}' -DestinationPath '${escapePowerShellLiteral(cacheRoot)}' -Force`]
+      : ['tar', '-xzf', archivePath, '-C', cacheRoot]
+    const proc = Bun.spawn(extractCommand, {
       cwd: repoRoot,
       stdout: 'inherit',
       stderr: 'inherit',
@@ -339,7 +341,9 @@ async function buildBundledNodeRuntime() {
 }
 
 function hasManagedNodeRuntime(runtimeDir: string): boolean {
-  return ['node.exe', 'npm.cmd', 'npx.cmd'].every(entry => existsSync(path.join(runtimeDir, entry)))
+  if (!managedNode) return false
+  const required = managedNode.windows ? ['node.exe', 'npm.cmd', 'npx.cmd'] : [managedNode.executable]
+  return required.every(entry => existsSync(path.join(runtimeDir, entry)))
 }
 async function copyBundledWorkflowPacks() {
   const sourceDir = path.join(repoRoot, 'src', 'server', 'packs')
@@ -430,10 +434,10 @@ async function compileExecutable({
     minify: { whitespace: true, identifiers: true, syntax: true },
     sourcemap: 'none',
     target: 'bun',
-    // 可选 npm 包：开 telemetry / 用 Bedrock/Vertex 等
-    // 替代 provider 时才需要，全部不在顶层 package.json 里。标 external
-    // 让 bun build 跳过解析；运行时 import 在没装时自然失败，由 try/catch
-    // 或 feature() gate 兜底。
+    // Optional telemetry exporters and alternative-provider integrations remain external.
+    // Some AWS helpers are installed for source builds; packaged provider integrations
+    // still require their optional SDKs. Archive/plugin dependencies (fflate and MCPB)
+    // are bundled so maintained archive operations work outside the checkout.
     external: [
       // OpenTelemetry exporters（开 OTEL_* env 时才加载）
       '@opentelemetry/exporter-trace-otlp-grpc',
@@ -453,9 +457,12 @@ async function compileExecutable({
       '@anthropic-ai/foundry-sdk',
       '@anthropic-ai/vertex-sdk',
       '@azure/identity',
-      // ant-internal / 可选工具
-      '@anthropic-ai/mcpb',
-      'fflate',
+      // Private optional binaries are intentionally absent. Runtime loaders validate
+      // availability and preserve their existing command/image/URL fallbacks.
+      'audio-capture-napi',
+      'image-processor-napi',
+      'url-handler-napi',
+      // Optional developer tooling
       'react-devtools-core',
     ],
     compile: {

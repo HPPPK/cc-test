@@ -51,7 +51,7 @@ import {
 import type { REPLHookContext } from '../../utils/hooks/postSamplingHooks.js'
 import {
   createMemorySavedMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
 } from '../../utils/messages.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { logEvent } from '../analytics/index.js'
@@ -413,7 +413,7 @@ export function initExtractMemories(): void {
             )
 
       const result = await runForkedAgent({
-        promptMessages: [createUserMessage({ content: userPrompt })],
+        promptMessages: [createRuntimeUserMessage({ content: userPrompt })],
         cacheSafeParams,
         canUseTool,
         querySource: 'extract_memories',

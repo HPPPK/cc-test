@@ -9,6 +9,10 @@ import { formatTokens } from '../utils/format.js';
 import { getSourceDisplayName, type SettingSource } from '../utils/settings/constants.js';
 import { plural } from '../utils/stringUtils.js';
 import { ContextSuggestions } from './ContextSuggestions.js';
+function MessageBreakdownDisplay({ messageBreakdown }: { messageBreakdown: ContextData["messageBreakdown"] }): React.ReactNode {
+  if (!messageBreakdown) return null
+  return <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Message breakdown</Text><Box flexDirection="column" marginLeft={1}><Box><Text>Tool calls: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.toolCallTokens)} tokens</Text></Box><Box><Text>Tool results: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.toolResultTokens)} tokens</Text></Box><Box><Text>Attachments: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.attachmentTokens)} tokens</Text></Box><Box><Text>Assistant messages (non-tool): </Text><Text dimColor={true}>{formatTokens(messageBreakdown.assistantMessageTokens)} tokens</Text></Box><Box><Text>User messages (non-tool-result): </Text><Text dimColor={true}>{formatTokens(messageBreakdown.userMessageTokens)} tokens</Text></Box></Box>{messageBreakdown.toolCallsByType.length > 0 && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Top tools</Text>{messageBreakdown.toolCallsByType.slice(0, 5).map(_temp26)}</Box>}{messageBreakdown.attachmentsByType.length > 0 && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Top attachments</Text>{messageBreakdown.attachmentsByType.slice(0, 5).map(_temp27)}</Box>}</Box>
+}
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
 
 /**
@@ -18,7 +22,7 @@ const RESERVED_CATEGORY_NAME = 'Autocompact buffer';
  * their context was rewritten — the <collapsed> placeholders are isMeta
  * and don't appear in the conversation view.
  */
-function CollapseStatus() {
+function CollapseStatus(): React.ReactNode {
   const $ = _c(2);
   if (feature("CONTEXT_COLLAPSE")) {
     let t0;
@@ -38,7 +42,7 @@ function CollapseStatus() {
         const {
           health: h
         } = s;
-        const parts = [];
+        const parts: string[] = [];
         if (s.collapsedSpans > 0) {
           parts.push(`${s.collapsedSpans} ${plural(s.collapsedSpans, "span")} summarized (${s.collapsedMessages} msgs)`);
         }
@@ -46,7 +50,7 @@ function CollapseStatus() {
           parts.push(`${s.stagedSpans} staged`);
         }
         const summary = parts.length > 0 ? parts.join(", ") : h.totalSpawns > 0 ? `${h.totalSpawns} ${plural(h.totalSpawns, "spawn")}, nothing staged yet` : "waiting for first trigger";
-        let line2 = null;
+        let line2: React.ReactNode = null;
         if (h.totalErrors > 0) {
           line2 = <Text color="warning">Collapse errors: {h.totalErrors}/{h.totalSpawns} spawns failed{h.lastError ? ` (last: ${h.lastError.slice(0, 60)})` : ""}</Text>;
         } else {
@@ -102,7 +106,7 @@ function groupBySource<T extends {
 interface Props {
   data: ContextData;
 }
-export function ContextVisualization(t0) {
+export function ContextVisualization(t0: Props): React.ReactNode {
   const $ = _c(87);
   const {
     data
@@ -304,7 +308,7 @@ export function ContextVisualization(t0) {
   }
   let t10;
   if ($[54] !== systemPromptSections) {
-    t10 = systemPromptSections && systemPromptSections.length > 0 && false && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] System prompt sections</Text>{systemPromptSections.map(_temp20)}</Box>;
+    t10 = systemPromptSections && systemPromptSections.length > 0 && false && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] System prompt sections</Text>{systemPromptSections?.map(_temp20)}</Box>;
     $[54] = systemPromptSections;
     $[55] = t10;
   } else {
@@ -336,7 +340,7 @@ export function ContextVisualization(t0) {
   }
   let t14;
   if ($[62] !== messageBreakdown) {
-    t14 = messageBreakdown && false && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Message breakdown</Text><Box flexDirection="column" marginLeft={1}><Box><Text>Tool calls: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.toolCallTokens)} tokens</Text></Box><Box><Text>Tool results: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.toolResultTokens)} tokens</Text></Box><Box><Text>Attachments: </Text><Text dimColor={true}>{formatTokens(messageBreakdown.attachmentTokens)} tokens</Text></Box><Box><Text>Assistant messages (non-tool): </Text><Text dimColor={true}>{formatTokens(messageBreakdown.assistantMessageTokens)} tokens</Text></Box><Box><Text>User messages (non-tool-result): </Text><Text dimColor={true}>{formatTokens(messageBreakdown.userMessageTokens)} tokens</Text></Box></Box>{messageBreakdown.toolCallsByType.length > 0 && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Top tools</Text>{messageBreakdown.toolCallsByType.slice(0, 5).map(_temp26)}</Box>}{messageBreakdown.attachmentsByType.length > 0 && <Box flexDirection="column" marginTop={1}><Text bold={true}>[ANT-ONLY] Top attachments</Text>{messageBreakdown.attachmentsByType.slice(0, 5).map(_temp27)}</Box>}</Box>;
+    t14 = messageBreakdown && false && <MessageBreakdownDisplay messageBreakdown={messageBreakdown} />;
     $[62] = messageBreakdown;
     $[63] = t14;
   } else {

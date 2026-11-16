@@ -74,6 +74,16 @@ export async function handleDeepLinkUri(uri: string): Promise<number> {
   return 0
 }
 
+/** Read an optional native event without claiming an invalid module supplied a URL. */
+export async function readOptionalUrlEvent(importer: () => Promise<unknown>, timeoutMs = 5000): Promise<string | null> {
+  try {
+    const mod = await importer()
+    if (typeof mod !== 'object' || mod === null || !('waitForUrlEvent' in mod) || typeof mod.waitForUrlEvent !== 'function') return null
+    const url: unknown = mod.waitForUrlEvent(timeoutMs)
+    return typeof url === 'string' && url.length > 0 ? url : null
+  } catch { return null }
+}
+
 /**
  * Handle the case where claude was launched as the app bundle's executable
  * by macOS (via URL scheme). Uses the NAPI module to receive the URL from
@@ -92,8 +102,7 @@ export async function handleUrlSchemeLaunch(): Promise<number | null> {
   }
 
   try {
-    const { waitForUrlEvent } = await import('url-handler-napi')
-    const url = waitForUrlEvent(5000)
+    const url = await readOptionalUrlEvent(() => import('url-handler-napi'))
     if (!url) {
       return null
     }

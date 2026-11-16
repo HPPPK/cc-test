@@ -845,6 +845,7 @@ export class PackRegistryService {
 
         // Also scan ZIP entrypoints for skills not listed in packagedSkills
         for (const entrypoint of pack.manifest.entrypoints.skills) {
+          if (packagedSkills.some(skill => skill.entrypoint === entrypoint)) continue
           const text = await zip.readText(entrypoint)
           const frontmatter = parseFrontmatter(text)
           const entryKey = `${pack.packId}:${entrypoint}`

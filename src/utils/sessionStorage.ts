@@ -1,3 +1,4 @@
+import { attachMessageKind, messageKindMetadata, isHumanInputMessage, resolveMessageKind } from './messageKind.js'
 import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import type { Dirent } from 'fs'
@@ -1075,6 +1076,7 @@ class Project {
             message.type === 'user' ? (getPromptId() ?? undefined) : undefined,
           agentId,
           ...message,
+          ...messageKindMetadata(message),
           // Session-stamp fields MUST come after the spread. On --fork-session
           // and --resume, messages arrive as SerializedMessage (carries source
           // sessionId/cwd/etc. because removeExtraFields only strips parentUuid
@@ -1776,9 +1778,7 @@ export function getFirstMeaningfulUserMessageTextContent<T extends Message>(
   transcript: T[],
 ): string | undefined {
   for (const msg of transcript) {
-    if (msg.type !== 'user' || msg.isMeta) continue
-    // Skip compact summary messages - they should not be treated as the first prompt
-    if ('isCompactSummary' in msg && msg.isCompactSummary) continue
+    if (msg.type !== 'user' || !isHumanInputMessage(msg)) continue
 
     const content = msg.message?.content
     if (!content) continue
@@ -1830,7 +1830,7 @@ export function getFirstMeaningfulUserMessageTextContent<T extends Message>(
 
       // Skip non-meaningful messages (local command output, hook output,
       // autonomous tick prompts, task notifications, pure IDE metadata tags)
-      if (SKIP_FIRST_PROMPT_PATTERN.test(textContent)) {
+      if (msg.messageKind !== 'user_input' && SKIP_FIRST_PROMPT_PATTERN.test(textContent)) {
         continue
       }
 
@@ -1845,7 +1845,7 @@ export function removeExtraFields(
 ): SerializedMessage[] {
   return transcript.map(m => {
     const { isSidechain, parentUuid, ...serializedMessage } = m
-    return serializedMessage
+    return attachMessageKind(serializedMessage)
   })
 }
 
@@ -1893,6 +1893,10 @@ function applyPreservedSegmentRelinks(
   }
   // No seg anywhere → no-op. findUnresolvedToolUse etc. read the full map.
   if (!lastSeg) return
+  const headUuid = validateUuid(lastSeg.headUuid)
+  const tailUuid = validateUuid(lastSeg.tailUuid)
+  const anchorUuid = validateUuid(lastSeg.anchorUuid)
+  if (!headUuid || !tailUuid || !anchorUuid) return
 
   // Seg stale (no-seg boundary came after): skip relink, still prune at
   // absolute — otherwise the stale preserved chain becomes a phantom leaf.
@@ -1903,12 +1907,12 @@ function applyPreservedSegmentRelinks(
   const preservedUuids = new Set<UUID>()
   if (segIsLive) {
     const walkSeen = new Set<UUID>()
-    let cur = messages.get(lastSeg.tailUuid)
+    let cur = messages.get(tailUuid)
     let reachedHead = false
     while (cur && !walkSeen.has(cur.uuid)) {
       walkSeen.add(cur.uuid)
       preservedUuids.add(cur.uuid)
-      if (cur.uuid === lastSeg.headUuid) {
+      if (cur.uuid === headUuid) {
         reachedHead = true
         break
       }
@@ -1921,9 +1925,9 @@ function applyPreservedSegmentRelinks(
       // attachment pushed to mutableMessages but never recordTranscript'd
       // (SDK subprocess restarted before next turn's qe:420 flush).
       logEvent('tengu_relink_walk_broken', {
-        tailInTranscript: messages.has(lastSeg.tailUuid),
-        headInTranscript: messages.has(lastSeg.headUuid),
-        anchorInTranscript: messages.has(lastSeg.anchorUuid),
+        tailInTranscript: messages.has(tailUuid),
+        headInTranscript: messages.has(headUuid),
+        anchorInTranscript: messages.has(anchorUuid),
         walkSteps: walkSeen.size,
         transcriptSize: messages.size,
       })
@@ -1932,18 +1936,18 @@ function applyPreservedSegmentRelinks(
   }
 
   if (segIsLive) {
-    const head = messages.get(lastSeg.headUuid)
+    const head = messages.get(headUuid)
     if (head) {
-      messages.set(lastSeg.headUuid, {
+      messages.set(headUuid, {
         ...head,
-        parentUuid: lastSeg.anchorUuid,
+        parentUuid: anchorUuid,
       })
     }
     // Tail-splice: anchor's other children → tail. No-op if already pointing
     // at tail (the useLogMessages race case).
     for (const [uuid, msg] of messages) {
-      if (msg.parentUuid === lastSeg.anchorUuid && uuid !== lastSeg.headUuid) {
-        messages.set(uuid, { ...msg, parentUuid: lastSeg.tailUuid })
+      if (msg.parentUuid === anchorUuid && uuid !== headUuid) {
+        messages.set(uuid, { ...msg, parentUuid: tailUuid })
       }
     }
     // Zero stale usage: on-disk input_tokens reflect pre-compact context
@@ -2428,8 +2432,7 @@ export async function loadTranscriptFromFile(
 function hasVisibleUserContent(message: TranscriptMessage): boolean {
   if (message.type !== 'user') return false
 
-  // Meta messages are not shown to the user
-  if (message.isMeta) return false
+  if (!isHumanInputMessage(message)) return false
 
   const content = message.message?.content
   if (!content) return false
@@ -2458,6 +2461,8 @@ function hasVisibleUserContent(message: TranscriptMessage): boolean {
  */
 function hasVisibleAssistantContent(message: TranscriptMessage): boolean {
   if (message.type !== 'assistant') return false
+  const kind = resolveMessageKind(message)
+  if (kind === 'context_summary' || kind === 'internal_notification' || kind === 'system_event') return false
 
   const content = message.message?.content
   if (!content || !Array.isArray(content)) return false
@@ -3672,7 +3677,7 @@ export async function loadTranscriptFile(
         if (entry.parentUuid && progressBridge.has(entry.parentUuid)) {
           entry.parentUuid = progressBridge.get(entry.parentUuid) ?? null
         }
-        messages.set(entry.uuid, entry)
+        messages.set(entry.uuid, attachMessageKind(entry))
         // Compact boundary: prior marble-origami-commit entries reference
         // messages that won't be in the post-boundary chain. The >5MB
         // backward-scan path discards them naturally by never reading the
@@ -4511,7 +4516,7 @@ export async function findUnresolvedToolUse(
     const transcriptPath = getTranscriptPath()
     const { messages } = await loadTranscriptFile(transcriptPath)
 
-    let toolUseMessage = null
+    let toolUseMessage: AssistantMessage | null = null
 
     // Find the tool use but make sure there's not also a result
     for (const message of messages.values()) {
@@ -4844,7 +4849,7 @@ async function readLiteMetadata(
 /**
  * Scans a chunk of text for the first meaningful user prompt.
  */
-function extractFirstPromptFromChunk(chunk: string): string {
+export function extractFirstPromptFromChunk(chunk: string): string {
   let start = 0
   let hasTickMessages = false
   let firstCommandFallback = ''
@@ -4857,13 +4862,10 @@ function extractFirstPromptFromChunk(chunk: string): string {
     if (!line.includes('"type":"user"') && !line.includes('"type": "user"')) {
       continue
     }
-    if (line.includes('"tool_result"')) continue
-    if (line.includes('"isMeta":true') || line.includes('"isMeta": true'))
-      continue
 
     try {
       const entry = jsonParse(line) as Record<string, unknown>
-      if (entry.type !== 'user') continue
+      if (entry.type !== 'user' || !isHumanInputMessage(entry)) continue
 
       const message = entry.message as Record<string, unknown> | undefined
       if (!message) continue
@@ -4915,7 +4917,7 @@ function extractFirstPromptFromChunk(chunk: string): string {
         const bashInput = extractTag(result, 'bash-input')
         if (bashInput) return `! ${bashInput}`
 
-        if (SKIP_FIRST_PROMPT_PATTERN.test(result)) {
+        if (entry.messageKind !== 'user_input' && SKIP_FIRST_PROMPT_PATTERN.test(result)) {
           if (
             (feature('PROACTIVE') || feature('KAIROS')) &&
             result.startsWith(`<${TICK_TAG}>`)

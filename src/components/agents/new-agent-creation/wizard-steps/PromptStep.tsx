@@ -10,17 +10,17 @@ import TextInput from '../../../TextInput.js';
 import { useWizard } from '../../../wizard/index.js';
 import { WizardDialogLayout } from '../../../wizard/WizardDialogLayout.js';
 import type { AgentWizardData } from '../types.js';
-export function PromptStep() {
+export function PromptStep(): ReactNode {
   const $ = _c(20);
   const {
     goNext,
     goBack,
     updateWizardData,
     wizardData
-  } = useWizard();
+  } = useWizard<AgentWizardData>();
   const [systemPrompt, setSystemPrompt] = useState(wizardData.systemPrompt || "");
   const [cursorOffset, setCursorOffset] = useState(systemPrompt.length);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = {

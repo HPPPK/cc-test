@@ -1,3 +1,4 @@
+import type { MessageKindMetadata } from '../../../src/utils/messageKind'
 import type { PermissionMode } from './settings'
 import type { RuntimeSelection } from './runtime'
 
@@ -69,7 +70,7 @@ export type UIAttachment = {
 
 // ─── Server → Client ──────────────────────────────────────────────
 
-export type ServerMessage =
+export type ServerMessage = Partial<MessageKindMetadata> & (
   | { type: 'connected'; sessionId: string }
   | { type: 'content_start'; blockType: 'text' | 'tool_use'; toolName?: string; toolUseId?: string; parentToolUseId?: string }
   | { type: 'content_delta'; text?: string; toolInput?: string }
@@ -105,6 +106,7 @@ export type ServerMessage =
   | { type: 'team_deleted'; teamName: string }
   | { type: 'task_update'; taskId: string; status: string; progress?: string }
   | { type: 'session_title_updated'; sessionId: string; title: string }
+)
 
 export type TokenUsage = {
   input_tokens: number
@@ -255,7 +257,7 @@ export type TaskSummaryItem = {
   activeForm?: string
 }
 
-export type UIMessage =
+export type UIMessage = Partial<MessageKindMetadata> & (
   | { id: string; type: 'user_text'; content: string; modelContent?: string; timestamp: number; attachments?: UIAttachment[]; pending?: boolean; queued?: boolean }
   | { id: string; type: 'assistant_text'; content: string; timestamp: number; model?: string }
   | { id: string; type: 'thinking'; content: string; timestamp: number }
@@ -296,3 +298,4 @@ export type UIMessage =
     }
   | { id: string; type: 'error'; message: string; code: string; timestamp: number }
   | { id: string; type: 'task_summary'; tasks: TaskSummaryItem[]; timestamp: number }
+)

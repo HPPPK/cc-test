@@ -1,3 +1,4 @@
+import { upgradeWebSearchSettings } from '../../utils/settings/webSearchSettings.js'
 /**
  * Settings Service — 读写用户级和项目级设置文件
  *
@@ -28,7 +29,7 @@ const VALID_PERMISSION_MODES = [
 export type PermissionMode = (typeof VALID_PERMISSION_MODES)[number]
 
 export class SettingsService {
-  private static writeLocks = new Map<string, Promise<void>>()
+  private static writeLocks = new Map<string, Promise<unknown>>()
   private projectRoot?: string
 
   constructor(projectRoot?: string) {
@@ -156,6 +157,9 @@ export class SettingsService {
     await this.withWriteLock(filePath, async () => {
       const current = await this.readJsonFile(filePath)
       const merged = Object.assign({}, current, settings)
+      if (settings.webSearch && typeof settings.webSearch === 'object' && !Array.isArray(settings.webSearch)) {
+        merged.webSearch = upgradeWebSearchSettings({ ...upgradeWebSearchSettings(current.webSearch), ...settings.webSearch })
+      }
       await this.writeJsonFile(filePath, merged)
     })
   }
@@ -169,6 +173,9 @@ export class SettingsService {
     await this.withWriteLock(filePath, async () => {
       const current = await this.readJsonFile(filePath)
       const merged = Object.assign({}, current, settings)
+      if (settings.webSearch && typeof settings.webSearch === 'object' && !Array.isArray(settings.webSearch)) {
+        merged.webSearch = upgradeWebSearchSettings({ ...upgradeWebSearchSettings(current.webSearch), ...settings.webSearch })
+      }
       await this.writeJsonFile(filePath, merged)
     })
   }

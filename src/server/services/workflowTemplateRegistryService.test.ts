@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -10,6 +11,33 @@ import {
 } from './workflowTemplateRegistryService.js'
 import { PackRegistryService, getWorkflowPackStorageDir } from './packRegistryService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
+import { WorkflowSessionCreateService } from './workflowSessionCreateService.js'
+import { WorkflowSessionStateService } from './workflowSessionStateService.js'
+import { resolveWorkflowPhaseSkills } from './workflowPhaseSkillResolver.js'
+
+test('canonical development pack keeps reviewer receipts and phase inputs aligned with runtime', async () => {
+  const pack = path.resolve(import.meta.dir, '../../../workflows/efficient-constrained-dev-debug-workflow-v5')
+  const template = JSON.parse(await fs.readFile(path.join(pack, 'workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json'), 'utf8'))
+  const permissions = await fs.readFile(path.join(pack, 'permissions/permissions.json'), 'utf8')
+  const skill = await fs.readFile(path.join(pack, 'skills/workflow-lightweight-batch-review/SKILL.md'), 'utf8')
+  expect(skill).toContain('"workflowReview"')
+  expect(skill).toContain('"readyForNextBatch"')
+  expect(skill).not.toContain('allowNextBatch')
+  expect(permissions).toContain('workflowReview.readyForNextBatch')
+  for (const phase of template.phases) {
+    for (const instructions of [phase.instructions, phase.contract.instructions]) {
+      expect(instructions).toContain('Do not read a new phase output as an existing input')
+    }
+    expect(phase.requiredIntake ?? []).not.toContain('.workflow/runs/<runId>/implementation-log.md')
+  }
+  const implementation = template.phases.find((phase: { id: string }) => phase.id === 'delegate-implement')
+  for (const contract of [implementation, implementation.contract]) {
+    expect(contract.instructions).toContain('QA and Debug omit workflow_parallel_plan')
+    expect(contract.instructions).toContain('"workflowReview"')
+    expect(contract.subagentPolicy.reviewerRequiredReturn).toContain('workflowReview.readyForNextBatch')
+    expect(JSON.stringify(contract)).not.toContain('allowNextBatch')
+  }
+})
 
 type WorkflowTemplateFixture = {
   schemaVersion: 1 | 2
@@ -51,9 +79,11 @@ let originalBundledSkillsDir: string | undefined
 let originalPacksDir: string | undefined
 
 const editableDefaultTemplateIds = new Set([
+  'skills-development',
   'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
 ])
 
 function userAuthoredTemplates(result: Awaited<ReturnType<WorkflowTemplateRegistryService['listTemplates']>>) {
@@ -276,7 +306,7 @@ describe('workflow template registry service', () => {
       id: 'efficient-constrained-dev-debug-workflow-v5',
       source: 'user',
       schemaVersion: 2,
-      version: '24',
+      version: '32',
       name: expect.any(String),
       labels: expect.arrayContaining(['new-product', 'enhancement', 'ux-copy', 'error-handling']),
       phases: expect.arrayContaining([
@@ -312,8 +342,8 @@ describe('workflow template registry service', () => {
 
     const developmentTemplate = result.templates.find((template) => template.id === 'efficient-constrained-dev-debug-workflow-v5')
     expect(developmentTemplate?.labels).not.toContain('bug')
-    expect(developmentTemplate?.stopConditions.join('\n')).not.toContain('problem-investigation')
-    expect(developmentTemplate?.stopConditions.join('\n')).not.toContain('Bug routes')
+    expect(requireFixtureValue(developmentTemplate?.stopConditions).join('\n')).not.toContain('problem-investigation')
+    expect(requireFixtureValue(developmentTemplate?.stopConditions).join('\n')).not.toContain('Bug routes')
     const developmentRouteContext = developmentTemplate?.phases.find((phase) => phase.id === 'route-context')
     const developmentScopePlan = developmentTemplate?.phases.find((phase) => phase.id === 'scope-plan')
     const developmentDeliveryPlan = developmentTemplate?.phases.find((phase) => phase.id === 'delivery-plan')
@@ -360,18 +390,19 @@ describe('workflow template registry service', () => {
     expect(developmentRouteContext?.instructions).toContain('uiDirectionNeeded')
     expect(developmentRouteContext?.instructions).toContain("Work dynamically from the user's request")
     expect(developmentRouteContext?.instructions).toContain('Do not use a fixed question sequence')
-    expect(developmentRouteContext?.instructions).toContain('Ask exactly one AskUserQuestion at a time and use each answer before deciding the next context-dependent question')
+    expect(developmentRouteContext?.instructions).toContain('Batch independent questions in one AskUserQuestion and process all answers before deciding dependent follow-up questions')
     expect(developmentRouteContext?.instructions).toContain('Do not begin detailed product discovery or UI/UX work')
     expect(developmentRouteContext?.instructions).toContain("Update the current stage's progress/artifact")
     expect(developmentRouteContext?.instructions).toContain('all blocking stage issues are explicitly processed')
     expect(developmentRouteContext?.instructions).not.toContain('微信定时发送任务小程序')
     expect(developmentRouteContext?.instructions).not.toContain('fixed low-randomness app-framing checklist')
-    expect(developmentRouteContext?.executionRules.join('\n')).toContain('Do not discuss detailed product feature modules')
-    expect(developmentRouteContext?.executionRules.join('\n')).toContain('while still allowing the user to adjust fields one by one')
-    expect(developmentRouteContext?.handoffRules.join('\n')).toContain('Do not proceed to detailed feature brainstorming until appFraming is confirmed')
+    expect(requireFixtureValue(developmentRouteContext?.executionRules).join('\n')).toContain('Do not discuss detailed product feature modules')
+    expect(requireFixtureValue(developmentRouteContext?.executionRules).join('\n')).toContain('while still allowing the user to adjust fields one by one')
+    expect(requireFixtureValue(developmentRouteContext?.handoffRules).join('\n')).toContain('Do not proceed to detailed feature brainstorming until appFraming is confirmed')
     expect(developmentRouteContext?.completionCriteria).toMatchObject({
       description: expect.stringContaining('final app-framing summary includes all eight fields'),
     })
+    expect(developmentScopePlan?.outputArtifacts?.find(artifact => artifact.id === 'work-order')?.description).toContain('No source material means no empty material fields are required')
     expect(developmentScopePlan).toMatchObject({
       name: expect.any(String),
       objective: expect.stringContaining('Lock the first-version product scope'),
@@ -408,11 +439,13 @@ describe('workflow template registry service', () => {
     expect(developmentScopePlan?.instructions).toContain('Product Scope / User Roles / Core User Flows / MVP Features / Non-goals / Acceptance Criteria / Scenario Cases / User-facing Copy Requirements')
     expect(developmentScopePlan?.instructions).toContain('sourceMaterialSummary')
     expect(developmentScopePlan?.instructions).toContain('sourceMaterialFindings')
+    expect(developmentScopePlan?.instructions).toContain('If no material was provided, do not require empty material fields')
+    expect(developmentScopePlan?.handoffRules?.join('\n')).toContain('sourceMaterialSummary only when sourceMaterialType is not none')
     expect(developmentScopePlan?.instructions).toContain('uiUxDirection')
     expect(developmentScopePlan?.instructions).toContain('referencePolicy')
-    expect(developmentScopePlan?.executionRules.join('\n')).toContain('Do not create implementation batches')
-    expect(developmentScopePlan?.executionRules.join('\n')).toContain('Do not plan target files, database schema, API routes, or component structure')
-    expect(developmentScopePlan?.handoffRules.join('\n')).toContain('Coder Subagent must not be invoked until after the delivery plan phase')
+    expect(requireFixtureValue(developmentScopePlan?.executionRules).join('\n')).toContain('Do not create implementation batches')
+    expect(requireFixtureValue(developmentScopePlan?.executionRules).join('\n')).toContain('Do not plan target files, database schema, API routes, or component structure')
+    expect(requireFixtureValue(developmentScopePlan?.handoffRules).join('\n')).toContain('Coder Subagent must not be invoked until after the delivery plan phase')
     expect(developmentScopePlan?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 2 can complete only when'),
     })
@@ -463,9 +496,9 @@ describe('workflow template registry service', () => {
     expect(developmentDeliveryPlan?.instructions).toContain('shortest meaningful user-path validation')
     expect(developmentDeliveryPlan?.instructions).toContain('pairwise isolation review')
     expect(developmentDeliveryPlan?.instructions).toContain('Coder -> Reviewer is strictly serial')
-    expect(developmentDeliveryPlan?.executionRules.join('\n')).toContain('do not edit production code or run implementation agents')
-    expect(developmentDeliveryPlan?.executionRules.join('\n')).toContain('complete Batch DAG must include every accepted requirement')
-    expect(developmentDeliveryPlan?.handoffRules.join('\n')).toContain('complete validated Batch DAG and parallelism rationale')
+    expect(requireFixtureValue(developmentDeliveryPlan?.executionRules).join('\n')).toContain('do not edit production code or run implementation agents')
+    expect(requireFixtureValue(developmentDeliveryPlan?.executionRules).join('\n')).toContain('complete Batch DAG must include every accepted requirement')
+    expect(requireFixtureValue(developmentDeliveryPlan?.handoffRules).join('\n')).toContain('complete validated Batch DAG and parallelism rationale')
     expect(developmentDeliveryPlan?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 3 can complete only when'),
     })
@@ -499,7 +532,7 @@ describe('workflow template registry service', () => {
         contextPolicy: 'brief-only',
         reviewerReadOnly: true,
         coderRequiredReturn: ['changedFiles', 'completedItems', 'testsRun', 'testResults', 'blockers', 'risks', 'summary', 'readyForReview'],
-        reviewerRequiredReturn: ['reviewStatus', 'userScenarioChecked', 'evidence', 'requiredFixes', 'remainingRisks', 'allowNextBatch'],
+        reviewerRequiredReturn: ['workflowReview.reviewStatus', 'workflowReview.requiredFixes', 'workflowReview.readyForNextBatch', 'userScenarioChecked', 'evidence', 'remainingRisks'],
       }),
     })
     expect(developmentImplement?.requiredIntake).toEqual(expect.arrayContaining([
@@ -510,11 +543,11 @@ describe('workflow template registry service', () => {
     expect(developmentImplement?.instructions).toContain('Inside one batch the sequence is fixed: Coder implements, then Reviewer reads and reviews that completed batch')
     expect(developmentImplement?.instructions).toContain('Use the persisted Batch DAG and current Context Capsule')
     expect(developmentImplement?.instructions).toContain('Coder: change only the agreed scope')
-    expect(developmentImplement?.instructions).toContain('Reviewer: use workflow:lightweight-batch-review')
+    expect(developmentImplement?.instructions).toContain('Reviewer: apply the supplied workflow:lightweight-batch-review guidance as a method reference')
     expect(developmentImplement?.instructions).toContain('Do not skip accepted tasks')
     expect(developmentImplement?.instructions).toContain('A needs-fix result returns to the same Coder batch')
-    expect(developmentImplement?.handoffRules.join('\n')).toContain('Handoff changed files, checks, user-path evidence, blockers, remaining risks')
-    expect(developmentImplement?.executionRules.join('\n')).toContain('Do not start long-running app preview servers')
+    expect(requireFixtureValue(developmentImplement?.handoffRules).join('\n')).toContain('Handoff changed files, checks, user-path evidence, blockers, remaining risks')
+    expect(requireFixtureValue(developmentImplement?.executionRules).join('\n')).toContain('Do not start long-running app preview servers')
     expect(developmentImplement?.completionCriteria).toMatchObject({
       description: expect.stringContaining('Stage 4 can complete only when'),
     })
@@ -548,7 +581,7 @@ describe('workflow template registry service', () => {
     expect(developmentValidation?.instructions).toContain('validate the finished change; do not code or repair here')
     expect(developmentValidation?.instructions).toContain('Run the smallest meaningful end-to-end user path')
     expect(developmentValidation?.instructions).toContain('Static inspection or a test exit code alone cannot prove a user-facing path')
-    expect(developmentValidation?.executionRules.join('\n')).toContain('do not edit production or test files')
+    expect(requireFixtureValue(developmentValidation?.executionRules).join('\n')).toContain('do not edit production or test files')
     expect(developmentValidation?.completionCriteria.description).toContain('shortest affected user path has observed pass evidence')
     expect(developmentValidation?.skillBindings).toContain('codex:test-generation')
     expect(developmentValidation?.skillBindings).not.toContain('codex:edit-and-test')
@@ -606,14 +639,14 @@ describe('workflow template registry service', () => {
         allowedActions: expect.arrayContaining(['subagent-coder', 'subagent-reviewer']),
       }),
     })
-    expect(featureImplement?.executionRules.join('\n')).toContain('Do not ask the user to manually run commands or view the app')
+    expect(requireFixtureValue(featureImplement?.executionRules).join('\n')).toContain('Do not ask the user to manually run commands or view the app')
     expect(featureValidation).toMatchObject({
       name: '验证预览',
       runtimeContract: expect.objectContaining({
         allowedActions: expect.arrayContaining(['preview-start', 'preview-stop', 'subagent-qa', 'route']),
       }),
     })
-    expect(featureValidation?.executionRules.join('\n')).toContain('Validate every accepted task and cross-task regression')
+    expect(requireFixtureValue(featureValidation?.executionRules).join('\n')).toContain('Validate every accepted task and cross-task regression')
 
     const debugTemplate = result.templates.find((template) => template.id === 'debug-repair-workflow-v8')
     const debugFix = debugTemplate?.phases.find((phase) => phase.id === 'debug-fix')
@@ -635,7 +668,44 @@ describe('workflow template registry service', () => {
         forbiddenActions: expect.arrayContaining(['production edits', 'auto-start follow-up workflow']),
       }),
     })
-    expect(debugFinish?.executionRules.join('\n')).toContain('Do not perform production repair in this phase')
+    expect(requireFixtureValue(debugFinish?.executionRules).join('\n')).toContain('Do not perform production repair in this phase')
+  })
+
+  test('loads skills-development with its private skills and independent question policy', async () => {
+    const result = await new WorkflowTemplateRegistryService().listTemplates()
+    const workflow = result.templates.find(template => template.id === 'skills-development')
+    expect(result.invalidTemplates).toEqual([])
+    expect(workflow).toMatchObject({ id: 'skills-development', version: '17', packId: 'skills-development' })
+    expect(workflow?.phases.map(phase => phase.id)).toEqual([
+      'route-context', 'scope-plan', 'delivery-plan', 'delegate-implement',
+      'scenario-review', 'local-preview', 'finish-memory',
+    ])
+    expect(workflow?.phases[1]?.runtimeContract?.questionPolicy).toMatchObject({
+      exactQuestionCount: 1, minChoices: 2, maxChoices: 3,
+      requireChoiceDescriptions: true, disallowComputerUse: true,
+    })
+    const catalog = await new PackRegistryService().listPackSkillCatalogEntries()
+    const ownedSkills = catalog.filter(entry => entry.packId === 'skills-development')
+    expect(ownedSkills.length).toBeGreaterThan(0)
+    expect(ownedSkills.some(entry => entry.name === 'workflow:evidence-governed-harness')).toBe(true)
+    expect(ownedSkills.every(entry => entry.sourcePath?.startsWith('pack://skills-development/'))).toBe(true)
+    if (!workflow) throw new Error('skills-development is missing')
+    const sessionId = 'skills-development-pack-smoke'
+    const workspace = path.join(tempConfigDir, 'workspace')
+    await fs.mkdir(workspace)
+    await new WorkflowSessionCreateService().createWorkflowSessionMetadata(
+      sessionId, workspace, workflow, { templateId: workflow.id, request: '创建一个产品原型' },
+    )
+    const { state } = await new WorkflowSessionStateService().readState(sessionId)
+    expect(state?.templateIdentity.id).toBe('skills-development')
+    expect(state?.activePhaseId).toBe('route-context')
+    const { resolutions } = await resolveWorkflowPhaseSkills({
+      requiredPackId: 'skills-development',
+      references: [{ name: 'superpowers:writing-plans' }, { name: 'workflow:evidence-governed-harness' }],
+      catalog,
+    })
+    expect(resolutions.every(resolution => resolution.status === 'available')).toBe(true)
+    expect(resolutions.every(resolution => resolution.provenance?.sourcePath?.startsWith('pack://skills-development/'))).toBe(true)
   })
 
   test('keeps a valid linear user template with more than five phases startable', async () => {
@@ -1332,7 +1402,7 @@ describe('workflow template registry service', () => {
         name: 'project-phase-helper',
         source: 'project',
       }))
-      expect(catalog.find((entry) => entry.name === 'project-phase-helper')?.sourcePath.replace(/\\/g, '/'))
+      expect(catalog.find((entry) => entry.name === 'project-phase-helper')?.sourcePath?.replace(/\\/g, '/'))
         .toMatch(/\.claude\/skills\/project-phase-helper\/SKILL\.md$/)
     } finally {
       process.chdir(originalCwd)
@@ -1390,7 +1460,7 @@ describe('workflow template registry service', () => {
         name: 'managed-helper',
         source: 'managed',
       }))
-      expect(catalog.find((entry) => entry.name === 'app-root-helper')?.sourcePath.replace(/\\/g, '/'))
+      expect(catalog.find((entry) => entry.name === 'app-root-helper')?.sourcePath?.replace(/\\/g, '/'))
         .toMatch(/src\/skills\/bundled\/app-root-helper\/SKILL\.md$/)
     } finally {
       process.chdir(originalCwd)
@@ -2019,6 +2089,27 @@ describe('workflow template registry service', () => {
     expect(sha256(installedData)).toBe(sha256(bundledLatest))
   })
 
+  test('keeps the shipped stradn workflow on the managed bundled update path', async () => {
+    const workflowId = 'stradn-managed-development-workflow-v1'
+    const bundleDir = path.join(tempConfigDir, 'bundled-workflows')
+    await installBundledWorkflowPack(bundleDir, workflowId, '100', 'Official initial Stradn workflow.')
+    process.env.CLAUDE_PACKS_DIR = bundleDir
+    resetWorkflowTemplateRegistryForTests()
+
+    const service = new WorkflowTemplateRegistryService()
+    await service.listTemplates()
+
+    const bundledLatest = await installBundledWorkflowPack(bundleDir, workflowId, '101', 'Official latest Stradn workflow.')
+    resetWorkflowTemplateRegistryForTests()
+    const result = await service.listTemplates()
+    const template = result.templates.find((candidate) => candidate.id === workflowId)
+    const installedData = new Uint8Array(await fs.readFile(path.join(getWorkflowPackStorageDir(), `${workflowId}.zip`)))
+
+    expect(template).toEqual(expect.objectContaining({ id: workflowId, version: '101' }))
+    expect(template?.bundledUpdate).toBeUndefined()
+    expect(sha256(installedData)).toBe(sha256(bundledLatest))
+  })
+
   test('offers hashes for a user-modified managed workflow and applies a confirmed bundled update with backup', async () => {
     const workflowId = 'efficient-constrained-dev-debug-workflow-v5'
     const bundleDir = path.join(tempConfigDir, 'bundled-workflows')
@@ -2089,7 +2180,7 @@ describe('workflow template registry service', () => {
     expect(sha256(new Uint8Array(await fs.readFile(localPath)))).toBe(sha256(localCustom))
   })
 
-  test('does not expose bundled updates for workflow ids outside the three managed workflows', async () => {
+  test('does not expose bundled updates for workflow ids outside the managed workflows', async () => {
     const workflowId = 'unmanaged-workflow'
     const bundleDir = path.join(tempConfigDir, 'bundled-workflows')
     await installBundledWorkflowPack(bundleDir, workflowId, '101', 'Official unmanaged workflow.')

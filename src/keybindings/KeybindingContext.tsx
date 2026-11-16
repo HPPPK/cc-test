@@ -56,7 +56,7 @@ type ProviderProps = {
   handlerRegistryRef: RefObject<Map<string, Set<HandlerRegistration>>>;
   children: React.ReactNode;
 };
-export function KeybindingProvider(t0) {
+export function KeybindingProvider(t0: ProviderProps): React.ReactNode {
   const $ = _c(24);
   const {
     bindings,
@@ -88,7 +88,7 @@ export function KeybindingProvider(t0) {
       if (!registry.has(registration.action)) {
         registry.set(registration.action, new Set());
       }
-      registry.get(registration.action).add(registration);
+      registry.get(registration.action)?.add(registration);
       return () => {
         const handlers = registry.get(registration.action);
         if (handlers) {
@@ -181,7 +181,7 @@ export function KeybindingProvider(t0) {
   return t6;
 }
 function _temp() {}
-export function useKeybindingContext() {
+export function useKeybindingContext(): KeybindingContextValue {
   const ctx = useContext(KeybindingContext);
   if (!ctx) {
     throw new Error("useKeybindingContext must be used within KeybindingProvider");
@@ -193,7 +193,7 @@ export function useKeybindingContext() {
  * Optional hook that returns undefined outside of KeybindingProvider.
  * Useful for components that may render before provider is available.
  */
-export function useOptionalKeybindingContext() {
+export function useOptionalKeybindingContext(): KeybindingContextValue | null {
   return useContext(KeybindingContext);
 }
 
@@ -212,7 +212,7 @@ export function useOptionalKeybindingContext() {
  * }
  * ```
  */
-export function useRegisterKeybindingContext(context, t0) {
+export function useRegisterKeybindingContext(context: KeybindingContextName, t0: boolean): void {
   const $ = _c(5);
   const isActive = t0 === undefined ? true : t0;
   const keybindingContext = useOptionalKeybindingContext();

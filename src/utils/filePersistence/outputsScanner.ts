@@ -64,7 +64,7 @@ export async function findModifiedFiles(
   outputsDir: string,
 ): Promise<string[]> {
   // Use recursive flag to get all entries in one call
-  let entries: Awaited<ReturnType<typeof fs.readdir>>
+  let entries: import('node:fs').Dirent[]
   try {
     entries = await fs.readdir(outputsDir, {
       withFileTypes: true,

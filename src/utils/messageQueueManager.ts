@@ -14,6 +14,7 @@ import type {
   QueuePriority,
 } from '../types/textInputTypes.js'
 import type { PastedContent } from './config.js'
+import { messageKindMetadata } from './messageKind.js'
 import { extractTextContent } from './messages.js'
 import { objectGroupBy } from './objectGroupBy.js'
 import { recordQueueOperation } from './sessionStorage.js'
@@ -51,6 +52,116 @@ function logOperation(operation: QueueOperation, content?: string): void {
 // ============================================================================
 
 const commandQueue: QueuedCommand[] = []
+export type TaskNotificationOwner = {
+  sessionId?: string
+  attempt?: number
+  runId?: string
+  phaseId?: string
+  batchId?: string
+  role?: string
+  workflowAttempt?: number
+}
+type NotificationSnapshot = {
+  runId?: string, phaseId?: string, batchId?: string, workflowRole?: string,
+  agentRunId?: string, agentId?: string, attempt?: number, status?: string,
+}
+export type NotificationState = { tasks?: Record<string, { startTime?: number }>, workflow?: unknown, notificationAuthorityUnavailable?: boolean }
+type NotificationWorkflow = {
+  mode?: string, sessionId?: string, activeWorkflowRunId?: string, activePhaseId?: string | null, runStatus?: string, status?: string,
+  pendingRoute?: unknown, pendingConfirmation?: unknown,
+  runtimeContract?: { phaseStates?: Record<string, { taskSnapshots?: NotificationSnapshot[] }> },
+}
+// Runtime-only provenance: no queue or transcript persistence format changes.
+const notificationOwners = new WeakMap<QueuedCommand, TaskNotificationOwner>()
+const consumedTaskNotifications = new Set<string>()
+function notificationKey(command: QueuedCommand, owner = notificationOwners.get(command)): string | undefined {
+  return command.mode === 'task-notification' && command.messageKind !== 'user_input' && command.taskNotificationId ? JSON.stringify([owner?.sessionId ?? getSessionId(), command.taskNotificationId, owner?.attempt ?? null, command.agentId ?? null]) : undefined
+}
+function rememberConsumed(key: string): void {
+  consumedTaskNotifications.add(key)
+  if (consumedTaskNotifications.size > 2000) consumedTaskNotifications.delete(consumedTaskNotifications.values().next().value!)
+}
+function notificationWorkflow(state: NotificationState): NotificationWorkflow | undefined {
+  return state.workflow && typeof state.workflow === 'object' ? state.workflow as NotificationWorkflow : undefined
+}
+export function taskNotificationOwner(taskId: string, state: NotificationState): TaskNotificationOwner {
+  const workflow = notificationWorkflow(state)
+  const snapshot = Object.values(workflow?.runtimeContract?.phaseStates ?? {}).flatMap(phase => phase.taskSnapshots ?? [])
+    .find(task => (task.agentRunId ?? task.agentId) === taskId)
+  return { sessionId: workflow?.sessionId ?? getSessionId(), attempt: state.tasks?.[taskId]?.startTime,
+    ...(snapshot ? { runId: snapshot.runId, phaseId: snapshot.phaseId, batchId: snapshot.batchId,
+      role: snapshot.workflowRole, workflowAttempt: snapshot.attempt } : {}) }
+}
+export function acknowledgeTaskNotification(taskId: string, attempt?: number): void {
+  for (const command of [...commandQueue]) {
+    const owner = notificationOwners.get(command)
+    if (command.mode !== 'task-notification' || command.taskNotificationId !== taskId
+      || command.messageKind === 'user_input'
+      || owner?.sessionId !== getSessionId() || (attempt !== undefined && owner.attempt !== attempt)) continue
+    const key = notificationKey(command)
+    if (key) rememberConsumed(key)
+    remove([command])
+  }
+  // Also cover completion read immediately before its producer enqueues.
+  if (attempt !== undefined) rememberConsumed(JSON.stringify([getSessionId(), taskId, attempt, null]))
+}
+export function acknowledgeTaskNotifications(commands: readonly QueuedCommand[]): void {
+  for (const command of commands) {
+    if (notificationOwners.get(command)?.sessionId !== getSessionId()) continue
+    const key = notificationKey(command)
+    if (command.mode === 'task-notification' && key) rememberConsumed(key)
+  }
+}
+export function taskNotificationsWaitingForUser(state: NotificationState): boolean {
+  if (state.notificationAuthorityUnavailable) return true
+  const workflow = notificationWorkflow(state)
+  return workflow?.mode === 'workflow' && Boolean(workflow.pendingConfirmation || workflow.pendingRoute
+    || ['waiting_for_user', 'paused', 'blocked', 'stopped', 'cancelled', 'completed'].includes(workflow.runStatus ?? '')
+    || ['paused', 'completed', 'cancelled', 'exited'].includes(workflow.status ?? ''))
+}
+export function taskNotificationReady(command: QueuedCommand, state: NotificationState): boolean {
+  if (command.mode !== 'task-notification') return true
+  const owner = notificationOwners.get(command)
+  if (owner && owner.sessionId !== getSessionId()) return false
+  if (command.messageKind === 'user_input') return true
+  return !taskNotificationsWaitingForUser(state)
+}
+export function pruneObsoleteTaskNotifications(state: NotificationState): void {
+  const workflow = notificationWorkflow(state)
+  if (workflow?.sessionId && workflow.sessionId !== getSessionId()) return
+  const snapshots = Object.values(workflow?.runtimeContract?.phaseStates ?? {}).flatMap(phase => phase.taskSnapshots ?? [])
+  const obsolete = commandQueue.filter(command => {
+    if (command.mode !== 'task-notification' || command.messageKind === 'user_input' || !command.taskNotificationId) return false
+    const owner = notificationOwners.get(command)
+    if (!owner || owner.sessionId !== getSessionId()) return false
+    const key = notificationKey(command)
+    if (key && consumedTaskNotifications.has(key)) return true
+    if (owner.attempt !== undefined && (state.tasks?.[command.taskNotificationId]?.startTime ?? owner.attempt) > owner.attempt) return true
+    if (!owner.runId || !owner.phaseId || !owner.batchId || !owner.role) return false
+    if ((workflow?.activeWorkflowRunId && workflow.activeWorkflowRunId !== owner.runId)
+      || (workflow?.activePhaseId && workflow.activePhaseId !== owner.phaseId)) return true
+    const latest = snapshots.find(task => task.runId === owner.runId && task.phaseId === owner.phaseId
+      && task.batchId === owner.batchId && task.workflowRole === owner.role)
+    const currentAgent = latest?.agentRunId ?? latest?.agentId
+    // A confirmed scope/rework reset explicitly revokes the former owner.
+    // Missing metadata or an absent slot alone is not evidence of supersession.
+    if (latest && !currentAgent && ['pending', 'waiting_dependency'].includes(latest.status ?? '')) return true
+    return Boolean(currentAgent && (currentAgent !== command.taskNotificationId
+      || (owner.workflowAttempt !== undefined && (latest?.attempt ?? owner.workflowAttempt) > owner.workflowAttempt)))
+  })
+  acknowledgeTaskNotifications(obsolete)
+  remove(obsolete)
+}
+export function takeTaskNotificationBatch(first: QueuedCommand, state: NotificationState): QueuedCommand[] {
+  if (first.mode !== 'task-notification' || first.messageKind === 'user_input') return [first]
+  return [first, ...dequeueAllMatching(command => command.mode === 'task-notification'
+    && command.messageKind !== 'user_input' && command.agentId === first.agentId && taskNotificationReady(command, state))]
+}
+export function restoreTaskNotificationBatch(commands: readonly QueuedCommand[]): void {
+  for (const command of commands) {
+    if (command.mode === 'task-notification') enqueuePendingNotification(command, notificationOwners.get(command))
+  }
+}
 /** Frozen snapshot — recreated on every mutation for useSyncExternalStore. */
 let snapshot: readonly QueuedCommand[] = Object.freeze([])
 const queueChanged = createSignal()
@@ -98,6 +209,11 @@ export function getCommandQueueLength(): number {
   return commandQueue.length
 }
 
+export function hasPendingTaskNotification(taskId: string): boolean {
+  return commandQueue.some(command => command.mode === 'task-notification' && command.taskNotificationId === taskId
+    && (notificationOwners.get(command)?.sessionId ?? getSessionId()) === getSessionId())
+}
+
 /**
  * Check if there are commands in the queue.
  */
@@ -139,8 +255,18 @@ export function enqueue(command: QueuedCommand): void {
  * Convenience wrapper that defaults priority to 'later' so user input
  * is never starved by system messages.
  */
-export function enqueuePendingNotification(command: QueuedCommand): void {
-  commandQueue.push({ ...command, priority: command.priority ?? 'later' })
+export function enqueuePendingNotification(command: QueuedCommand, owner?: TaskNotificationOwner): void {
+  // This producer knows these are generated notifications. Preserve an explicit
+  // caller kind (for example a human teammate message) and independent flags.
+  const queued: QueuedCommand = {
+    ...command,
+    ...messageKindMetadata({ ...command, messageKind: command.messageKind ?? 'internal_notification' }),
+    priority: command.priority ?? 'later',
+  }
+  notificationOwners.set(queued, { ...owner, sessionId: owner?.sessionId ?? getSessionId() })
+  const key = notificationKey(queued)
+  if (key && (consumedTaskNotifications.has(key) || commandQueue.some(item => notificationKey(item) === key))) return
+  commandQueue.push(queued)
   notifySubscribers()
   logOperation(
     'enqueue',
@@ -333,6 +459,7 @@ export function clearCommandQueue(): void {
  */
 export function resetCommandQueue(): void {
   commandQueue.length = 0
+  consumedTaskNotifications.clear()
   snapshot = Object.freeze([])
 }
 

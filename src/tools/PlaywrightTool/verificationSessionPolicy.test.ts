@@ -38,14 +38,14 @@ describe('Playwright verification session policy', () => {
   })
 })
 
-test('expired verification parks its page and releases the shared lock without closing or verifying it', async () => {
-  const { expireHumanVerificationGate, HUMAN_VERIFICATION_WAIT_MS } = await import('./verificationSessionPolicy.js')
+test('elapsed time never releases an unresolved verification gate or its page ownership', async () => {
+  const { expireHumanVerificationGate } = await import('./verificationSessionPolicy.js')
   const page = { closed: false }
-  const session = { page, ownedPages: new Set([page]), humanVerificationGate: { createdAt: 10 }, preservedVerificationPages: new Set<typeof page>() }
-  expect(expireHumanVerificationGate(session, 10 + HUMAN_VERIFICATION_WAIT_MS - 1)).toBe(false)
-  expect(expireHumanVerificationGate(session, 10 + HUMAN_VERIFICATION_WAIT_MS)).toBe(true)
-  expect(session.humanVerificationGate).toBeUndefined()
-  expect(session.preservedVerificationPages.has(page)).toBe(true)
-  expect(session.ownedPages.has(page)).toBe(false)
+  const gate = { createdAt: 10 }
+  const session = { page, ownedPages: new Set([page]), humanVerificationGate: gate, preservedVerificationPages: new Set<typeof page>() }
+  expect(expireHumanVerificationGate(session, 10 + 24 * 60 * 60_000)).toBe(false)
+  expect(session.humanVerificationGate).toBe(gate)
+  expect(session.preservedVerificationPages.has(page)).toBe(false)
+  expect(session.ownedPages.has(page)).toBe(true)
   expect(page.closed).toBe(false)
 })

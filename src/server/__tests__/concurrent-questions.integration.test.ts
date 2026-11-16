@@ -1,3 +1,4 @@
+import { requireFixtureValue } from './fixtureAssertions.js'
 import { expect, test, spyOn } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -27,7 +28,7 @@ test('concurrent AskUserQuestion requests survive out-of-order answers and recon
     hostname: '127.0.0.1', port: 0,
     fetch(req, server) {
       const sdk = new URL(req.url).pathname === '/sdk'
-      if (server.upgrade(req, { data: { sessionId: id, channel: sdk ? 'sdk' : 'client', sdkToken: sdk ? token : null, connectedAt: Date.now(), serverPort: server.port, serverHost: '127.0.0.1' } })) return
+      if (server.upgrade(req, { data: { sessionId: id, channel: sdk ? 'sdk' : 'client', sdkToken: sdk ? token : null, connectedAt: Date.now(), serverPort: requireFixtureValue(server.port), serverHost: '127.0.0.1' } })) return
       return new Response('upgrade required', { status: 400 })
     },
     websocket: handleWebSocket,

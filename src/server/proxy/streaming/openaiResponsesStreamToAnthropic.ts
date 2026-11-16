@@ -4,12 +4,15 @@
  * Original work by Jason Young, MIT License
  */
 
+import { isDeepStrictEqual } from 'node:util'
 import { stringifyOpenAIToolArguments } from '../transform/toolArguments.js'
 
 type StreamState = {
   nextContentIndex: number
   indexByKey: Map<string, number>        // content part key → Anthropic index
   toolIndexByItemId: Map<string, number> // tool item ID → Anthropic index
+  toolArgumentsByItemId: Map<string, string>
+  finishedToolItemIds: Set<string>
   model: string
   messageStarted: boolean
   messageStopped: boolean
@@ -34,6 +37,8 @@ export function openaiResponsesStreamToAnthropic(
     nextContentIndex: 0,
     indexByKey: new Map(),
     toolIndexByItemId: new Map(),
+    toolArgumentsByItemId: new Map(),
+    finishedToolItemIds: new Set(),
     model,
     messageStarted: false,
     messageStopped: false,
@@ -216,9 +221,10 @@ function processEvent(
     case 'response.function_call_arguments.delta': {
       const itemId = (data.item_id as string) || ''
       const index = state.toolIndexByItemId.get(itemId)
-      if (index === undefined) break
+      if (index === undefined || state.finishedToolItemIds.has(itemId)) break
 
       const delta = stringifyOpenAIToolArguments(data.delta)
+      state.toolArgumentsByItemId.set(itemId, (state.toolArgumentsByItemId.get(itemId) || '') + delta)
       controller.enqueue(encoder.encode(formatSse('content_block_delta', {
         type: 'content_block_delta',
         index,
@@ -245,7 +251,37 @@ function processEvent(
     case 'response.function_call_arguments.done': {
       const itemId = (data.item_id as string) || ''
       const index = state.toolIndexByItemId.get(itemId)
-      if (index === undefined) break
+      if (index === undefined || state.finishedToolItemIds.has(itemId)) break
+
+      // The final event carries the complete arguments. Some compatible providers
+      // omit deltas or finish after a partial delta; append only the unseen suffix.
+      if (data.arguments != null) {
+        const argumentsJson = stringifyOpenAIToolArguments(data.arguments)
+        const emitted = state.toolArgumentsByItemId.get(itemId) || ''
+        let remaining = ''
+        if (argumentsJson.startsWith(emitted)) {
+          remaining = argumentsJson.slice(emitted.length)
+        } else {
+          // A complete input may be serialized differently in the final event.
+          // It is already emitted, so only accept an equivalent parsed value.
+          let equivalent = false
+          try {
+            equivalent = isDeepStrictEqual(JSON.parse(emitted), JSON.parse(argumentsJson))
+          } catch {
+            // An incomplete or invalid emitted prefix cannot be replaced safely.
+          }
+          if (!equivalent) throw new Error('Conflicting finalized function-call arguments')
+        }
+        if (remaining) {
+          controller.enqueue(encoder.encode(formatSse('content_block_delta', {
+            type: 'content_block_delta',
+            index,
+            delta: { type: 'input_json_delta', partial_json: remaining },
+          })))
+        }
+      }
+      state.finishedToolItemIds.add(itemId)
+      state.toolArgumentsByItemId.delete(itemId)
 
       controller.enqueue(encoder.encode(formatSse('content_block_stop', {
         type: 'content_block_stop',

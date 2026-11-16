@@ -153,7 +153,7 @@ describe('experts API', () => {
 
   it('returns a clear error when an imported ZIP declares a missing Skill file', async () => {
     await setup()
-    const incomplete = entries()
+    const incomplete: Record<string, string> = entries()
     delete incomplete['skills/api-skill/SKILL.md']
     const dataBase64 = Buffer.from(await adapter.write(incomplete)).toString('base64')
 

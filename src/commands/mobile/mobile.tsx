@@ -21,12 +21,12 @@ const PLATFORMS: Record<Platform, {
     url: 'https://play.google.com/store/apps/details?id=com.anthropic.claude'
   }
 };
-function MobileQRCode(t0) {
+function MobileQRCode(t0: Props): React.ReactNode {
   const $ = _c(52);
   const {
     onDone
   } = t0;
-  const [platform, setPlatform] = useState("ios");
+  const [platform, setPlatform] = useState<Platform>("ios");
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {
@@ -37,7 +37,7 @@ function MobileQRCode(t0) {
   } else {
     t1 = $[0];
   }
-  const [qrCodes, setQrCodes] = useState(t1);
+  const [qrCodes, setQrCodes] = useState<Record<Platform, string>>(t1);
   const {
     url
   } = PLATFORMS[platform];

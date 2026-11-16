@@ -1,3 +1,4 @@
+import { requireFixtureValue, requireFixtureRecord, requireFixtureArray } from './fixtureAssertions.js'
 /**
  * Unit tests for SessionService and Sessions API
  */
@@ -27,6 +28,7 @@ import { recalculateWorkflowCompletionEligibility } from '../services/workflowCo
 import { getSessionChatState, setSessionChatState } from '../api/conversations.js'
 import { PackRegistryService, resetPackRegistryForTests } from '../services/packRegistryService.js'
 import { resetWorkflowTemplateRegistryForTests } from '../services/workflowTemplateRegistryService.js'
+import { createScopeAmendmentFixture } from '../services/__fixtures__/workflowScopeAmendment.js'
 
 const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TEMPLATE_NOT_FOUND',
@@ -44,6 +46,7 @@ const WORKFLOW_ERROR_CODES = [
   'WORKFLOW_TRANSITION_INVALID',
   'WORKFLOW_STATE_STALE',
   'WORKFLOW_PENDING_CONFLICT',
+  'WORKFLOW_CONFIRMATION_SUPERSEDED',
   'WORKFLOW_REPORT_NOT_READY',
   'WORKFLOW_REPORT_UNAVAILABLE',
   'WORKFLOW_MODEL_UNAVAILABLE',
@@ -59,12 +62,14 @@ const WORKFLOW_ERROR_CODES = [
 let tmpDir: string
 let service: SessionService
 let originalGitCeilingDirectories: string | undefined
+let originalConfigDir: string | undefined
 
 /** Create a temporary config dir and configure the service to use it. */
 async function setupTmpConfigDir(): Promise<string> {
   tmpDir = path.join(os.tmpdir(), `claude-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
   originalGitCeilingDirectories = process.env.GIT_CEILING_DIRECTORIES
+  originalConfigDir = process.env.CLAUDE_CONFIG_DIR
   process.env.CLAUDE_CONFIG_DIR = tmpDir
   process.env.GIT_CEILING_DIRECTORIES = tmpDir
   return tmpDir
@@ -87,7 +92,8 @@ async function cleanupTmpDir(): Promise<void> {
       throw lastError
     }
   }
-  delete process.env.CLAUDE_CONFIG_DIR
+  if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = originalConfigDir
   if (originalGitCeilingDirectories !== undefined) {
     process.env.GIT_CEILING_DIRECTORIES = originalGitCeilingDirectories
   } else {
@@ -95,35 +101,9 @@ async function cleanupTmpDir(): Promise<void> {
   }
 }
 
-function git(cwd: string, ...args: string[]): string {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-  })
-}
 
-async function createCleanGitRepo(baseDir: string): Promise<string> {
-  const workDir = path.join(
-    baseDir,
-    `repo-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  )
 
-  await fs.mkdir(workDir, { recursive: true })
-  git(workDir, 'init')
-  git(workDir, 'config', 'user.email', 'sessions-api@example.com')
-  git(workDir, 'config', 'user.name', 'Sessions API')
-  git(workDir, 'checkout', '-b', 'main')
-  await fs.writeFile(path.join(workDir, 'README.md'), 'main\n')
-  git(workDir, 'add', 'README.md')
-  git(workDir, 'commit', '-m', 'initial')
-  git(workDir, 'checkout', '-b', 'feature/rail')
-  await fs.writeFile(path.join(workDir, 'feature.txt'), 'feature\n')
-  git(workDir, 'add', 'feature.txt')
-  git(workDir, 'commit', '-m', 'feature')
-  git(workDir, 'checkout', 'main')
 
-  return workDir
-}
 
 /** Write a JSONL session file with given entries. */
 async function writeSessionFile(
@@ -2575,6 +2555,20 @@ describe('Sessions API', () => {
       await writeWorkflowConfigTemplates([agentDevelopmentUserWorkflowTemplate()])
     })
 
+    it('POST /api/sessions rejects complete-flow and terminal-label conflicts without starting a workflow', async () => {
+      const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-route-conflict-'))
+      const res = await fetch(`${baseUrl}/api/sessions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDir, workflow: {
+          templateId: 'agent-development', templateSource: 'user',
+          request: '创建学生管理系统，完整七阶段', labels: ['duplicate'],
+        } }),
+      })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ error: 'WORKFLOW_ROUTE_CONFLICT' })
+      await expect(fs.stat(path.join(workDir, '.workflow', 'project-context.md'))).rejects.toThrow()
+    })
+
     it('POST /api/sessions should create a workflow session with additive summary and state pointer metadata', async () => {
       const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-session-'))
 
@@ -2671,6 +2665,7 @@ describe('Sessions API', () => {
       expect(stateRes.status).toBe(200)
       const statePayload = (await stateRes.json()) as {
         state?: {
+          phaseSkillSnapshots?: unknown[]
           templateSnapshot?: {
             phases?: Array<{
               id: string
@@ -2759,8 +2754,9 @@ describe('Sessions API', () => {
         artifactIndex: [{
           artifactId: 'requirements',
           phaseId: 'discussion',
-          kind: 'document',
-          title: 'Requirements',
+          kind: 'phase-artifact',
+          sessionId: created.sessionId, schemaVersion: 1, createdAt: '2026-05-20T00:00:00Z',
+          label: 'Requirements',
           lifecycleStatus: 'accepted',
         }],
       }))
@@ -3068,7 +3064,7 @@ describe('Sessions API', () => {
 
     describe('Linked workflow session start contract', () => {
       async function createSourceDialogueSession(
-        strategy: 'clear' | 'inherit' | 'summarize',
+        strategy: string,
       ): Promise<{
         sessionId: string
         workDir: string
@@ -3271,7 +3267,7 @@ describe('Sessions API', () => {
         })
         expect(sourceState.startupPrompt).toContain('Inherited workflow context anchor')
         expect(sourceState.startupPrompt).toContain('Discuss linked workflow inherit')
-        expect(sourceState.phaseRuns[0]?.inputArtifactRefs).toEqual(expect.arrayContaining([
+        expect(requireFixtureRecord(requireFixtureArray(sourceState.phaseRuns)[0]).inputArtifactRefs).toEqual(expect.arrayContaining([
           expect.objectContaining({ artifactId: 'context-carryover' }),
         ]))
         const sourceAfter = await sessionService.getSession(source.sessionId)
@@ -3819,6 +3815,84 @@ describe('Sessions API', () => {
       })
     })
 
+    it.each(['http', 'ws-route', 'ws-write-failure'] as const)('POST workflow scope amendment confirms one exact file without restarting accepted batches: %s', async transport => {
+      const sessionId = 'api-scope-amendment'
+      const workDir = path.join(tmpDir, 'scope-amendment-workspace')
+      const fixture = await createScopeAmendmentFixture(workDir, sessionId)
+      await writeWorkflowSessionState(sessionId, fixture.state as unknown as Record<string, unknown>)
+      await writeSessionFile(sanitizePath(workDir), sessionId, [makeSnapshotEntry(), makeWorkflowSessionMetaEntry(sessionId, workDir, {
+        templateId: fixture.state.templateIdentity.id, templateVersion: '32', templateSource: 'user', activePhaseId: 'delegate-implement', workflowStatus: 'running', status: 'running', stateRevision: 1,
+      })])
+      setWorkflowRuntimeTemplateLoaderForTests(async () => fixture.state.templateSnapshot!)
+      try {
+        const url = `${baseUrl}/api/sessions/${sessionId}/workflow/transition`
+        const routeRequest = {
+          action: 'route', routeIntent: 'rework_current_phase', phaseId: 'delegate-implement', stateVersion: 1, transitionId: 'scope-request', rationale: 'Register roster app', evidence: [],
+          scopeAmendment: { batchId: 'B3', addWriteScopes: ['config/settings.py'] },
+        }
+        let pending: { state: import('../services/workflowTypes.js').WorkflowSessionState }
+        if (transport === 'ws-route') {
+          const sent: string[] = []
+          const ws = { data: { sessionId, connectedAt: Date.now(), channel: 'client', sdkToken: null, serverPort: 0, serverHost: '127.0.0.1' },
+            send(payload: string) { sent.push(payload); return 1 }, close() {} } as Parameters<typeof handleWebSocket.open>[0]
+          try {
+            handleWebSocket.open(ws)
+            handleWebSocket.message(ws, JSON.stringify({ ...routeRequest, type: 'workflow_transition' }))
+            const store = new WorkflowSessionStateService()
+            const deadline = Date.now() + 10_000
+            let read = await store.readState(sessionId)
+            while (!read.state?.pendingRoute?.scopeAmendment && Date.now() < deadline) { await Bun.sleep(5); read = await store.readState(sessionId) }
+            expect(read.state?.pendingRoute?.scopeAmendment?.addWriteScopes).toEqual(['config/settings.py'])
+            pending = { state: read.state! }
+          } finally { __resetWebSocketHandlerStateForTests() }
+        } else {
+          const route = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(routeRequest) })
+          expect(route.status).toBe(200)
+          pending = await route.json() as { state: import('../services/workflowTypes.js').WorkflowSessionState }
+        }
+        expect(pending.state.pendingRoute?.scopeAmendment?.addWriteScopes).toEqual(['config/settings.py'])
+        expect(await fs.readFile(fixture.file, 'utf8')).toBe(fixture.content)
+        const body = { action: 'confirm', phaseId: 'delegate-implement', stateVersion: pending.state.stateVersion, confirmationId: pending.state.pendingRoute!.routeId, transitionId: 'scope-confirm' }
+        const stale = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, stateVersion: 1 }) })
+        expect(stale.status).toBe(409)
+        expect(await fs.readFile(fixture.file, 'utf8')).toBe(fixture.content)
+        if (transport === 'ws-write-failure') {
+          const sent: string[] = []
+          const ws = { data: { sessionId, connectedAt: Date.now(), channel: 'client', sdkToken: null, serverPort: 0, serverHost: '127.0.0.1' },
+            send(payload: string) { sent.push(payload); return 1 }, close() {} } as Parameters<typeof handleWebSocket.open>[0]
+          const ownerStatePath = path.join(tmpDir, 'cc-jiangxia/workflow-sessions', sessionId, 'state.json')
+          const rename = fs.rename
+          let failed = false
+          const failCommit = spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+            if (String(to) === ownerStatePath && !failed) { failed = true; throw new Error('fixture scope state commit failed') }
+            return rename(from, to)
+          })
+          try {
+            handleWebSocket.open(ws)
+            handleWebSocket.message(ws, JSON.stringify({ ...body, type: 'workflow_transition' }))
+            const deadline = Date.now() + 10_000
+            while (!sent.some(text => { const event = JSON.parse(text); return event.type === 'error' }) && Date.now() < deadline) await Bun.sleep(5)
+            expect(failed).toBe(true)
+            expect(sent.some(text => JSON.parse(text).type === 'error')).toBe(true)
+            expect(sent.some(text => { const event = JSON.parse(text); return event.subtype === 'workflow_transition' && event.data?.action === 'route-confirmed' })).toBe(false)
+            expect(await fs.readFile(fixture.file, 'utf8')).toBe(fixture.content)
+            const persisted = await new WorkflowSessionStateService().readState(sessionId)
+            expect(persisted.state?.pendingRoute?.scopeAmendment?.addWriteScopes).toEqual(['config/settings.py'])
+          } finally { failCommit.mockRestore(); __resetWebSocketHandlerStateForTests() }
+          return
+        }
+        const confirmed = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        expect(confirmed.status).toBe(200)
+        const result = await confirmed.json() as { state: import('../services/workflowTypes.js').WorkflowSessionState }
+        expect(result.state.activePhaseId).toBe('delegate-implement')
+        const snapshots = result.state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots
+        expect(snapshots.slice(0, 4).every(task => task.status === 'succeeded')).toBe(true)
+        expect(snapshots.find(task => task.batchId === 'B3' && task.workflowRole === 'coder')).toMatchObject({ status: 'pending', writeScopes: ['roster/', 'config/settings.py'] })
+        expect(await fs.readFile(fixture.file, 'utf8')).toBe(result.state.workflowRuns![0]!.artifacts[0]!.content!)
+        expect(await fs.readFile(path.join(workDir, 'config/settings.py'), 'utf8')).toBe('INSTALLED_APPS = []\n')
+      } finally { setWorkflowRuntimeTemplateLoaderForTests(null) }
+    })
+
     it('POST /api/sessions/:id/workflow/transition retry should keep the current phase without advancing', async () => {
       const workDir = await fs.mkdtemp(path.join(tmpDir, 'api-workflow-transition-'))
 
@@ -4225,7 +4299,7 @@ describe('Sessions API', () => {
           },
         ],
       })
-      state.templateSnapshot.phases[0]!.transitionAuthority = 'auto'
+      requireFixtureRecord(requireFixtureArray(requireFixtureRecord(state.templateSnapshot).phases)[0]).transitionAuthority = 'auto'
       await writeWorkflowSessionState(sessionId, state)
       await writeSessionFile(sanitizePath(workDir), sessionId, [
         makeSnapshotEntry(),
@@ -4878,7 +4952,7 @@ describe('Sessions API', () => {
         }
       }
 
-      expect(reportBody.pointer).toEqual(transitionBody.workflow.reportPointer)
+      expect(transitionBody.workflow.reportPointer).toEqual(reportBody.pointer)
       expect(reportBody.report).toMatchObject({
         sessionId,
         status: 'completed',
@@ -5013,6 +5087,49 @@ describe('Sessions API', () => {
         severity: 'error',
       })
       expectNoAbsolutePathLeak(body)
+    })
+
+    it('GET workflow checks CLI ownership before recovering an old task and never launches work during a read', async () => {
+      await writeWorkflowConfigTemplates([
+        followUpWorkflowTemplate('feature-extension-workflow-v8', 'enhancement', 'feature-implement'),
+      ])
+      const hasSession = spyOn(conversationService, 'hasSession').mockReturnValue(true)
+      const startSession = spyOn(conversationService, 'startSession').mockResolvedValue()
+      try {
+        const workDir = await fs.mkdtemp(path.join(tmpDir, 'recovery-owner-'))
+        const createdRes = await fetch(`${baseUrl}/api/sessions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workDir, workflow: {
+            templateId: 'feature-extension-workflow-v8', templateSource: 'user',
+            initialPhaseId: 'feature-implement', request: 'Check workflow recovery ownership.',
+          } }),
+        })
+        expect(createdRes.status).toBe(201)
+        const created = await createdRes.json() as { sessionId: string }
+        const states = new WorkflowSessionStateService()
+        const stored = (await states.readState(created.sessionId)).state!
+        const phase = stored.runtimeContract!.phaseStates['feature-implement']!
+        phase.taskSnapshots = [{
+          taskId: 'B4::reviewer', runId: stored.activeWorkflowRunId!, sessionId: created.sessionId,
+          phaseId: 'feature-implement', status: 'running', executionMode: 'read',
+          integrationStatus: 'not-required', stateVersion: stored.stateVersion,
+          updatedAt: '2000-01-01T00:00:00.000Z', lastHeartbeatAt: '2000-01-01T00:00:00.000Z',
+          batchId: 'B4', workflowRole: 'reviewer', agentRunId: 'missing-run',
+        }]
+        stored.runStatus = 'active'
+        await states.writeState(created.sessionId, stored)
+        const live = await (await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow`)).json() as { state: typeof stored }
+        expect(live.state.runtimeContract!.phaseStates['feature-implement']!.taskSnapshots[0]!.status).toBe('running')
+        hasSession.mockReturnValue(false)
+        const orphaned = await (await fetch(`${baseUrl}/api/sessions/${created.sessionId}/workflow`)).json() as { state: typeof stored }
+        expect(orphaned.state.runStatus).toBe('blocked')
+        expect(orphaned.state.blockedReason).toContain('B4::reviewer')
+        expect(orphaned.state.activePhaseId).toBe('feature-implement')
+        expect(startSession).not.toHaveBeenCalled()
+      } finally {
+        hasSession.mockRestore()
+        startSession.mockRestore()
+      }
     })
 
     it('GET /api/sessions/:id/workflow should be mode-gated and omit absolute artifact paths', async () => {
@@ -5618,8 +5735,8 @@ describe('Sessions API', () => {
         path: activeWorktree,
         plannedPath: activeWorktree,
         sourceWorkDir: repository!.requestedWorkDir,
-        slug: repository!.worktreeSlug,
-        branch: repository!.worktreeBranch,
+        slug: requireFixtureValue(repository!.worktreeSlug),
+        branch: requireFixtureValue(repository!.worktreeBranch),
       })
     } finally {
       sessionsMap.delete(sessionId)
@@ -5792,6 +5909,28 @@ describe('Sessions API', () => {
       sessionService.deleteSession = originalDeleteSession as typeof sessionService.deleteSession
       conversationService.unmarkSessionDeleted(sessionId)
     }
+  })
+
+  it('POST /api/sessions/batch-delete removes 92 listed legacy sessions including duplicate transcripts', async () => {
+    const ids = Array.from({ length: 92 }, (_, i) => `restored-workflow-answer-${i}-${crypto.randomUUID()}`)
+    const peer = crypto.randomUUID()
+    for (const id of [...ids, peer]) {
+      await writeSessionFile('-legacy-project', id, [makeSnapshotEntry()])
+    }
+    await writeSessionFile('-duplicate-project', ids[0]!, [makeSnapshotEntry()])
+    const listed = await fetch(`${baseUrl}/api/sessions?limit=100`)
+    const before = await listed.json() as { sessions: Array<{ id: string }> }
+    expect(ids.every((id) => before.sessions.some((s) => s.id === id))).toBe(true)
+    const response = await fetch(`${baseUrl}/api/sessions/batch-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionIds: ids }),
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, successes: ids, failures: [] })
+    const after = await (await fetch(`${baseUrl}/api/sessions?limit=100`)).json() as { sessions: Array<{ id: string }> }
+    expect(after.sessions.map((s) => s.id)).toEqual([peer])
+    expect((await fetch(`${baseUrl}/api/sessions/${peer}`)).status).toBe(200)
   })
 
   it('POST /api/sessions/batch-delete should delete sessions and clean adapter mappings', async () => {
@@ -7716,7 +7855,7 @@ describe('Sessions API', () => {
     }
   })
 
-  it('persists runtime-verified completion evidence before accepting a normal transition', async () => {
+  it.each(['ready', 'needs_user', 'completed', 'manual_complete'])('persists runtime-verified completion evidence before accepting %s', async (action) => {
     const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-' + crypto.randomUUID().replace(/-/g, '').slice(0, 12)
     const workDir = path.join(tmpDir, 'api-workflow-persisted-completion-evidence')
     const runDir = path.join(workDir, '.workflow', 'runs', 'run-001')
@@ -7783,7 +7922,7 @@ describe('Sessions API', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phaseId: 'discussion',
-        action: 'ready',
+        action,
         stateVersion: state.stateVersion,
         transitionId: 'persist-evidence-before-transition',
         handoff: { summary: 'Declared outputs are present.', artifacts: [], next: 'Await confirmation.' },

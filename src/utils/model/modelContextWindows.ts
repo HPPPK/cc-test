@@ -4,52 +4,6 @@ export const MODEL_CONTEXT_WINDOWS_ENV_KEY = 'CLAUDE_CODE_MODEL_CONTEXT_WINDOWS'
 export const MODEL_CONTEXT_WINDOW_MIN = 16_000
 export const MODEL_CONTEXT_WINDOW_MAX = 10_000_000
 
-const DIRECT_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
-  'claude-opus-4-7': 1_000_000,
-  'claude-sonnet-4-6': 200_000,
-  'claude-haiku-4-5': 200_000,
-  'deepseek-v4-pro': 1_000_000,
-  'deepseek-v4-flash': 1_000_000,
-  'deepseek-chat': 1_000_000,
-  'deepseek-reasoner': 1_000_000,
-  'kimi-k2.6': 262_144,
-  'kimi-k2.5': 262_144,
-  'kimi-k2-0905-preview': 262_144,
-  'kimi-k2-turbo-preview': 262_144,
-  'kimi-k2-thinking': 262_144,
-  'kimi-k2-thinking-turbo': 262_144,
-  'minimax-m3': 1_000_000,
-  'minimax-m2.7': 204_800,
-  'minimax-m2.7-highspeed': 204_800,
-  'minimax-m2.5': 204_800,
-  'minimax-m2.5-highspeed': 204_800,
-  'minimax-m2.1': 204_800,
-  'minimax-m2.1-highspeed': 204_800,
-  'minimax-m2': 204_800,
-  'glm-5.1': 200_000,
-  'glm-5': 200_000,
-  'glm-5-turbo': 200_000,
-  'glm-4.7': 200_000,
-  'glm-4.6': 200_000,
-  'glm-4.5': 128_000,
-  'glm-4.5-air': 128_000,
-}
-
-const PATTERN_MODEL_CONTEXT_WINDOWS: Array<[RegExp, number]> = [
-  [/^anthropic\/claude-opus-4\.7\b/i, 1_000_000],
-  [/^anthropic\/claude-sonnet-4\.6\b/i, 200_000],
-  [/^anthropic\/claude-haiku-4\.5\b/i, 200_000],
-  [/^openai\/gpt-4\.1\b/i, 1_047_576],
-  [/^openai\/gpt-5(?:[.-]\d+)?\b/i, 400_000],
-  [/^google\/gemini-(?:2\.0|2\.5|3)/i, 1_048_576],
-  [/^gemini-(?:2\.0|2\.5|3)/i, 1_048_576],
-  [/^qwen\/qwen3\.5-(?:plus|flash)\b/i, 1_000_000],
-  [/^qwen3\.5-(?:plus|flash)\b/i, 1_000_000],
-  [/^qwen\/qwen3-max\b/i, 262_144],
-  [/^qwen3-max\b/i, 262_144],
-  [/qwen-long/i, 10_000_000],
-]
-
 export function normalizeModelContextKey(model: string): string {
   return model
     .trim()
@@ -113,18 +67,7 @@ function getConfiguredModelContextWindow(model: string): number | undefined {
 }
 
 function getBuiltInModelContextWindow(model: string): number | undefined {
-  const normalizedModel = normalizeModelContextKey(model)
-  const exact = DIRECT_MODEL_CONTEXT_WINDOWS[normalizedModel]
-  if (exact !== undefined) {
-    return exact
-  }
-
-  for (const [pattern, window] of PATTERN_MODEL_CONTEXT_WINDOWS) {
-    if (pattern.test(normalizedModel)) {
-      return window
-    }
-  }
-  return undefined
+  return 1_000_000
 }
 
 export function getConfiguredOrBuiltInModelContextWindow(

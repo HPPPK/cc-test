@@ -36,7 +36,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -150,7 +150,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       # ── Node.js (for tauri-action compatibility) ─────────────
       - name: Setup Node.js
@@ -230,6 +230,17 @@ jobs:
           updaterJsonPreferNsis: true
           assetNamePattern: ${{ matrix.asset_name_pattern }}
           args: ${{ matrix.tauri_args }} --ci --config src-tauri/tauri.release-ci.json
+
+      - name: Upload selected importable packs
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ steps.version.outputs.value }}" \
+            src/server/packs/experts/commercialization-research-report.zip \
+            src/server/packs/efficient-constrained-dev-debug-workflow-v5.zip \
+            --clobber
 
       - name: Upload workflow pack audits
         if: always() && matrix.platform == 'windows-latest'

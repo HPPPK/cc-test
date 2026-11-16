@@ -270,7 +270,7 @@ async function releaseLock(): Promise<void> {
 async function getInstallationPrefix(): Promise<string | null> {
   // Run from home directory to avoid reading project-level .npmrc/.bunfig.toml
   const isBun = env.isRunningWithBun()
-  let prefixResult = null
+  let prefixResult: Awaited<ReturnType<typeof execFileNoThrowWithCwd>>
   if (isBun) {
     prefixResult = await execFileNoThrowWithCwd('bun', ['pm', 'bin', '-g'], {
       cwd: homedir(),

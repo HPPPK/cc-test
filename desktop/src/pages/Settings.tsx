@@ -1431,7 +1431,7 @@ function getModelContextInputValue(
   const trimmedModel = model?.trim()
   if (!trimmedModel) return ''
   const value = provider?.modelContextWindows?.[trimmedModel] ?? preset.modelContextWindows?.[trimmedModel]
-  return value !== undefined ? String(value) : ''
+  return value !== undefined ? String(value) : '1000000'
 }
 
 function getModelContextInputs(
@@ -2384,11 +2384,16 @@ function GeneralSettings() {
 
   useEffect(() => {
     let cancelled = false
-    getDesktopNotificationPermission().then((permission) => {
-      if (!cancelled) setNotificationPermission(permission)
-    })
+    const refreshPermission = () => {
+      void getDesktopNotificationPermission().then((permission) => {
+        if (!cancelled) setNotificationPermission(permission)
+      })
+    }
+    refreshPermission()
+    window.addEventListener('focus', refreshPermission)
     return () => {
       cancelled = true
+      window.removeEventListener('focus', refreshPermission)
     }
   }, [])
 
@@ -2449,6 +2454,7 @@ function GeneralSettings() {
   const WEB_SEARCH_MODES: Array<{ value: WebSearchMode; label: string }> = [
     { value: 'auto', label: t('settings.general.webSearch.mode.auto') },
     { value: 'tavily', label: t('settings.general.webSearch.mode.tavily') },
+    { value: 'tavily-keyless', label: t('settings.general.webSearch.mode.tavilyKeyless') },
     { value: 'brave', label: t('settings.general.webSearch.mode.brave') },
     { value: 'anthropic', label: t('settings.general.webSearch.mode.anthropic') },
     { value: 'disabled', label: t('settings.general.webSearch.mode.disabled') },
@@ -2459,6 +2465,7 @@ function GeneralSettings() {
     denied: t('settings.general.notificationsStatusDenied'),
     default: t('settings.general.notificationsStatusDefault'),
     unsupported: t('settings.general.notificationsStatusUnsupported'),
+    error: t('settings.general.notificationsStatusError'),
   }
 
   const handleDesktopNotificationsToggle = async (enabled: boolean) => {
@@ -2486,7 +2493,9 @@ function GeneralSettings() {
   const handleNotificationPermissionAction = async () => {
     setNotificationActionRunning(true)
     try {
-      if (notificationPermission === 'denied') {
+      if (notificationPermission === 'error') {
+        setNotificationPermission(await getDesktopNotificationPermission())
+      } else if (notificationPermission === 'denied') {
         await openDesktopNotificationSettings()
       } else {
         const permission = await requestDesktopNotificationPermission()
@@ -2819,6 +2828,11 @@ function GeneralSettings() {
               <div className="min-w-0 text-xs text-[var(--color-text-tertiary)]">
                 {t('settings.general.notificationsStatus')}: {notificationStatusLabel[notificationPermission]}
               </div>
+              {notificationPermission === 'error' && (
+                <Button size="sm" variant="secondary" onClick={() => void openDesktopNotificationSettings()}>
+                  {t('settings.general.notificationsOpenSettings')}
+                </Button>
+              )}
               {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && (
                 <Button
                   size="sm"
@@ -2829,7 +2843,9 @@ function GeneralSettings() {
                 >
                   {notificationPermission === 'denied'
                     ? t('settings.general.notificationsOpenSettings')
-                    : t('settings.general.notificationsAuthorize')}
+                    : notificationPermission === 'error'
+                      ? t('settings.general.notificationsRetry')
+                      : t('settings.general.notificationsAuthorize')}
                 </Button>
               )}
             </div>
@@ -2866,7 +2882,7 @@ function GeneralSettings() {
         <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-1">{t('settings.general.webSearchTitle')}</h2>
         <p className="text-sm text-[var(--color-text-tertiary)] mb-3">{t('settings.general.webSearchDescription')}</p>
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-container-low)] px-4 py-4">
-          <div className="grid grid-cols-5 gap-1.5 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-4">
             {WEB_SEARCH_MODES.map(({ value, label }) => (
               <button
                 key={value}
@@ -2882,6 +2898,9 @@ function GeneralSettings() {
               </button>
             ))}
           </div>
+          {webSearchDraft.mode === 'tavily-keyless' && (
+            <p className="mb-3 text-sm text-[var(--color-text-secondary)]">{t('settings.general.webSearchKeylessHint')}</p>
+          )}
           <div className="grid grid-cols-1 gap-3">
             <Input
               id="web-search-tavily-key"

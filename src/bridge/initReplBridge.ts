@@ -1,3 +1,4 @@
+import { isHumanInputMessage } from '../utils/messageKind.js'
 /**
  * REPL-specific wrapper around initBridgeCore. Owns the parts that read
  * bootstrap state — gates, cwd, session ID, git context, OAuth, title
@@ -39,7 +40,6 @@ import { toSDKMessages } from '../utils/messages/mappers.js'
 import {
   getContentText,
   getMessagesAfterCompactBoundary,
-  isSyntheticMessage,
 } from '../utils/messages.js'
 import type { PermissionMode } from '../utils/permissions/PermissionMode.js'
 import { getCurrentSessionTitle } from '../utils/sessionStorage.js'
@@ -272,22 +272,10 @@ export async function initReplBridge(
       hasTitle = true
       hasExplicitTitle = true
     } else if (initialMessages && initialMessages.length > 0) {
-      // Find the last user message that has meaningful content. Skip meta
-      // (nudges), tool results, compact summaries ("This session is being
-      // continued…"), non-human origins (task notifications, channel pushes),
-      // and synthetic interrupts ([Request interrupted by user]) — none are
-      // human-authored. Same filter as extractTitleText + isSyntheticMessage.
+      // Share the live-title provenance policy when deriving from history.
       for (let i = initialMessages.length - 1; i >= 0; i--) {
         const msg = initialMessages[i]!
-        if (
-          msg.type !== 'user' ||
-          msg.isMeta ||
-          msg.toolUseResult ||
-          msg.isCompactSummary ||
-          (msg.origin && msg.origin.kind !== 'human') ||
-          isSyntheticMessage(msg)
-        )
-          continue
+        if (msg.type !== 'user' || !isHumanInputMessage(msg)) continue
         const rawContent = getContentText(msg.message.content)
         if (!rawContent) continue
         const derived = deriveTitle(rawContent)

@@ -1,3 +1,4 @@
+import { isHumanInputMessage, messageKindMetadata } from './utils/messageKind.js'
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'
@@ -210,7 +211,7 @@ export class QueryEngine {
 
   async *submitMessage(
     prompt: string | ContentBlockParam[],
-    options?: { uuid?: string; isMeta?: boolean },
+    options?: { uuid?: string } & Partial<ReturnType<typeof messageKindMetadata>>,
   ): AsyncGenerator<SDKMessage, void, unknown> {
     const {
       cwd,
@@ -425,7 +426,7 @@ export class QueryEngine {
       },
       messages: this.mutableMessages,
       uuid: options?.uuid,
-      isMeta: options?.isMeta,
+      ...messageKindMetadata({ type: 'user', ...options }),
       querySource: 'sdk',
     })
 
@@ -468,8 +469,7 @@ export class QueryEngine {
     const replayableMessages = messagesFromUserInput.filter(
       msg =>
         (msg.type === 'user' &&
-          !msg.isMeta && // Skip synthetic caveat messages
-          !msg.toolUseResult && // Skip tool results (they'll be acked from query)
+          isHumanInputMessage(msg) &&
           messageSelector().selectableUserMessagesFilter(msg)) || // Skip non-user-authored messages (task notifications, etc.)
         (msg.type === 'system' && msg.subtype === 'compact_boundary'), // Always ack compact boundaries
     )
@@ -583,6 +583,7 @@ export class QueryEngine {
         ) {
           yield {
             type: 'user',
+            ...messageKindMetadata(msg),
             message: {
               ...msg.message,
               content: stripAnsi(msg.message.content),
@@ -592,7 +593,6 @@ export class QueryEngine {
             uuid: msg.uuid,
             timestamp: msg.timestamp,
             isReplay: !msg.isCompactSummary,
-            isSynthetic: msg.isMeta || msg.isVisibleInTranscriptOnly,
           } as SDKUserMessageReplay
         }
 
@@ -618,6 +618,7 @@ export class QueryEngine {
         if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
           yield {
             type: 'system',
+            ...messageKindMetadata(msg),
             subtype: 'compact_boundary' as const,
             session_id: getSessionId(),
             uuid: msg.uuid,
@@ -638,6 +639,7 @@ export class QueryEngine {
 
       yield {
         type: 'result',
+        messageKind: 'system_event',
         subtype: 'success',
         is_error: false,
         duration_ms: Date.now() - startTime,
@@ -759,6 +761,7 @@ export class QueryEngine {
             if (msgToAck.type === 'user') {
               yield {
                 type: 'user',
+                ...messageKindMetadata(msgToAck),
                 message: msgToAck.message,
                 session_id: getSessionId(),
                 parent_tool_use_id: null,
@@ -871,6 +874,7 @@ export class QueryEngine {
             }
             yield {
               type: 'result',
+              messageKind: 'system_event',
               subtype: 'error_max_turns',
               duration_ms: Date.now() - startTime,
               duration_api_ms: getTotalAPIDuration(),
@@ -900,6 +904,7 @@ export class QueryEngine {
           ) {
             yield {
               type: 'user',
+              ...messageKindMetadata({ ...message.attachment, type: 'user' }),
               message: {
                 role: 'user' as const,
                 content: message.attachment.prompt,
@@ -965,6 +970,7 @@ export class QueryEngine {
 
             yield {
               type: 'system',
+              ...messageKindMetadata(message),
               subtype: 'compact_boundary' as const,
               session_id: getSessionId(),
               uuid: message.uuid,
@@ -974,6 +980,7 @@ export class QueryEngine {
           if (message.subtype === 'api_error') {
             yield {
               type: 'system',
+              messageKind: 'system_event',
               subtype: 'api_retry' as const,
               attempt: message.retryAttempt,
               max_retries: message.maxRetries,
@@ -991,6 +998,7 @@ export class QueryEngine {
           // Yield tool use summary messages to SDK
           yield {
             type: 'tool_use_summary' as const,
+            messageKind: 'system_event',
             summary: message.summary,
             preceding_tool_use_ids: message.precedingToolUseIds,
             session_id: getSessionId(),
@@ -1011,6 +1019,7 @@ export class QueryEngine {
         }
         yield {
           type: 'result',
+          messageKind: 'system_event',
           subtype: 'error_max_budget_usd',
           duration_ms: Date.now() - startTime,
           duration_api_ms: getTotalAPIDuration(),
@@ -1054,6 +1063,7 @@ export class QueryEngine {
           }
           yield {
             type: 'result',
+            messageKind: 'system_event',
             subtype: 'error_max_structured_output_retries',
             duration_ms: Date.now() - startTime,
             duration_api_ms: getTotalAPIDuration(),
@@ -1113,6 +1123,7 @@ export class QueryEngine {
     if (!isResultSuccessful(result, lastStopReason)) {
       yield {
         type: 'result',
+        messageKind: 'system_event',
         subtype: 'error_during_execution',
         duration_ms: Date.now() - startTime,
         duration_api_ms: getTotalAPIDuration(),
@@ -1165,6 +1176,7 @@ export class QueryEngine {
 
     yield {
       type: 'result',
+      messageKind: 'system_event',
       subtype: 'success',
       is_error: isApiError,
       duration_ms: Date.now() - startTime,
@@ -1234,8 +1246,9 @@ function* localGoalCommandOutputMessages(
 function toSDKLocalCommandOutputMessage(message: Message): SDKMessage {
   return {
     type: 'system',
+    messageKind: 'system_event',
     subtype: 'local_command_output',
-    content: message.type === 'system' ? stripAnsi(message.content) : '',
+    content: message.type === 'system' ? stripAnsi(message.content ?? '') : '',
     uuid: message.uuid,
     session_id: getSessionId(),
   } as SDKMessage
@@ -1259,6 +1272,10 @@ export async function* ask({
   prompt,
   promptUuid,
   isMeta,
+  messageKind,
+  isCompactSummary,
+  isVisibleInTranscriptOnly,
+  isSynthetic,
   cwd,
   tools,
   mcpClients,
@@ -1290,6 +1307,10 @@ export async function* ask({
   prompt: string | Array<ContentBlockParam>
   promptUuid?: string
   isMeta?: boolean
+  messageKind?: ReturnType<typeof messageKindMetadata>['messageKind']
+  isCompactSummary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isSynthetic?: boolean
   cwd: string
   tools: Tools
   verbose?: boolean
@@ -1359,6 +1380,10 @@ export async function* ask({
     yield* engine.submitMessage(prompt, {
       uuid: promptUuid,
       isMeta,
+      messageKind,
+      isCompactSummary,
+      isVisibleInTranscriptOnly,
+      isSynthetic,
     })
   } finally {
     setReadFileCache(engine.getReadFileState())

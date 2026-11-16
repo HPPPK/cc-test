@@ -1,14 +1,15 @@
+import type { Notification } from '../../context/notifications.js'
 import { checkInstall } from 'src/utils/nativeInstaller/index.js';
 import { useStartupNotification } from './useStartupNotification.js';
-export function useInstallMessages() {
+export function useInstallMessages(): void {
   useStartupNotification(_temp2);
 }
 async function _temp2() {
   const messages = await checkInstall();
   return messages.map(_temp);
 }
-function _temp(message, index) {
-  let priority = "low";
+function _temp(message, index): Notification {
+  let priority: Notification["priority"] = "low";
   if (message.type === "error" || message.userActionRequired) {
     priority = "high";
   } else {

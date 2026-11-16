@@ -7,6 +7,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 import { TaskService } from '../services/taskService.js'
+import { handleAgentsApi } from '../api/agents.js'
 
 // ============================================================================
 // TaskService unit tests
@@ -122,7 +123,7 @@ describe('TaskService', () => {
 // ============================================================================
 
 describe('Tasks API', () => {
-  let server: any
+  let server: ReturnType<typeof Bun.serve>
   let baseUrl: string
   let tmpDir: string
   let originalConfigDir: string | undefined
@@ -133,14 +134,22 @@ describe('Tasks API', () => {
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     await fs.mkdir(path.join(tmpDir, 'projects'), { recursive: true })
 
-    const port = 15500 + Math.floor(Math.random() * 500)
-    const { startServer } = await import('../../server/index.js')
-    server = startServer(port, '127.0.0.1')
-    baseUrl = `http://127.0.0.1:${port}`
+    // The OS reserves an unused port. Keep the real HTTP/request/route path
+    // without full-app startup's cron, watchers and CLI installation side effects.
+    server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url)
+        return handleAgentsApi(req, url, url.pathname.split('/').filter(Boolean))
+      },
+    })
+    baseUrl = server.url.origin
   })
 
   afterEach(async () => {
-    server?.stop()
+    // Await the server lifecycle before deleting the files request handlers read.
+    await server?.stop(true)
     await fs.rm(tmpDir, { recursive: true, force: true })
     if (originalConfigDir === undefined) {
       delete process.env.CLAUDE_CONFIG_DIR

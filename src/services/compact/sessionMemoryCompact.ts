@@ -9,7 +9,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import {
   createCompactBoundaryMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   isCompactBoundaryMessage,
 } from '../../utils/messages.js'
 import { getMainLoopModel } from '../../utils/model/model.js'
@@ -474,7 +474,7 @@ function createCompactionResultFromSessionMemory(
   }
 
   const summaryMessages = [
-    createUserMessage({
+    createRuntimeUserMessage({
       content: summaryContent,
       isCompactSummary: true,
       isVisibleInTranscriptOnly: true,

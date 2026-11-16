@@ -1,6 +1,6 @@
 import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   REJECT_MESSAGE,
   withMemoryCorrectionHint,
 } from 'src/utils/messages.js'
@@ -84,7 +84,7 @@ export class StreamingToolExecutor {
         isConcurrencySafe: true,
         pendingProgress: [],
         results: [
-          createUserMessage({
+          createRuntimeUserMessage({
             content: [
               {
                 type: 'tool_result',
@@ -158,7 +158,7 @@ export class StreamingToolExecutor {
     // For user interruptions (ESC to reject), use REJECT_MESSAGE so the UI shows
     // "User rejected edit" instead of "Error editing file"
     if (reason === 'user_interrupted') {
-      return createUserMessage({
+      return createRuntimeUserMessage({
         content: [
           {
             type: 'tool_result',
@@ -172,7 +172,7 @@ export class StreamingToolExecutor {
       })
     }
     if (reason === 'streaming_fallback') {
-      return createUserMessage({
+      return createRuntimeUserMessage({
         content: [
           {
             type: 'tool_result',
@@ -190,7 +190,7 @@ export class StreamingToolExecutor {
     const msg = desc
       ? `Cancelled: parallel tool call ${desc} errored`
       : 'Cancelled: parallel tool call errored'
-    return createUserMessage({
+    return createRuntimeUserMessage({
       content: [
         {
           type: 'tool_result',

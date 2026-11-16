@@ -7,7 +7,7 @@ description: "You MUST use this before any creative work - creating features, bu
 
 Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval.
+Start by understanding the current project context, then batch independent questions to refine the idea, deferring dependent follow-ups until their prerequisites are answered. Once you understand what you're building, present the design and get user approval.
 
 <HARD-GATE>
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
@@ -23,7 +23,7 @@ You MUST create a task for each of these items and complete them in order:
 
 1. **Explore project context** — check files, docs, recent commits
 2. **Offer visual companion** (if topic will involve visual questions) — this is its own message, not combined with a clarifying question. See the Visual Companion section below.
-3. **Ask clarifying questions** — one at a time, understand purpose/constraints/success criteria
+3. **Ask clarifying questions** — group independent questions in a batch; understand purpose/constraints/success criteria
 4. **Propose 2-3 approaches** — with trade-offs and your recommendation
 5. **Present design** — in sections scaled to their complexity, get user approval after each section
 6. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
@@ -72,9 +72,9 @@ digraph brainstorming {
 - Check out the current project state first (files, docs, recent commits)
 - Before asking detailed questions, assess scope: if the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), flag this immediately. Don't spend questions refining details of a project that needs to be decomposed first.
 - If the project is too large for a single spec, help the user decompose into sub-projects: what are the independent pieces, how do they relate, what order should they be built? Then brainstorm the first sub-project through the normal design flow. Each sub-project gets its own spec → plan → implementation cycle.
-- For appropriately-scoped projects, ask questions one at a time to refine the idea
+- For appropriately-scoped projects, batch independent questions to refine the idea, deferring dependent follow-ups until their prerequisites are answered
 - Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message - if a topic needs more exploration, break it into multiple questions
+- Show independent questions together in one submission. Only dependent questions require another round; do not split independent questions into serial interruptions.
 - Focus on understanding: purpose, constraints, success criteria
 
 **Exploring approaches:**
@@ -162,3 +162,17 @@ A question about a UI topic is not automatically a visual question. "What does p
 
 If they agree to the companion, read the detailed guide before proceeding:
 `skills/brainstorming/visual-companion.md`
+
+
+## Development workflow exploration and convergence
+
+Development question policy (takes precedence over single-question guidance in inherited snapshots and brainstorming skills):
+- Read the user request, previous answers and supplied evidence before asking. Never ask again what they already resolve, including across stages.
+- Before each batch, identify all currently relevant unresolved decisions and their dependencies. Ask the entire independent frontier together; use a single question only when no other currently relevant question is independent. Do not serialize independent questions.
+- Group independent questions in one AskUserQuestion batch (1–8 questions), displayed together and answered in one submission. Do not fill a quota. Defer a question when its relevance or choices depend on an unanswered question; ask it only after processing that answer.
+- Before every question identify the unresolved fact, what concrete decision its answer changes, and why existing evidence does not answer it. Mere completeness, speculative edge cases and easily reversible low-impact details do not justify a question.
+- In auto/full or on brainstorming, also ask consequential preferences that materially affect user experience, scope, cost or likely rework, even when not blockers. Use blocksCompletion: false and offer a recommended choice plus an explicit delegate-to-system choice. In off/mini mode ask only missing material or blocking questions and record reasonable defaults for minor gaps.
+- Set blocksCompletion: true only if proceeding without this answer risks choosing the wrong core purpose, platform, first-version scope, conflicting requirements or unauthorized operations. Explain blockingReason and answerImpact per blocking question. Never classify every preference as blocking.
+- Process the whole batch before asking again: carry forward answers, remove indirectly resolved questions, record skipped optional preferences as undecided with proposed reversible defaults, and ask only newly exposed consequential dependencies or genuine contradictions. Silence is never authorization.
+- Stop exploration as soon as target users, purpose and success criteria are clear enough, core flows and MVP/non-goals can form a coherent proposal, and no critical conflict or authorization gap remains. Present that proposal with user decisions separated from system-proposed defaults; confirm the scope together rather than asking about each minor default. Do not reopen accepted scope absent new evidence, changed requirements or an actual contradiction.
+- Stage 1 confirms framing, materials and operation boundaries only. Stage 2 inherits those answers and discovers product scope. Do not duplicate the intake across stages. Phase confirmation, permissions and safety gates remain authoritative.

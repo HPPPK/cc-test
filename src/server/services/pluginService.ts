@@ -240,7 +240,7 @@ export class PluginService {
 
     const [commands, agentDefinitions] = await Promise.all([
       getPluginCommands(),
-      getAgentDefinitionsWithOverrides(cwd),
+      getAgentDefinitionsWithOverrides(cwd ?? process.cwd()),
     ])
 
     const hookCount = await this.getHookCount(enabled)
@@ -318,7 +318,7 @@ export class PluginService {
       this.toSummary(detail),
     )
 
-    const marketplaces = Object.entries(marketplaceConfig.marketplaces ?? {})
+    const marketplaces = Object.entries(marketplaceConfig)
       .map(([name, entry]) => ({
         name,
         source: getMarketplaceSourceDisplay(entry.source),
@@ -692,7 +692,7 @@ export class PluginService {
       case 'http':
         return hook.url
       default:
-        return hook.type
+        return 'unknown'
     }
   }
 

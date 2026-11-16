@@ -1,3 +1,4 @@
+import type * as React from 'react'
 /**
  * REPL integration hook for `claude ssh` sessions.
  *

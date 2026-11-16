@@ -3,7 +3,6 @@ import { useChatStore } from '../../stores/chatStore'
 import { useTabStore } from '../../stores/tabStore'
 import { useTranslation } from '../../i18n'
 import { Button } from '../shared/Button'
-import { notifyDesktop } from '../../lib/desktopNotifications'
 
 type QuestionOption = {
   id?: string
@@ -19,6 +18,7 @@ type Question = {
   choices?: QuestionOption[]
   options?: QuestionOption[]
   multiSelect?: boolean
+  blocksCompletion?: boolean
   /** Only server-authored Expert Intake cards use this to unlock free text. */
   intakeFreeTextOptionId?: string
 }
@@ -165,9 +165,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
     : undefined)
   const t = useTranslation()
   const questions = parseInput(input)
-  const questionPreview = questionText(questions[0] ?? {}).trim()
   const inputObject = (input && typeof input === 'object') ? input as Record<string, unknown> : {}
-  const [activeTab, setActiveTab] = useState(0)
   const [selections, setSelections] = useState<QuestionSelections>({})
   const [freeTexts, setFreeTexts] = useState<QuestionFreeTexts>({})
   const [hasSubmitted, setHasSubmitted] = useState(false)
@@ -197,8 +195,6 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
   }, [permissionResponse, submissionRequestId])
 
   if (questions.length === 0) return null
-  const safeActiveTab = Math.min(activeTab, questions.length - 1)
-  const activeQuestion = questions[safeActiveTab]
 
   const resultAnswers = useMemo(() => {
     if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -269,23 +265,11 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
   const interactionLocked = submitted || submissionStatus === 'submitting' || submissionStatus === 'stale'
   const terminalWithoutAnswers = submitted && !hasAcceptedAnswers && resultText.length > 0
 
-  useEffect(() => {
-    if (!pendingRequest || hasTerminalResult || !targetSessionId) return
-
-    void notifyDesktop({
-      dedupeKey: `ask-user-question:${targetSessionId}:${pendingRequest.requestId}`,
-      title: t('question.needsInput'),
-      ...(questionPreview ? { body: questionPreview.slice(0, 160) } : {}),
-      requestAttention: true,
-      target: { type: 'session', sessionId: targetSessionId },
-    })
-  }, [hasTerminalResult, pendingRequest?.requestId, questionPreview, t, targetSessionId])
-
   // Historical completed cards remain compact, and terminal failures retain
   // their alert. A non-terminal tool use without a matching pending request is
   // either queued behind another request or a superseded proposal. The store
   // promotes queued requests after the displayed request is resolved.
-  if (!pendingRequest && !hasTerminalResult && !hasClosedAnswer) return null
+  if (!pendingRequest && !hasTerminalResult && !hasClosedAnswer && submissionStatus !== 'stale') return null
 
   if (hasClosedAnswer) {
     return (
@@ -318,13 +302,6 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
   const handleSelect = (qIndex: number, optionKey: string) => {
     if (interactionLocked) return
     const question = questions[qIndex]
-    const selected = selections[qIndex] ?? []
-    const shouldAdvance =
-      question &&
-      !question.multiSelect &&
-      selected[0] !== optionKey &&
-      qIndex < questions.length - 1
-
     setSelections((prev) => {
       const currentSelected = prev[qIndex] ?? []
       if (question?.multiSelect) {
@@ -352,9 +329,6 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
       delete next[qIndex]
       return next
     })
-    if (shouldAdvance) {
-      setActiveTab(qIndex + 1)
-    }
   }
 
   const handleFreeTextChange = (qIndex: number, value: string) => {
@@ -379,7 +353,7 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
   }
 
   const handleSubmit = () => {
-    if (interactionLocked) return
+    if (interactionLocked || !hasAnswer) return
 
     const parts: string[] = []
     for (let i = 0; i < questions.length; i++) {
@@ -424,23 +398,19 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
     })
   }
 
-  // A response to any question is enough to continue; unanswered question tabs remain optional.
-  // Commercialization Intake uses a stricter variant: “其他 / 我补充说明”
-  // must contain the actual supplement, not merely the option label.
-  const hasAnswer = questions.some((question, i) => {
+  // Legacy cards may be partially answered. Explicit blockers require an answer;
+  // an Expert intake “Other” selection always requires its actual supplement.
+  const questionHasAnswer = (question: Question, i: number) => {
     const freeText = Boolean(freeTexts[i]?.trim())
     const selected = selections[i] ?? []
-    const freeTextOptionId = question.intakeFreeTextOptionId
-    if (freeTextOptionId && selected.includes(freeTextOptionId)) return freeText
+    if (question.intakeFreeTextOptionId && selected.includes(question.intakeFreeTextOptionId)) return freeText
     return freeText || selected.length > 0
-  })
-  if (!activeQuestion) return null
-
-  const activeIntakeFreeTextOptionId = activeQuestion.intakeFreeTextOptionId
-  const activeIntakeFreeTextSelected = Boolean(
-    activeIntakeFreeTextOptionId && selections[safeActiveTab]?.includes(activeIntakeFreeTextOptionId),
-  )
-  const showFreeTextInput = !activeIntakeFreeTextOptionId || activeIntakeFreeTextSelected
+  }
+  const hasAnswer = questions.some(questionHasAnswer)
+    && questions.every((question, i) => (
+      (question.blocksCompletion !== true && !(question.intakeFreeTextOptionId && selections[i]?.includes(question.intakeFreeTextOptionId)))
+      || questionHasAnswer(question, i)
+    ))
 
   return (
     <div className={`mb-4 rounded-[var(--radius-lg)] border overflow-hidden ${
@@ -481,131 +451,113 @@ export function AskUserQuestion({ sessionId, toolUseId, input, result, resultIsE
         </div>
       )}
 
-      {/* Question tabs — horizontal tab bar (only show when multiple questions) */}
-      {questions.length > 1 && (
-        <div className="flex px-4 border-b border-[var(--color-outline-variant)]/20 bg-[var(--color-surface-container-low)] overflow-x-auto">
-          {questions.map((q, i) => {
-            const isActive = safeActiveTab === i
-            const isAnswered = Boolean(freeTexts[i]?.trim()) || (selections[i]?.length ?? 0) > 0
-            const tabLabel = q.header || `Q${i + 1}`
-            return (
-              <button
-                key={i}
-                onClick={() => setActiveTab(i)}
-                className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium whitespace-nowrap transition-colors ${
-                  isActive
-                      ? 'text-[var(--color-brand)]'
-                    : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
-                }`}
-              >
-                {isAnswered && (
-                  <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]">check_circle</span>
-                )}
-                {tabLabel}
-                {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--color-brand)] rounded-t" />
-                )}
+      {questions.map((activeQuestion, safeActiveTab) => {
+        const activeIntakeFreeTextOptionId = activeQuestion.intakeFreeTextOptionId
+        const showQuestionFreeText = !activeIntakeFreeTextOptionId || Boolean(selections[safeActiveTab]?.includes(activeIntakeFreeTextOptionId))
+        return (
+          <div key={questionKey(activeQuestion) || safeActiveTab} className="px-4 py-3 border-b border-[var(--color-outline-variant)]/20">
+            <p className="text-sm font-medium text-[var(--color-text-primary)] mb-3">
+              {questionText(activeQuestion)}
+            </p>
+
+
+            {activeQuestion.blocksCompletion === true && <span className="text-xs text-[var(--color-text-secondary)]">{t('question.required')}</span>}
+            {activeQuestion.blocksCompletion === false && !interactionLocked && (
+              <button type="button" className="mb-2 text-xs text-[var(--color-brand)]" onClick={() => handleFreeTextChange(safeActiveTab, t('question.delegate'))}>
+                {t('question.delegate')}
               </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Active question content */}
-      <div className="px-4 py-3">
-        <p className="text-sm font-medium text-[var(--color-text-primary)] mb-3">
-          {questionText(activeQuestion)}
-        </p>
-
-
-        {/* Option cards */}
-        {questionOptions(activeQuestion).length > 0 && (
-          <div className="space-y-2 mb-3">
-            {questionOptions(activeQuestion).map((opt, optIndex) => {
-              const isSelected = selections[safeActiveTab]?.includes(opt.id ?? opt.label) ?? false
-              const isMultiSelect = activeQuestion.multiSelect === true
-              return (
-                <button
-                  key={optIndex}
-                  data-testid={`ask-user-option-${safeActiveTab}-${opt.id ?? opt.label}`}
-                  onClick={() => handleSelect(safeActiveTab, opt.id ?? opt.label)}
-                  disabled={submitted}
-                  className={`w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-[var(--color-brand)] bg-[var(--color-primary-fixed)]/35 ring-1 ring-[var(--color-brand)]/25'
-                      : 'border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]'
-                  } ${submitted ? 'cursor-not-allowed opacity-60 hover:border-[var(--color-outline-variant)]/40 hover:bg-[var(--color-surface)]' : ''}`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Selection indicator */}
-                    <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      isSelected
-                        ? 'border-[var(--color-brand)] bg-[var(--color-brand)]'
-                        : 'border-[var(--color-outline)]'
-                    } ${isMultiSelect ? 'rounded-[var(--radius-xs)]' : 'rounded-full'}`}>
-                      {isSelected && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className={`text-sm font-medium ${
+            )}
+            {/* Option cards */}
+            {questionOptions(activeQuestion).length > 0 && (
+              <div className="space-y-2 mb-3">
+                {questionOptions(activeQuestion).map((opt, optIndex) => {
+                  const isSelected = selections[safeActiveTab]?.includes(opt.id ?? opt.label) ?? false
+                  const isMultiSelect = activeQuestion.multiSelect === true
+                  return (
+                    <button
+                      key={optIndex}
+                      data-testid={`ask-user-option-${safeActiveTab}-${opt.id ?? opt.label}`}
+                      onClick={() => handleSelect(safeActiveTab, opt.id ?? opt.label)}
+                      disabled={submitted}
+                      className={`w-full text-left px-4 py-3 rounded-[var(--radius-md)] border transition-all duration-150 cursor-pointer ${
                         isSelected
-                          ? 'text-[var(--color-brand)]'
-                          : 'text-[var(--color-text-primary)]'
-                      }`}>
-                        {opt.label}
-                      </span>
-                      {opt.description && (
-                        <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
-                          {opt.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
+                          ? 'border-[var(--color-brand)] bg-[var(--color-primary-fixed)]/35 ring-1 ring-[var(--color-brand)]/25'
+                          : 'border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] hover:border-[var(--color-outline-variant)] hover:bg-[var(--color-surface-container-low)]'
+                      } ${submitted ? 'cursor-not-allowed opacity-60 hover:border-[var(--color-outline-variant)]/40 hover:bg-[var(--color-surface)]' : ''}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Selection indicator */}
+                        <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                          isSelected
+                            ? 'border-[var(--color-brand)] bg-[var(--color-brand)]'
+                            : 'border-[var(--color-outline)]'
+                        } ${isMultiSelect ? 'rounded-[var(--radius-xs)]' : 'rounded-full'}`}>
+                          {isSelected && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-sm font-medium ${
+                            isSelected
+                              ? 'text-[var(--color-brand)]'
+                              : 'text-[var(--color-text-primary)]'
+                          }`}>
+                            {opt.label}
+                          </span>
+                          {opt.description && (
+                            <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+                              {opt.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
 
-        {/* Free text input */}
-        {!interactionLocked && showFreeTextInput && (
-          <div>
-            <label className="text-xs text-[var(--color-text-tertiary)] mb-1.5 block">
-              {activeIntakeFreeTextOptionId ? '补充说明' : t('question.customResponse')}
-            </label>
-            <textarea
-              value={freeTexts[safeActiveTab] ?? ''}
-              onChange={(e) => handleFreeTextChange(safeActiveTab, e.target.value)}
-              onCompositionStart={() => { composingRef.current = true }}
-              onCompositionEnd={() => { composingRef.current = false }}
-              onKeyDown={(e) => {
-                if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && hasAnswer) {
-                  e.preventDefault()
-                  handleSubmit()
-                }
-              }}
-              placeholder={t('question.typePlaceholder')}
-              rows={3}
-              wrap="soft"
-              className="max-h-48 min-h-[84px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand)]/30"
-            />
-          </div>
-        )}
+            {/* Free text input */}
+            {!interactionLocked && showQuestionFreeText && (
+              <div>
+                <label className="text-xs text-[var(--color-text-tertiary)] mb-1.5 block">
+                  {activeIntakeFreeTextOptionId ? '补充说明' : t('question.customResponse')}
+                </label>
+                <textarea
+                  value={freeTexts[safeActiveTab] ?? ''}
+                  onChange={(e) => handleFreeTextChange(safeActiveTab, e.target.value)}
+                  onCompositionStart={() => { composingRef.current = true }}
+                  onCompositionEnd={() => { composingRef.current = false }}
+                  onKeyDown={(e) => {
+                    if (composingRef.current || e.nativeEvent.isComposing || e.keyCode === 229) return
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && hasAnswer) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
+                  placeholder={t('question.typePlaceholder')}
+                  rows={3}
+                  wrap="soft"
+                  className="max-h-48 min-h-[84px] w-full resize-y rounded-[var(--radius-md)] border border-[var(--color-outline-variant)]/40 bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-brand)] focus:outline-none focus:ring-1 focus:ring-[var(--color-brand)]/30"
+                />
+              </div>
+            )}
 
-        {/* Submitted answer display */}
-        {submitted && (
-          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-            <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]">check_circle</span>
-            <span>
-              {t(terminalWithoutAnswers ? 'question.resultPrefix' : 'question.answeredPrefix')}<strong>{answeredText}</strong>
-            </span>
+            {/* Submitted answer display */}
+            {submitted && (
+              <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                <span className="material-symbols-outlined text-[14px] text-[var(--color-success)]">check_circle</span>
+                <span>
+                  {t(terminalWithoutAnswers ? 'question.resultPrefix' : 'question.answeredPrefix')}<strong>{answeredText}</strong>
+                </span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+        )
+      })}
 
       {/* Submit button */}
       {!interactionLocked && (

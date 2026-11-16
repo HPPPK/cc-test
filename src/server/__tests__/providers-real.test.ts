@@ -1,5 +1,5 @@
 /**
- * 用真实的 Provider 配置测试 ProviderService
+ * 用真实形状的配置和本地 HTTP fixture 测试 ProviderService（不调用外部模型）
  * 验证添加、激活、cc-jiangxia/settings.json 同步是否正确
  * (provider env 写到 ~/.claude/cc-jiangxia/settings.json，不污染原版 settings.json)
  */
@@ -8,6 +8,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
+import { installContractEnvironment } from './fixtures/contract-environment.js'
 import { ProviderService } from '../services/providerService.js'
 
 const MODEL_MAPPING = {
@@ -20,15 +21,17 @@ const MODEL_MAPPING = {
 describe('Real Provider Configs', () => {
   let tmpDir: string
   let service: ProviderService
+  let restoreEnvironment: () => Promise<void>
 
   beforeEach(async () => {
+    restoreEnvironment = installContractEnvironment()
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'provider-real-'))
     process.env.CLAUDE_CONFIG_DIR = tmpDir
     service = new ProviderService()
   })
 
   afterEach(async () => {
-    delete process.env.CLAUDE_CONFIG_DIR
+    await restoreEnvironment()
     await fs.rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -50,6 +53,7 @@ describe('Real Provider Configs', () => {
 
   test('添加 MiniMax Provider 并激活 — 写入 cc-jiangxia/settings.json', async () => {
     const minimax = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'minimax',
       name: 'MiniMax',
       baseUrl: 'https://api.minimaxi.com/anthropic',
@@ -70,8 +74,8 @@ describe('Real Provider Configs', () => {
     expect((settings.env as Record<string, string>).ANTHROPIC_API_KEY).toBe('')
     expect((settings.env as Record<string, string>).ANTHROPIC_MODEL).toBe('MiniMax-M2.7-highspeed')
     expect(JSON.parse((settings.env as Record<string, string>).CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toMatchObject({
-      'MiniMax-M2.7': 204800,
-      'MiniMax-M2.7-highspeed': 204800,
+      'MiniMax-M2.7': 1_000_000,
+      'MiniMax-M2.7-highspeed': 1_000_000,
     })
 
     // 验证原版 settings.json 没有被创建
@@ -82,6 +86,7 @@ describe('Real Provider Configs', () => {
 
   test('切换 Provider — 更新 cc-jiangxia/settings.json', async () => {
     const minimax = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'minimax',
       name: 'MiniMax',
       baseUrl: 'https://api.minimaxi.com/anthropic',
@@ -90,6 +95,7 @@ describe('Real Provider Configs', () => {
     })
 
     const jiekou = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'custom',
       name: '接口AI中转站',
       baseUrl: 'https://api.jiekou.ai/anthropic',
@@ -107,8 +113,8 @@ describe('Real Provider Configs', () => {
     let settings = await readCcJiangxiaSettings()
     expect((settings.env as Record<string, string>).ANTHROPIC_BASE_URL).toBe('https://api.minimaxi.com/anthropic')
     expect(JSON.parse((settings.env as Record<string, string>).CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toMatchObject({
-      'MiniMax-M2.7': 204800,
-      'MiniMax-M2.7-highspeed': 204800,
+      'MiniMax-M2.7': 1_000_000,
+      'MiniMax-M2.7-highspeed': 1_000_000,
     })
 
     // 切换到接口AI中转站
@@ -145,6 +151,7 @@ describe('Real Provider Configs', () => {
 
     // 添加并激活 provider
     const provider = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'custom',
       name: '接口AI中转站',
       baseUrl: 'https://api.jiekou.ai/anthropic',
@@ -174,6 +181,7 @@ describe('Real Provider Configs', () => {
 
   test('activateOfficial 清除 provider env', async () => {
     const provider = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'minimax',
       name: 'MiniMax',
       baseUrl: 'https://api.minimaxi.com/anthropic',
@@ -200,23 +208,47 @@ describe('Real Provider Configs', () => {
     console.log('✅ activateOfficial 正确清除了 provider env')
   })
 
-  test('连通性测试 — 返回结构正确', async () => {
-    const result = await service.testProviderConfig({
-      baseUrl: 'https://api.minimaxi.com/anthropic',
-      apiKey: 'sk-fake-test-key',
-      modelId: 'MiniMax-M2.7-highspeed',
-      authStrategy: 'auth_token',
+  test('连通性测试 — 本地 Anthropic 请求与响应契约', async () => {
+    const requests: { url: string; method: string; auth: string | null; body: any }[] = []
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1', port: 0,
+      async fetch(request) {
+        requests.push({ url: new URL(request.url).pathname, method: request.method,
+          auth: request.headers.get('authorization'), body: await request.json() })
+        return Response.json({ id: 'msg_fixture', type: 'message', role: 'assistant',
+          model: MODEL_MAPPING.main, content: [{ type: 'text', text: 'ok' }],
+          stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } })
+      },
     })
+    try {
+      const result = await service.testProviderConfig({
+        apiFormat: 'anthropic',
+        baseUrl: `http://127.0.0.1:${upstream.port}/anthropic`,
+        apiKey: 'fixture-key', modelId: MODEL_MAPPING.main, authStrategy: 'auth_token',
+      })
+      expect(result.connectivity).toMatchObject({ success: true, httpStatus: 200, modelUsed: MODEL_MAPPING.main })
+      expect(result.connectivity.latencyMs).toBeGreaterThanOrEqual(0)
+      expect(result.proxy).toBeUndefined()
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({ url: '/anthropic/v1/messages', method: 'POST', auth: 'Bearer fixture-key',
+        body: { model: MODEL_MAPPING.main, messages: [{ role: 'user' }] } })
+    } finally {
+      upstream.stop(true)
+    }
+  })
 
-    // testProviderConfig 返回 { connectivity: { ... }, proxy?: { ... } }
-    expect(result.connectivity).toBeDefined()
-    expect(result.connectivity.latencyMs).toBeGreaterThanOrEqual(0)
-    expect(result.connectivity.modelUsed).toBe('MiniMax-M2.7-highspeed')
-
-    console.log('🔌 MiniMax 连通性测试结果:')
-    console.log('   success:', result.connectivity.success)
-    console.log('   latencyMs:', result.connectivity.latencyMs)
-    console.log('   error:', result.connectivity.error)
+  test('连通性测试 — 本地认证错误不误报成功', async () => {
+    const upstream = Bun.serve({ hostname: '127.0.0.1', port: 0,
+      fetch: () => Response.json({ error: { message: 'fixture unauthorized' } }, { status: 401 }),
+    })
+    try {
+      const result = await service.testProviderConfig({ apiFormat: 'anthropic', baseUrl: `http://127.0.0.1:${upstream.port}`,
+        apiKey: 'invalid-fixture-key', modelId: MODEL_MAPPING.main })
+      expect(result.connectivity).toMatchObject({ success: false, httpStatus: 401, error: 'fixture unauthorized' })
+      expect(result.proxy).toBeUndefined()
+    } finally {
+      upstream.stop(true)
+    }
   })
 
   test('providers.json 和 cc-jiangxia/settings.json 独立于 settings.json', async () => {
@@ -234,6 +266,7 @@ describe('Real Provider Configs', () => {
 
     // Jiangxia 添加并激活自己的 provider
     const provider = await service.addProvider({
+      apiFormat: 'anthropic',
       presetId: 'minimax',
       name: 'MiniMax',
       baseUrl: 'https://api.minimaxi.com/anthropic',

@@ -5,7 +5,7 @@ import { getEmptyToolPermissionContext } from 'src/Tool.js'
 import { AGENT_TOOL_NAME } from 'src/tools/AgentTool/constants.js'
 import { prependUserContext } from 'src/utils/api.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   normalizeMessagesForAPI,
 } from 'src/utils/messages.js'
 import type { ModelName } from 'src/utils/model/model.js'
@@ -133,7 +133,7 @@ export async function generateAgent(
   const prompt = `Create an agent configuration based on this request: "${userPrompt}".${existingList}
   Return ONLY the JSON object, no other text.`
 
-  const userMessage = createUserMessage({ content: prompt })
+  const userMessage = createRuntimeUserMessage({ content: prompt })
 
   // Fetch user and system contexts
   const userContext = await getUserContext()

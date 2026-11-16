@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { randomUUID } from 'crypto'
+import { asAgentId } from '../types/ids.js'
 import type { ToolUseContext } from '../Tool.js'
 import type { AttachmentMessage } from '../types/message.js'
 import { AGENT_TOOL_NAME } from '../tools/AgentTool/constants.js'
@@ -14,13 +16,12 @@ afterEach(() => {
   }
 })
 
-function createContext(overrides?: Partial<ToolUseContext>): ToolUseContext {
+function createContext(overrides?: { tools?: ToolUseContext['options']['tools']; agentId?: ToolUseContext['agentId'] }): ToolUseContext {
   return {
-    agentId: undefined,
     options: {
-      tools: [{ name: AGENT_TOOL_NAME }],
+      tools: overrides?.tools ?? [{ name: AGENT_TOOL_NAME }],
     },
-    ...overrides,
+    agentId: overrides?.agentId,
   } as ToolUseContext
 }
 
@@ -40,7 +41,7 @@ describe('teammate runtime provider attachments', () => {
     process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = '1'
 
     const attachments = await getTeammateRuntimeProviderAttachments(
-      createContext({ options: { tools: [] } } as Partial<ToolUseContext>),
+      createContext({ tools: [] }),
       [],
     )
 
@@ -51,7 +52,7 @@ describe('teammate runtime provider attachments', () => {
     process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = '1'
 
     const attachments = await getTeammateRuntimeProviderAttachments(
-      createContext({ agentId: 'subagent-id' } as Partial<ToolUseContext>),
+      createContext({ agentId: asAgentId('a0123456789abcdef') }),
       [],
     )
 
@@ -68,12 +69,13 @@ describe('teammate runtime provider attachments', () => {
 
     expect(attachment?.type).toBe('teammate_runtime_providers')
 
-    const previousMessage = {
+    if (!attachment) throw new Error('Expected initial roster attachment')
+    const previousMessage: AttachmentMessage = {
       type: 'attachment',
       attachment,
-      uuid: 'previous',
+      uuid: randomUUID(),
       timestamp: '2026-05-17T00:00:00.000Z',
-    } as AttachmentMessage
+    }
 
     const repeated = await getTeammateRuntimeProviderAttachments(
       createContext(),

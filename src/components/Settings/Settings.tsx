@@ -19,14 +19,14 @@ type Props = {
   context: LocalJSXCommandContext;
   defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates';
 };
-export function Settings(t0) {
+export function Settings(t0: Props): React.ReactNode {
   const $ = _c(25);
   const {
     onClose,
     context,
     defaultTab
   } = t0;
-  const [selectedTab, setSelectedTab] = useState(defaultTab);
+  const [selectedTab, setSelectedTab] = useState<string>(defaultTab);
   const [tabsHidden, setTabsHidden] = useState(false);
   const [configOwnsEsc, setConfigOwnsEsc] = useState(false);
   const [gatesOwnsEsc, setGatesOwnsEsc] = useState(false);
@@ -95,7 +95,7 @@ export function Settings(t0) {
   }
   let t7;
   if ($[13] !== contentHeight) {
-    t7 = false ? [<Tab key="gates" title="Gates"><Gates onOwnsEscChange={setGatesOwnsEsc} contentHeight={contentHeight} /></Tab>] : [];
+    t7 = [];
     $[13] = contentHeight;
     $[14] = t7;
   } else {

@@ -279,19 +279,24 @@ function normalizedAutoRecovery(
   if (
     typeof recovery.phaseId !== 'string'
     || !state.phases.some((phase) => phase.id === recovery.phaseId)
+    || recovery.phaseId !== state.activePhaseId
     || typeof recovery.startedAt !== 'string'
     || Number.isNaN(Date.parse(recovery.startedAt))
-    || typeof recovery.expiresAt !== 'string'
-    || Number.isNaN(Date.parse(recovery.expiresAt))
     || typeof recovery.attempt !== 'number'
     || !Number.isInteger(recovery.attempt)
     || recovery.attempt <= 0
     || (recovery.source !== 'phase-completion-blocked' && recovery.source !== 'phase-completion-unable')
   ) return undefined
+  const credentialId = typeof recovery.credentialId === 'string' && recovery.credentialId.trim()
+    ? recovery.credentialId.trim()
+    : typeof recovery.expiresAt === 'string' && !Number.isNaN(Date.parse(recovery.expiresAt))
+      ? `workflow-recovery:${recovery.phaseId}:${recovery.startedAt}:${recovery.attempt}`
+      : null
+  if (!credentialId) return undefined
   return {
     phaseId: recovery.phaseId,
     startedAt: recovery.startedAt,
-    expiresAt: recovery.expiresAt,
+    credentialId,
     attempt: recovery.attempt,
     source: recovery.source,
   }
@@ -445,6 +450,7 @@ function completionBlockerReasons(
   }
   const activeTemplateId = state.templateIdentity?.id || ('id' in state.template ? state.template.id : '')
   const requiresSuccessfulTaskReceipts = activeTemplateId === 'efficient-constrained-dev-debug-workflow-v5'
+    || activeTemplateId === 'stradn-managed-development-workflow-v1'
     || activeTemplateId === 'feature-extension-workflow-v8'
     || activeTemplateId === 'debug-repair-workflow-v8'
   for (const task of phaseState.taskSnapshots) {
@@ -688,7 +694,14 @@ export function recordAskUserQuestionAnswer(
     let phaseChanged = false
     const issues = phaseState.issues.map((issue) => {
       if (phaseId !== state.activePhaseId || issue.phaseId !== state.activePhaseId || issue.questionRequestId !== input.requestId || issue.status !== 'open') return issue
-      if (issue.questionId && !Object.hasOwn(input.answers, issue.questionId)) return issue
+      if (issue.questionId && !Object.hasOwn(input.answers, issue.questionId)) {
+        if (issue.blocksCompletion || !Object.keys(input.answers).length) return issue
+        changed = true
+        phaseChanged = true
+        // Closing an optional question is not a user decision or authorization.
+        return { ...issue, status: 'resolved' as const, updatedAt: input.now,
+          blockingReason: 'Optional question skipped in the submitted batch; use a proposed reversible default, not inferred consent.' }
+      }
       changed = true
       phaseChanged = true
       return {

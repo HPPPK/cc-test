@@ -2,7 +2,7 @@ import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { InterruptedByUser } from 'src/components/InterruptedByUser.js';
 import { MessageResponse } from 'src/components/MessageResponse.js';
-export function UserToolCanceledMessage() {
+export function UserToolCanceledMessage(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

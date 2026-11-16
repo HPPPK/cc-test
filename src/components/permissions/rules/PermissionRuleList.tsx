@@ -34,7 +34,7 @@ type TabType = 'recent' | 'allow' | 'ask' | 'deny' | 'workspace';
 type RuleSourceTextProps = {
   rule: PermissionRule;
 };
-function RuleSourceText(t0) {
+function RuleSourceText(t0: RuleSourceTextProps): React.ReactNode {
   const $ = _c(4);
   const {
     rule
@@ -72,7 +72,11 @@ function getRuleBehaviorLabel(ruleBehavior: PermissionBehavior): string {
 }
 
 // Component for showing tool details and managing the interactive deletion workflow
-function RuleDetails(t0) {
+function RuleDetails(t0: {
+  rule: PermissionRule
+  onDelete: () => void
+  onCancel: () => void
+}): React.ReactNode {
   const $ = _c(42);
   const {
     rule,
@@ -265,7 +269,7 @@ type RulesTabContentProps = {
 };
 
 // Component for rendering rules tab content with full width support
-function RulesTabContent(props) {
+function RulesTabContent(props: RulesTabContentProps): React.ReactNode {
   const $ = _c(26);
   const {
     options,
@@ -361,7 +365,11 @@ function RulesTabContent(props) {
 }
 
 // Composes the subtitle + search + Select for a single allow/ask/deny tab.
-function PermissionRulesTab(t0) {
+function PermissionRulesTab(t0: {
+  tab: 'allow' | 'ask' | 'deny'
+  getRulesOptions: (tab: TabType, query?: string) => { options: Option[] }
+  handleToolSelect: (value: string, tab: TabType) => void
+} & Omit<RulesTabContentProps, 'options' | 'onSelect'>): React.ReactNode {
   const $ = _c(27);
   let T0;
   let T1;
@@ -470,7 +478,7 @@ type Props = {
   initialTab?: TabType;
   onRetryDenials?: (commands: string[]) => void;
 };
-export function PermissionRuleList(t0) {
+export function PermissionRuleList(t0: Props): React.ReactNode {
   const $ = _c(113);
   const {
     onExit,
@@ -485,7 +493,7 @@ export function PermissionRuleList(t0) {
     t1 = $[0];
   }
   const hasDenials = t1.length > 0;
-  const defaultTab = initialTab ?? (hasDenials ? "recent" : "allow");
+  const defaultTab: TabType = initialTab ?? (hasDenials ? "recent" : "allow");
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
     t2 = [];
@@ -493,7 +501,7 @@ export function PermissionRuleList(t0) {
   } else {
     t2 = $[1];
   }
-  const [changes, setChanges] = useState(t2);
+  const [changes, setChanges] = useState<string[]>(t2);
   const toolPermissionContext = useAppState(_temp);
   const setAppState = useSetAppState();
   const isTerminalFocused = useTerminalFocus();
@@ -508,7 +516,11 @@ export function PermissionRuleList(t0) {
   } else {
     t3 = $[2];
   }
-  const denialStateRef = useRef(t3);
+  const denialStateRef = useRef<{
+    approved: Set<number>
+    retry: Set<number>
+    denials: readonly AutoModeDenial[]
+  }>(t3);
   let t4;
   if ($[3] === Symbol.for("react.memo_cache_sentinel")) {
     t4 = s_0 => {
@@ -519,12 +531,15 @@ export function PermissionRuleList(t0) {
     t4 = $[3];
   }
   const handleDenialStateChange = t4;
-  const [selectedRule, setSelectedRule] = useState();
-  const [lastFocusedRuleKey, setLastFocusedRuleKey] = useState();
-  const [addingRuleToTab, setAddingRuleToTab] = useState(null);
-  const [validatedRule, setValidatedRule] = useState(null);
+  const [selectedRule, setSelectedRule] = useState<PermissionRule | undefined>();
+  const [lastFocusedRuleKey, setLastFocusedRuleKey] = useState<string | undefined>();
+  const [addingRuleToTab, setAddingRuleToTab] = useState<TabType | null>(null);
+  const [validatedRule, setValidatedRule] = useState<{
+    ruleBehavior: PermissionBehavior
+    ruleValue: PermissionRuleValue
+  } | null>(null);
   const [isAddingWorkspaceDirectory, setIsAddingWorkspaceDirectory] = useState(false);
-  const [removingDirectory, setRemovingDirectory] = useState(null);
+  const [removingDirectory, setRemovingDirectory] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [headerFocused, setHeaderFocused] = useState(true);
   let t5;
@@ -577,7 +592,7 @@ export function PermissionRuleList(t0) {
   if ($[11] !== allowRulesByKey || $[12] !== askRulesByKey || $[13] !== denyRulesByKey) {
     t6 = (tab, t7) => {
       const query = t7 === undefined ? "" : t7;
-      const rulesByKey = (() => {
+      const rulesByKey: Map<string, PermissionRule> = (() => {
         switch (tab) {
           case "allow":
             {
@@ -598,7 +613,7 @@ export function PermissionRuleList(t0) {
             }
         }
       })();
-      const options = [];
+      const options: { label: string; value: string }[] = [];
       if (tab !== "workspace" && tab !== "recent" && !query) {
         options.push({
           label: `Add a new rule${figures.ellipsis}`,
@@ -795,7 +810,7 @@ export function PermissionRuleList(t0) {
   if ($[30] !== changes || $[31] !== onExit || $[32] !== onRetryDenials) {
     t18 = () => {
       const s_1 = denialStateRef.current;
-      const denialsFor = set => Array.from(set).map(idx => s_1.denials[idx]).filter(_temp2);
+      const denialsFor = (set: Set<number>) => Array.from(set).map(idx => s_1.denials[idx]).filter(_temp2);
       const retryDenials = denialsFor(s_1.retry);
       if (retryDenials.length > 0) {
         const commands = retryDenials.map(_temp3);
@@ -951,7 +966,7 @@ export function PermissionRuleList(t0) {
     let t22;
     if ($[56] !== setAppState || $[57] !== toolPermissionContext) {
       t22 = (path_0, remember) => {
-        const destination = remember ? "localSettings" : "session";
+        const destination = remember ? "localSettings" as const : "session" as const;
         const permissionUpdate = {
           type: "addDirectories" as const,
           directories: [path_0],

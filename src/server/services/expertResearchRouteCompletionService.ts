@@ -183,7 +183,7 @@ export function parseExpertResearchRequiredRoutes(
       ...(!primaryTargetHost ? ['Primary target host'] : []),
       ...(!fallbackTargetHost ? ['Fallback target host'] : []),
     ]
-    if (missing.length) {
+    if (missing.length || !artifactPath || !primaryTargetHost || !fallbackTargetHost) {
       declarationIssues.push('Required Route ' + block.id + ' is missing or has an invalid ' + missing.join(', ') + '.')
       continue
     }

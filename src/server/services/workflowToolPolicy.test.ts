@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import type { WorkflowPhaseIssue, WorkflowSessionState } from './workflowTypes.js'
 import * as workflowToolPolicy from './workflowToolPolicy.js'
@@ -260,6 +261,7 @@ function workflowStateWithCustomAuthoringPolicy(activePhaseId: string): Workflow
           id: activePhaseId,
           label: 'Custom phase',
           instructions: 'Run custom authoring policy.',
+          skillDeclarations: [],
           requestedModel: null,
           actionPolicy: {
             allowedActions: [
@@ -411,7 +413,10 @@ describe('workflowToolPolicy', () => {
       mode: 'unavailable',
       path: '',
       working: false,
-    })).toEqual(['Glob', 'Grep'])
+    }, true)).toEqual(['Grep'])
+
+    expect(getWorkflowUnavailableSearchToolNames({ mode: 'unavailable', path: '', working: false }, false)).toEqual(['Glob', 'Grep'])
+    expect(getWorkflowUnavailableSearchToolNames({ mode: 'system', path: '/broken/rg', working: false }, true)).toEqual(['Glob', 'Grep'])
 
     expect(getWorkflowUnavailableSearchToolNames({
       mode: 'system',
@@ -430,8 +435,8 @@ describe('workflowToolPolicy', () => {
 
   test('applies legacy command and subagent restrictions when no structured tool access exists', () => {
     const state = workflowStateWithActionPolicy('legacy-research')
-    state.templateSnapshot.phases[0] = {
-      ...state.templateSnapshot.phases[0],
+    requireFixtureValue(state.templateSnapshot).phases[0] = {
+      ...requireFixtureValue(state.templateSnapshot).phases[0],
       actionPolicy: {
         allowedActions: ['inspect evidence'],
         forbiddenActions: [
@@ -638,7 +643,7 @@ describe('workflowToolPolicy', () => {
     expect(workflowToolPolicy.isWorkflowArtifactWritePath('/workspace/project', 'src/app.ts')).toBe(false)
   })
 
-  test('explains the concrete Write-only .workflow recovery contract only for skills-development', () => {
+  test('explains the concrete Write-only .workflow recovery contract for skills-development', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
     const state = workflowStateWithToolPolicy(
@@ -656,7 +661,7 @@ describe('workflowToolPolicy', () => {
     expect(guidance).toContain('do not end in prose')
   })
 
-  test('does not add skills-development artifact-write recovery guidance to efficient', () => {
+  test('explains scoped artifact updates and completion fields for efficient', () => {
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const capability = workflowToolPolicy.WORKFLOW_ARTIFACT_WRITE_CAPABILITY
     const state = workflowStateWithToolPolicy(
@@ -667,9 +672,22 @@ describe('workflowToolPolicy', () => {
 
     const guidance = getPromptGuidance(state, state.templateSnapshot)
 
-    expect(guidance).not.toContain('workflow_artifact_write is a declarative capability')
-    expect(guidance).not.toContain('Do not use Edit/MultiEdit as a substitute')
-    expect(guidance).not.toContain('If an artifact Write is denied, repair the path')
+    expect(guidance).toContain('workflow_artifact_write is a declarative capability')
+    expect(guidance).toContain('Do not use Edit/MultiEdit as a substitute')
+    expect(guidance).toContain('Read the exact existing artifact first')
+    expect(guidance).toContain('remainingRisks and nextUserAction belong inside handoff')
+  })
+
+  test('denied artifact editors explain same-phase Write recovery instead of routing', () => {
+    const state = workflowStateWithToolPolicy('scope-plan', ['Read', 'workflow_artifact_write'])
+    const message = workflowToolPolicy.getWorkflowToolDenialMessage('Edit', state)
+    expect(message).toContain('WORKFLOW_TOOL_FORBIDDEN')
+    expect(message).toContain('Read the exact .workflow artifact')
+    expect(message).toContain('Write')
+    expect(message).toContain('same phase')
+    expect(message).not.toContain('Complete or route')
+    expect(workflowToolPolicy.getWorkflowToolDenialMessage('Bash', state)).not.toContain('Read the exact .workflow artifact')
+    expect(workflowToolPolicy.getWorkflowToolDenialMessage('Edit', workflowStateWithToolPolicy('scope-plan', ['Read']))).not.toContain('Read the exact .workflow artifact')
   })
 
   test('classifies workflow template authoring operations by read-only and mutating behavior', () => {
@@ -805,9 +823,12 @@ describe('workflowToolPolicy', () => {
     const state = {
       ...stateFor('requirements-clarification'),
       runtimeContract: {
+        schemaVersion: 1, audit: [],
         migrationStatus: 'current',
         phaseStates: {
           'requirements-clarification': {
+            phaseId: 'requirements-clarification', workStatus: 'in-progress',
+            issues: [], artifactRequirements: [], checks: [], taskSnapshots: [], evaluatedAt: '2026-05-20T00:00:00Z',
             eligibility: 'ineligible',
             blockerReasons: ['A required phase issue is still open.'],
           },
@@ -822,9 +843,15 @@ describe('workflowToolPolicy', () => {
     const guidance = getPromptGuidance(state)
     expect(guidance).toContain('direct API tool, never a Skill')
     expect(guidance).toContain('workflow:submit_phase_completion')
-    expect(guidance).toContain('not yet eligible')
-    expect(guidance).toContain('Do not submit ready/completed')
-    expect(guidance).toContain('submit_phase_completion with status blocked or needs_user')
+    expect(guidance).toContain('eligibility is a snapshot')
+    expect(guidance).toContain('ready triggers server-side output verification')
+    expect(guidance).toContain('Do not report blocked or request rework solely because')
+    expect(guidance).toContain('Repair missing current-phase content in the same phase')
+    expect(guidance).not.toContain('explicit workflow state-update path')
+    expect(guidance).not.toContain('Do not submit ready/completed')
+    expect(guidance).toContain('submit_phase_completion with status blocked or unable')
+    expect(guidance).toContain('Legacy needs_user and completed have the same readiness checks')
+    expect(guidance).not.toContain('status blocked or needs_user')
     expect(guidance).toContain('request_workflow_route with rework_current_phase or jump_to_phase')
   })
 
@@ -858,8 +885,9 @@ describe('workflowToolPolicy', () => {
     expect(guidance).toContain('handoff must be an object')
     expect(guidance).toContain('rationale must be a non-empty string')
     expect(guidance).toContain('evidence must be an array')
-    expect(guidance).toContain('The persisted completion gate is not yet eligible')
-    expect(guidance).toContain('Do not submit ready/completed')
+    expect(guidance).toContain('No persisted completion eligibility snapshot is available')
+    expect(guidance).toContain('ready triggers server-side output verification')
+    expect(guidance).not.toContain('Do not submit ready/completed')
     expect(guidance).toContain('Do not ask the user to type continue before calling the completion tool')
     expect(guidance).toContain('requirements-review')
     expect(guidance).toContain('prompt-level guidance only')
@@ -904,7 +932,7 @@ describe('workflowToolPolicy', () => {
     const getToolNames = requireWorkflowScopedToolNames()
     const getPromptGuidance = requireWorkflowPromptToolGuidance()
     const state = workflowStateWithRecommendedPhaseSkills()
-    const phase = state.templateSnapshot.phases[0]
+    const phase = requireFixtureValue(state.templateSnapshot).phases[0]
     phase.skills = [
       {
         name: 'requirements-review',
@@ -1090,7 +1118,7 @@ describe('Workflow question card contract', () => {
         [phaseId]: {
           phaseId,
           workStatus: 'not-started',
-          eligibility: 'not-ready',
+          eligibility: 'ineligible',
           blockerReasons: [],
           issues,
           artifactRequirements: [],
@@ -1164,7 +1192,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('uses the necessary-question contract before generic single-card policy for %s', (templateId, phaseId) => {
@@ -1176,7 +1203,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('keeps non-blocking cards free of workflow-only fields when the phase has no necessary-question policy for %s', (templateId, phaseId) => {
@@ -1274,7 +1300,6 @@ describe('Workflow question card contract', () => {
   })
 
   test.each([
-    ['efficient-constrained-dev-debug-workflow-v5', 'route-context'],
     ['feature-extension-workflow-v8', 'feature-memory-plan'],
     ['debug-repair-workflow-v8', 'debug-memory-intake'],
   ])('allows only one AskUserQuestion card at a time for %s', (templateId, phaseId) => {
@@ -1295,5 +1320,21 @@ describe('Workflow question card contract', () => {
       { questions: [{ prompt: 'Ordinary workflow question?' }] },
       stateFor('implementation'),
     )).toBeNull()
+  })
+})
+
+ describe('development independent question batches', () => {
+  const state = { ...stateFor('scope-plan'), templateIdentity: { id: 'efficient-constrained-dev-debug-workflow-v5', source: 'user', version: '25' } } as WorkflowSessionState
+  test('accepts a mixed blocking and optional batch on an old template snapshot', () => {
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: [
+      { id: 'platform', prompt: 'Platform?', blocksCompletion: true, blockingReason: 'Unknown target', answerImpact: 'Selects runtime' },
+      { id: 'style', prompt: 'Style?', blocksCompletion: false },
+    ] }, state)).toBeNull()
+  })
+  test('checks blocking explanations on every question and limits a batch', () => {
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: [
+      { id: 'a', prompt: 'First?' }, { id: 'b', prompt: 'Second?', blocksCompletion: true },
+    ] }, state)).toContain('blockingReason')
+    expect(getWorkflowQuestionCardContractViolation('AskUserQuestion', { questions: Array.from({ length: 9 }, (_, i) => ({ id: String(i), prompt: `Question ${i}` })) }, state)).toContain('1–8')
   })
 })

@@ -18,15 +18,15 @@ type TeleportErrorProps = {
 // a new object in checkErrors' deps and caused the mount effect to
 // re-fire on every render.
 const EMPTY_ERRORS_TO_IGNORE: ReadonlySet<TeleportLocalErrorType> = new Set();
-export function TeleportError(t0) {
+export function TeleportError(t0: TeleportErrorProps): React.ReactNode {
   const $ = _c(18);
   const {
     onComplete,
     errorsToIgnore: t1
   } = t0;
   const errorsToIgnore = t1 === undefined ? EMPTY_ERRORS_TO_IGNORE : t1;
-  const [currentError, setCurrentError] = useState(null);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentError, setCurrentError] = useState<TeleportLocalErrorType | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   let t2;
   if ($[0] !== errorsToIgnore || $[1] !== onComplete) {
     t2 = async () => {

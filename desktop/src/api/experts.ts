@@ -58,7 +58,13 @@ export type ExpertResearchBrowserPolicy = {
 
 export type ExpertResearchBrowserConnectionInput =
   | { kind: 'managed' }
-  | { kind: 'cdp'; browser: 'chrome' | 'edge'; endpoint: string; userAuthorized: true }
+  | {
+      kind: 'cdp'
+      endpoint: string
+      userAuthorized: true
+      /** Legacy metadata accepted from older Desktop builds; connection is endpoint-driven. */
+      browser?: 'chrome' | 'edge'
+    }
 
 export type ExpertResearchBrowserStartOptions = {
   researchBrowserConnection?: ExpertResearchBrowserConnectionInput

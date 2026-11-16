@@ -7,6 +7,7 @@ import { BashTool } from 'src/tools/BashTool/BashTool.js';
 import type { AttachmentMessage, SystemMessage, UserMessage } from 'src/types/message.js';
 import type { ShellProgress } from 'src/types/tools.js';
 import { logEvent } from '../../services/analytics/index.js';
+import type { MessageKindMetadata } from '../messageKind.js';
 import { errorMessage, ShellError } from '../errors.js';
 import { createSyntheticUserCaveatMessage, createUserInterruptionMessage, createUserMessage, prepareUserContent } from '../messages.js';
 import { resolveDefaultShell } from '../shell/resolveDefaultShell.js';
@@ -14,7 +15,7 @@ import { isPowerShellToolEnabled } from '../shell/shellToolUtils.js';
 import { processToolResultBlock } from '../toolResultStorage.js';
 import { escapeXml } from '../xml.js';
 import type { ProcessUserInputContext } from './processUserInput.js';
-export async function processBashCommand(inputString: string, precedingInputBlocks: ContentBlockParam[], attachmentMessages: AttachmentMessage[], context: ProcessUserInputContext, setToolJSX: SetToolJSXFn): Promise<{
+export async function processBashCommand(inputString: string, precedingInputBlocks: ContentBlockParam[], attachmentMessages: AttachmentMessage[], context: ProcessUserInputContext, setToolJSX: SetToolJSXFn, inputMetadata: Partial<MessageKindMetadata> = { messageKind: 'user_input' }): Promise<{
   messages: (UserMessage | AttachmentMessage | SystemMessage)[];
   shouldQuery: boolean;
 }> {
@@ -28,6 +29,8 @@ export async function processBashCommand(inputString: string, precedingInputBloc
     powershell: usePowerShell
   });
   const userMessage = createUserMessage({
+    messageKind: 'user_input',
+    ...inputMetadata,
     content: prepareUserContent({
       inputString: `<bash-input>${inputString}</bash-input>`,
       precedingInputBlocks
@@ -106,6 +109,7 @@ export async function processBashCommand(inputString: string, precedingInputBloc
     const stdout = typeof mapped.content === 'string' ? mapped.content : escapeXml(data.stdout);
     return {
       messages: [createSyntheticUserCaveatMessage(), userMessage, ...attachmentMessages, createUserMessage({
+        messageKind: 'system_event',
         content: `<bash-stdout>${stdout}</bash-stdout><bash-stderr>${escapeXml(stderr)}</bash-stderr>`
       })],
       shouldQuery: false
@@ -122,6 +126,7 @@ export async function processBashCommand(inputString: string, precedingInputBloc
       }
       return {
         messages: [createSyntheticUserCaveatMessage(), userMessage, ...attachmentMessages, createUserMessage({
+          messageKind: 'system_event',
           content: `<bash-stdout>${escapeXml(e.stdout)}</bash-stdout><bash-stderr>${escapeXml(e.stderr)}</bash-stderr>`
         })],
         shouldQuery: false
@@ -129,6 +134,7 @@ export async function processBashCommand(inputString: string, precedingInputBloc
     }
     return {
       messages: [createSyntheticUserCaveatMessage(), userMessage, ...attachmentMessages, createUserMessage({
+        messageKind: 'system_event',
         content: `<bash-stderr>Command failed: ${escapeXml(errorMessage(e))}</bash-stderr>`
       })],
       shouldQuery: false

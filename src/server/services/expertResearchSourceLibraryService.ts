@@ -220,7 +220,16 @@ function candidatesForVisitedUrl(
 ): ExpertResearchSourceLibraryEntry[] {
   const visited = comparableUrl(value)
   if (!visited) return []
-  const hostMatches = catalog.entries.filter((candidate) => matchesCandidateHost(visited.candidateHost, candidate))
+  const hostMatches = catalog.entries.filter((candidate) => {
+    const selected = comparableUrl(candidate.candidateUrl)
+    // Only this explicit legacy platform entry aliases the modern Trends host.
+    // Google Search/Maps and unrelated subdomains must never satisfy it.
+    if (selected?.candidateHost === 'google.com' && /^\/trends\/?$/.test(selected.pathname)) {
+      return visited.candidateHost === 'trends.google.com'
+        || (visited.candidateHost === 'google.com' && /^\/trends(?:\/|$)/.test(visited.pathname))
+    }
+    return matchesCandidateHost(visited.candidateHost, candidate)
+  })
   if (hostMatches.length <= 1) return hostMatches
 
   const exact = hostMatches.filter((candidate) => comparableUrl(candidate.candidateUrl)?.href === visited.href)
@@ -238,7 +247,7 @@ function candidatesForVisitedUrl(
 
   const roots = hostMatches
     .map((candidate) => ({ candidate, url: comparableUrl(candidate.candidateUrl) }))
-    .filter((item): item is { candidate: ExpertResearchSourceLibraryEntry; url: ComparableUrl } => Boolean(item.url) && item.url.pathname === '/')
+    .filter((item): item is { candidate: ExpertResearchSourceLibraryEntry; url: ComparableUrl } => item.url !== undefined && item.url.pathname === '/')
   const sameOriginRoot = roots.find((item) => item.url.protocol === visited.protocol && item.url.rawHost === visited.rawHost)
     ?? roots.find((item) => item.url.protocol === visited.protocol)
     ?? roots.find((item) => item.url.rawHost === visited.rawHost)

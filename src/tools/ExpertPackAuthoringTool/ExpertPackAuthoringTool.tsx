@@ -1,6 +1,6 @@
 import { z } from 'zod/v4'
 
-import { buildTool, type ToolDef, type ToolInputJSONSchema, type ToolUseContext } from '../../Tool.js'
+import { buildTool, type ToolInputJSONSchema, type ToolUseContext } from '../../Tool.js'
 import {
   executeExpertPackAuthoringOperation,
   type ExpertPackAuthoringOperationInput,
@@ -160,7 +160,7 @@ async function executeThroughDesktopApi(
   }
 }
 
-export const ExpertPackAuthoringTool: ToolDef<InputSchema, OutputSchema> = buildTool({
+export const ExpertPackAuthoringTool = buildTool({
   name: 'expert_pack_authoring',
   searchHint: 'Expert ZIP pack authoring and validation',
   maxResultSizeChars: 200_000,

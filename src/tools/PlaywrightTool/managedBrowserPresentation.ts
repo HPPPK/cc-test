@@ -24,7 +24,7 @@ export async function presentManagedBrowserWindow(
   // Select the preserved verification tab and restore its CDP bounds first.
   // CDP may report a normal window even while Windows keeps it behind the app.
   const pageRestored = await request.restorePage().catch(() => false)
-  if (dependencies.platform !== 'win32') return pageRestored
+  if (dependencies.platform !== 'win32' && dependencies.platform !== 'darwin') return pageRestored
 
   try {
     // Query the browser we launched, not an arbitrary Chrome/Edge by name.
@@ -47,7 +47,9 @@ export async function presentManagedBrowserWindow(
     }
     const confirmed = await dependencies.restoreNative(processId, request.bounds)
     if (!confirmed) console.error('[Playwright] Managed browser native foreground restoration was not confirmed')
-    return confirmed
+    return dependencies.platform === 'darwin'
+      ? confirmed && (pageRestored || await request.restorePage().catch(() => false))
+      : confirmed
   } catch (error) {
     console.error('[Playwright] Failed to present managed browser natively:', error instanceof Error ? error.message : String(error))
     return false

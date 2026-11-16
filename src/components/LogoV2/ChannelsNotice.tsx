@@ -15,7 +15,7 @@ import { getMcpConfigsByScope } from '../../services/mcp/config.js';
 import { getClaudeAIOAuthTokens, getSubscriptionType } from '../../utils/auth.js';
 import { loadInstalledPluginsV2 } from '../../utils/plugins/installedPluginsManager.js';
 import { getSettingsForSource } from '../../utils/settings/settings.js';
-export function ChannelsNotice() {
+export function ChannelsNotice(): React.ReactNode {
   const $ = _c(32);
   const [t0] = useState(_temp);
   const {

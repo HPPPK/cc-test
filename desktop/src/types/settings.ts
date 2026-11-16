@@ -10,7 +10,7 @@ export function isThemeMode(value: unknown): value is ThemeMode {
   return typeof value === 'string' && (THEME_MODES as readonly string[]).includes(value)
 }
 
-export type WebSearchMode = 'auto' | 'anthropic' | 'tavily' | 'brave' | 'disabled'
+export type WebSearchMode = 'auto' | 'anthropic' | 'tavily' | 'tavily-keyless' | 'brave' | 'disabled'
 
 export type WebSearchSettings = {
   mode?: WebSearchMode

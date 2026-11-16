@@ -1,20 +1,25 @@
+import { attachBrowserDiagnostics, readBrowserDiagnostics, type BrowserDiagnostics } from './browserDiagnostics.js'
+import { searchFormRecoveryUrl } from './searchFormRecovery.js'
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { createContext, Script } from 'node:vm'
 import { chromium, devices, firefox, request, selectors, webkit, type Browser, type BrowserContext, type Frame, type Page, type Request as PlaywrightRequest } from 'playwright'
+import { loadManagedChromium } from './browserDriver.js'
 import { presentManagedBrowserWindow } from './managedBrowserPresentation.js'
 import { selectExistingBrowserContext } from './browserSessionContextRecovery.js'
-import { assessRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent } from './pageAccessAssessment.js'
+import { assessRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent, isHumanVerificationRecoveryHealthy } from './pageAccessAssessment.js'
 import { normalizePublicBrowserLink } from './linkNormalization.js'
 import {
   initialWindowPresentationTarget,
+  consumePresentationRequest,
   managedPresentationLaunchArgs,
   type WindowPresentationTarget,
 } from './presentationPolicy.js'
-import { buildSharedVerificationBlockedResult, shouldSchedulePlaywrightIdleClose, expireHumanVerificationGate, parkHumanVerificationPage } from './verificationSessionPolicy.js'
+import { buildSharedVerificationBlockedResult, shouldSchedulePlaywrightIdleClose, parkHumanVerificationPage } from './verificationSessionPolicy.js'
 import { getUnsafePublicBrowserUrlReason, isBrowserOwnedDocumentUrl } from './runtime.js'
-import { createAgentScopedPlaywrightObjects } from './scriptSessionIsolation.js'
+import { createManagedPage, createInitialManagedPage } from './backgroundPage.js'
+import { createAgentScopedPlaywrightObjects, createScriptPlaywrightModule } from './scriptSessionIsolation.js'
 
 type ActionType = 'navigate' | 'reload' | 'go_back' | 'go_forward' | 'new_tab' | 'list_tabs' | 'switch_tab' | 'close_tab' | 'fill' | 'type' | 'clear' | 'click' | 'double_click' | 'hover' | 'focus' | 'press' | 'select_option' | 'check' | 'uncheck' | 'drag_to' | 'wait' | 'wait_for_selector' | 'wait_for_url' | 'wait_for_load_state' | 'scroll' | 'scroll_into_view' | 'extract' | 'get_attribute' | 'get_html' | 'count' | 'is_visible' | 'is_enabled' | 'is_checked' | 'bounding_box' | 'screenshot' | 'script'
 
@@ -89,6 +94,7 @@ type PlaywrightRunnerResult = {
   links: Array<{ text: string; url: string }>
   steps: Step[]
   accessLimited: boolean
+  browserDiagnostics?: BrowserDiagnostics
   /** True/false only for a real verification handoff after the managed window was restored. */
   verificationWindowPresentationConfirmed?: boolean
   /** Stable runtime gate used to rejoin exactly this verification decision. */
@@ -100,6 +106,7 @@ type PlaywrightRunnerResult = {
 }
 
 type HumanVerificationGate = {
+  page: Page
   createdAt: number
   gateId: string
   ownerId: string
@@ -123,6 +130,7 @@ type ManagedWindowInfo = {
 }
 
 type BrowserSession = {
+  actionFailures?: Map<string, number>
   browser: Browser
   context: BrowserContext
   page: Page
@@ -207,6 +215,7 @@ const BROWSER_SESSION_IDLE_MS = 5 * 60_000
 const POPUP_FOLLOW_DELAY_MS = 400
 const DEFAULT_ASSISTABLE_WINDOW_BOUNDS = { left: 72, top: 72, width: 1280, height: 800 } satisfies ManagedWindowBounds
 const sessions = new Map<string, BrowserSession>()
+const diagnosticContexts = new WeakSet<BrowserContext>()
 const sharedContexts = new Map<string, SharedBrowserContext>()
 const sessionQueues = new Map<string, Promise<unknown>>()
 
@@ -304,7 +313,7 @@ async function activePage(session: BrowserSession): Promise<Page> {
     session.page = owned.at(-1)!
     return session.page
   }
-  const page = await requireBrowserContext(session).newPage()
+  const page = await createManagedPage(requireBrowserContext(session), session.connectionKind === 'managed' && session.presentation === 'assistable_background')
   session.ownedPages.add(page)
   session.page = page
   return page
@@ -317,6 +326,10 @@ async function activePage(session: BrowserSession): Promise<Page> {
  * an off-screen/minimized managed Chromium window to remain inaccessible.
  */
 function presentationPage(session: BrowserSession, context = recoverBrowserContext(session)): Page | undefined {
+  // The modal represents this exact Page identity, even after a user navigation
+  // changes its URL. A closed challenge must never select another research tab.
+  const gate = session.humanVerificationGate
+  if (gate) return gate.page.isClosed() ? undefined : gate.page
   const current = session.page
   if (current && !current.isClosed() && session.ownedPages.has(current)) return current
 
@@ -445,10 +458,12 @@ async function executeRawPlaywrightScript(session: BrowserSession, source: strin
       browser: session.browser,
       ownedPages: session.ownedPages,
       onOwnedPage: registerScriptOwnedPage,
+      createPage: () => createManagedPage(context, session.connectionKind === 'managed' && session.presentation === 'assistable_background'),
+      background: session.connectionKind === 'managed' && session.presentation === 'assistable_background',
     })
     const sandbox = createContext(Object.assign(Object.create(null), {
       ...scoped,
-      playwright: { chromium, firefox, webkit, devices, selectors, request },
+      playwright: createScriptPlaywrightModule({ chromium, firefox, webkit, devices, selectors, request }, session.connectionKind === 'managed' && session.presentation === 'assistable_background'),
     }), { codeGeneration: { strings: false, wasm: false } })
     const script = new Script('(async () => {\n' + source + '\n})()', { filename: 'playwright-script-action.js' })
     const result = await script.runInContext(sandbox)
@@ -458,11 +473,13 @@ async function executeRawPlaywrightScript(session: BrowserSession, source: strin
     // that could be a sibling worker's tab and corrupt this action ledger.
     let fallbackPage = page
     if (page.isClosed()) {
-      fallbackPage = await context.newPage()
+      fallbackPage = await createManagedPage(context, session.connectionKind === 'managed' && session.presentation === 'assistable_background')
       session.ownedPages.add(fallbackPage)
     }
     session.page = scriptOwnedPage ?? fallbackPage
-    return actionValueDetail('script result', result)
+    return result === undefined
+      ? 'SCRIPT_NO_RETURN_VALUE: The script completed without returning a value. This does not mean empty page data. Use an explicit return for data extraction; do not repeat completed side effects.'
+      : actionValueDetail('script result', result)
   } catch (error) {
     session.scriptPageObservations = await finalize(error)
     throw error
@@ -486,8 +503,11 @@ async function clickAndFollowPopup(session: BrowserSession, selector: string, re
   return (clickCount === 2 ? 'double-clicked ' : 'clicked ') + selector
 }
 
+function scriptPageObservations(session: BrowserSession): ScriptPageObservation[] | undefined { return session.scriptPageObservations }
+
 async function executeAction(session: BrowserSession, action: PlaywrightAction, request: PlaywrightRunnerRequest): Promise<string | undefined> {
   const page = await activePage(session)
+  attachBrowserDiagnostics(page)
   if (action.type === 'script') return executeRawPlaywrightScript(session, action.script!)
   if (action.type === 'navigate') {
     await page.goto(action.url!, { waitUntil: 'domcontentloaded', timeout: request.pageTimeoutMs })
@@ -510,7 +530,8 @@ async function executeAction(session: BrowserSession, action: PlaywrightAction, 
     return 'went forward'
   }
   if (action.type === 'new_tab') {
-    const next = await requireBrowserContext(session).newPage()
+    const next = await createManagedPage(requireBrowserContext(session), session.connectionKind === 'managed' && session.presentation === 'assistable_background')
+    attachBrowserDiagnostics(next)
     session.ownedPages.add(next)
     session.page = next
     // Opening a blank tab and then navigating it is a valid browser sequence.
@@ -532,11 +553,18 @@ async function executeAction(session: BrowserSession, action: PlaywrightAction, 
     session.ownedPages.delete(page)
     let next = openTabs(session).at(-1)
     if (!next) {
-      next = await requireBrowserContext(session).newPage()
+      next = await createManagedPage(requireBrowserContext(session), session.connectionKind === 'managed' && session.presentation === 'assistable_background')
+      attachBrowserDiagnostics(next)
       session.ownedPages.add(next)
     }
     session.page = next
     return 'closed the active tab'
+  }
+  if (action.type === 'fill' || action.type === 'type') {
+    const recovery = searchFormRecoveryUrl(page.url(), action.selector ?? '', action.text ?? '')
+    if (recovery && !await page.locator(action.selector!).first().isVisible()) {
+      throw new Error('SEARCH_FORM_UNAVAILABLE: The search input is not visible. No search was executed. Retry Playwright with navigate to ' + recovery + ' then extract, preserving the same engine and query. If that page requires verification, wait for the normal human handoff; do not bypass it.')
+    }
   }
   if (action.type === 'fill') {
     await page.locator(action.selector!).first().fill(action.text!, { timeout: request.pageTimeoutMs })
@@ -646,7 +674,7 @@ async function extractFinalPage(session: BrowserSession, request: PlaywrightRunn
   const links = rawLinks
     .map((link) => ({ ...link, url: normalizePublicBrowserLink(link.url) }))
     .filter((link): link is { text: string; url: string } => Boolean(link.text && link.url))
-  return { ...state, text, links, ...assessment }
+  return { ...state, text, links, ...assessment, ...(detectHumanVerificationKind(state.url, state.title, text) ? { browserDiagnostics: await readBrowserDiagnostics(page) } : {}) }
 }
 
 function humanVerificationKind(page: Pick<PlaywrightRunnerResult, 'url' | 'title' | 'text'>): string | null {
@@ -691,6 +719,7 @@ function maybeHoldForHumanVerification(
   if (!detectedVerificationKind || !ownerId) return null
 
   const gate = {
+    page: session.page,
     gateId: randomUUID(),
     createdAt: Date.now(),
     ownerId,
@@ -724,16 +753,24 @@ function humanVerificationResolutionError(request: PlaywrightRunnerRequest, gate
   return null
 }
 
+async function readHumanVerificationPage(gate: HumanVerificationGate) {
+  // Read this exact preserved page, never the active-page fallback, which can create a tab
+  // after the user closes the original verification surface.
+  const page = gate.page
+  if (page.isClosed()) throw new Error('The preserved verification page was closed.')
+  const snapshot = await page.evaluate(() => ({
+    url: location.href,
+    title: document.title,
+    text: document.body?.innerText ?? '',
+    readyState: document.readyState,
+  }))
+  if (page.isClosed()) throw new Error('The preserved verification page was closed during observation.')
+  return { ...snapshot, closed: false }
+}
+
 async function pendingVerificationResult(session: BrowserSession, gate: HumanVerificationGate): Promise<PlaywrightRunnerResult> {
-  const page = await extractFinalPage(session, {
-    actions: [],
-    visible: session.visible,
-    slowMoMs: 0,
-    pageTimeoutMs: 5_000,
-    networkIdleTimeoutMs: 500,
-    maxLinks: 20,
-  })
-  return { ...page, steps: [], accessLimited: true, verificationGateId: gate.gateId, error: humanVerificationPendingError(gate) }
+  const snapshot = await readHumanVerificationPage(gate).catch(() => ({ url: gate.finalUrl, title: '', text: '' }))
+  return { ...snapshot, browserDiagnostics: await readBrowserDiagnostics(gate.page), links: [], steps: [], accessLimited: true, verificationGateId: gate.gateId, error: humanVerificationPendingError(gate) }
 }
 
 function isUsableManagedWindowBounds(bounds: ManagedWindowBounds | undefined): bounds is Required<ManagedWindowBounds> {
@@ -848,6 +885,7 @@ function preserveHumanVerificationWithoutChangingWindow(gate: HumanVerificationG
  */
 async function presentManagedSessionForUser(session: BrowserSession): Promise<boolean> {
   if (!session.browser.isConnected() || session.connectionKind !== 'managed') return false
+  if (session.humanVerificationGate?.page.isClosed()) return false
   if (session.idleTimer) clearTimeout(session.idleTimer)
   session.windowTarget = 'foreground'
   if (session.sharedContextKey) {
@@ -873,17 +911,6 @@ async function presentSession(sessionKey: string, presentation: 'minimized' | 'f
   const session = sessions.get(sessionKey)
   if (!session || presentation !== 'foreground') return false
   return await presentManagedSessionForUser(session)
-}
-
-function verificationObservationRequest(session: BrowserSession): PlaywrightRunnerRequest {
-  return {
-    actions: [],
-    visible: session.visible,
-    slowMoMs: 0,
-    pageTimeoutMs: 5_000,
-    networkIdleTimeoutMs: 500,
-    maxLinks: 20,
-  }
 }
 
 function stopHumanVerificationMonitoring(session: BrowserSession): void {
@@ -924,19 +951,13 @@ async function reportAutoDetectedVerification(session: BrowserSession): Promise<
  * Desktop verification wait so the original tool call resumes with wait/extract.
  */
 async function observeHumanVerificationRecovery(session: BrowserSession): Promise<void> {
-  if (expireHumanVerificationGate(session)) { stopHumanVerificationMonitoring(session); return }
   const gate = session.humanVerificationGate
   if (!gate || session.humanVerificationAutoResolutionSent || session.humanVerificationMonitorInFlight) return
   session.humanVerificationMonitorInFlight = true
   try {
-    const page = await extractFinalPage(session, verificationObservationRequest(session))
-    const stillVerification = isHumanVerificationSurfaceStillPresent(
-      gate.verificationKind,
-      page.url,
-      page.title,
-      page.text,
-    )
-    if (stillVerification) {
+    const snapshot = await readHumanVerificationPage(gate)
+    if (session.humanVerificationGate !== gate) return
+    if (!isHumanVerificationRecoveryHealthy(snapshot)) {
       session.humanVerificationHealthyObservations = 0
       return
     }
@@ -959,7 +980,7 @@ function startHumanVerificationMonitoring(session: BrowserSession): void {
   session.humanVerificationHealthyObservations = 0
   session.humanVerificationAutoResolutionSent = false
   void observeHumanVerificationRecovery(session)
-  session.humanVerificationMonitor = setInterval(() => { void observeHumanVerificationRecovery(session) }, 1_000)
+  session.humanVerificationMonitor = setInterval(() => { void observeHumanVerificationRecovery(session) }, 3_000)
 }
 
 async function reportUserRequestedPresentation(
@@ -982,6 +1003,10 @@ async function reportUserRequestedPresentation(
   }).catch(() => undefined)
 }
 
+// A Desktop click belongs to its browser control, not each Agent session. Keep
+// consumption across sibling joins and session/context recreation in this relay.
+const consumedPresentationRequests = new Map<string, number>()
+
 async function pollVerificationControl(session: BrowserSession): Promise<void> {
   const control = session.activityControl
   if (!control) return
@@ -995,7 +1020,7 @@ async function pollVerificationControl(session: BrowserSession): Promise<void> {
       verificationCheckGeneration?: unknown
     } | null
     const showGeneration = typeof payload?.showGeneration === 'number' ? payload.showGeneration : 0
-    if (showGeneration > (session.showGeneration ?? 0)) {
+    if (consumePresentationRequest(consumedPresentationRequests, control, showGeneration)) {
       session.showGeneration = showGeneration
       const presentationConfirmed = await presentManagedSessionForUser(session)
       await reportUserRequestedPresentation(session, showGeneration, presentationConfirmed)
@@ -1112,13 +1137,14 @@ async function openSession(sessionKey: string, request: PlaywrightRunnerRequest)
     }
   }
 
+  const reusingSharedContext = Boolean(shared)
   if (shared) {
     browser = shared.browser
     context = shared.context
   } else {
-    browser = isCdp
+    browser = request.connection
       ? await chromium.connectOverCDP(request.connection.endpoint, { slowMo: request.slowMoMs })
-      : await chromium.launch({
+      : await (await loadManagedChromium(chromium)).launch({
           executablePath: request.executablePath,
           headless: !request.visible && !isAssistableBackground,
           slowMo: request.visible || isAssistableBackground ? request.slowMoMs : 0,
@@ -1135,7 +1161,7 @@ async function openSession(sessionKey: string, request: PlaywrightRunnerRequest)
       : await browser.newContext({ ...(request.locale?.trim() ? { locale: request.locale.trim() } : {}) })
     if (!context) {
       await browser.close().catch(() => undefined)
-      throw new Error('The authorized browser has no accessible context. Start Chrome or Edge with a local remote-debugging port, then retry.')
+      throw new Error('The authorized browser has no accessible CDP context. Start a CDP-compatible local browser with a remote-debugging port, then retry.')
     }
     await guardPublicBrowserContext(context)
     if (sharedContextKey) {
@@ -1152,7 +1178,18 @@ async function openSession(sessionKey: string, request: PlaywrightRunnerRequest)
     }
   }
 
-  const initialPage = await context!.newPage()
+  const initialPage = await createInitialManagedPage(context!, isAssistableBackground, {
+    ownsBrowser: !isCdp && !reusingSharedContext,
+    onFailure: () => {
+      if (sharedContextKey && sharedContexts.get(sharedContextKey) === shared) sharedContexts.delete(sharedContextKey)
+    },
+  })
+  attachBrowserDiagnostics(initialPage)
+  // Context page events fire before script-created tabs navigate.
+  if (!diagnosticContexts.has(context!)) {
+    context!.on?.('page', attachBrowserDiagnostics)
+    diagnosticContexts.add(context!)
+  }
   const session = {
     browser,
     context: context!,
@@ -1198,9 +1235,6 @@ async function runSession(sessionKey: string, request: PlaywrightRunnerRequest):
   // A shared context means one native Chromium window. Do this check before
   // openSession() creates a sibling blank tab; otherwise a normal worker can
   // visibly steal the CAPTCHA tab before the user has a chance to act.
-  for (const candidate of sessions.values()) {
-    if ((candidate === sessions.get(sessionKey) || (request.sharedContextKey && candidate.sharedContextKey === request.sharedContextKey)) && expireHumanVerificationGate(candidate)) stopHumanVerificationMonitoring(candidate)
-  }
   const existing = sessions.get(sessionKey)
   const sharedOwner = sharedHumanVerificationOwnerForContextKey(request.sharedContextKey)
   if (sharedOwner && sharedOwner !== existing) {
@@ -1225,8 +1259,19 @@ async function runSession(sessionKey: string, request: PlaywrightRunnerRequest):
         error: 'EXPERT_HUMAN_VERIFICATION_RESOLUTION_INVALID: ' + resolutionError + ' The visible page remains preserved; retry the same resolution correctly.',
       }
     }
+    if (request.verificationResolution === 'verified') {
+      const snapshot = await readHumanVerificationPage(existingGate).catch(() => null)
+      if (!snapshot || !isHumanVerificationRecoveryHealthy(snapshot)) return pendingVerificationResult(session, existingGate)
+      session.page = existingGate.page
+    }
     session.humanVerificationGate = undefined
     stopHumanVerificationMonitoring(session)
+    if (request.verificationResolution === 'switch_public_entry') {
+      // Preserve the unresolved challenge for manual inspection. The explicit
+      // fallback navigation runs in a new owned tab instead of replacing it.
+      session.page = existingGate.page
+      parkHumanVerificationPage(session)
+    }
     if (request.verificationResolution === 'record_evidence_gap') {
       const current = await pendingVerificationResult(session, existingGate)
       parkHumanVerificationPage(session)
@@ -1240,11 +1285,16 @@ async function runSession(sessionKey: string, request: PlaywrightRunnerRequest):
   try {
     for (let index = 0; index < request.actions.length; index += 1) {
       const action = request.actions[index]
+      const failureKey = JSON.stringify([session.page.url(), action])
+      const failures = session.actionFailures ??= new Map<string, number>()
       try {
+        if ((failures.get(failureKey) ?? 0) >= 2) throw new Error('BROWSER_REPEATED_FAILURE: This exact action already failed twice on this page. No action was executed. Use the returned recovery path, change the public source/query for the missing evidence, or save the specific gap; do not repeat this action.')
         session.scriptPageObservations = undefined
         const detail = await executeAction(session, action, request)
+        if (action.type === 'navigate' || action.type === 'reload') failures.clear()
+        else failures.delete(failureKey)
         const state = await pageState(await activePage(session))
-        steps.push({ index, type: action.type, outcome: 'success', ...state, ...(detail ? { detail } : {}), ...(action.type === 'script' && session.scriptPageObservations?.length ? { scriptPages: session.scriptPageObservations } : {}), ...(action.type === 'screenshot' && request.screenshotPath ? { screenshotPath: request.screenshotPath } : {}) })
+        steps.push({ index, type: action.type, outcome: 'success', ...state, ...(detail ? { detail } : {}), ...(action.type === 'script' && scriptPageObservations(session)?.length ? { scriptPages: scriptPageObservations(session) } : {}), ...(action.type === 'screenshot' && request.screenshotPath ? { screenshotPath: request.screenshotPath } : {}) })
         // Stop this very request as soon as a visible verification page appears.
         // Waiting until all queued actions finish could let a later navigation
         // overwrite the exact tab the user needs to complete manually.
@@ -1260,7 +1310,7 @@ async function runSession(sessionKey: string, request: PlaywrightRunnerRequest):
         const page = await activePage(session).catch(() => session.page)
         const state = await pageState(page).catch(() => ({ url: '', title: '' }))
         const detail = error instanceof Error ? error.message : String(error)
-        steps.push({ index, type: action.type, outcome: 'failed', ...state, detail, ...(action.type === 'script' && session.scriptPageObservations?.length ? { scriptPages: session.scriptPageObservations } : {}) })
+        steps.push({ index, type: action.type, outcome: 'failed', ...state, detail, ...(action.type === 'script' && scriptPageObservations(session)?.length ? { scriptPages: scriptPageObservations(session) } : {}) })
         const finalPage = await extractFinalPage(session, request).catch(() => ({ ...state, text: '', links: [], accessLimited: /captcha|verification|403|429/i.test(detail) }))
         const screenshotPath = await saveScreenshot(page, request).catch(() => undefined)
         const gate = maybeHoldForHumanVerification(session, request, finalPage)
@@ -1268,7 +1318,7 @@ async function runSession(sessionKey: string, request: PlaywrightRunnerRequest):
           preserveHumanVerificationWithoutChangingWindow(gate)
           return { ...finalPage, steps, ...(screenshotPath ? { screenshotPath } : {}), verificationGateId: gate.gateId, verificationWindowPresentationConfirmed: gate.windowPresentationConfirmed, error: humanVerificationRequiredError(gate) }
         }
-        if (request.visible && !page.isClosed()) await page.waitForTimeout(8_000).catch(() => undefined)
+        failures.set(failureKey, (failures.get(failureKey) ?? 0) + 1)
         return { ...finalPage, steps, ...(screenshotPath ? { screenshotPath } : {}), error: detail }
       }
     }
@@ -1378,4 +1428,6 @@ function startServer(): void {
   process.once('SIGINT', () => { void closeAllSessions().finally(() => process.exit(0)) })
 }
 
-startServer()
+export { runSession, closeAllSessions, presentSession, startServer }
+
+if (import.meta.main || (typeof require === 'function' && typeof module !== 'undefined' && require.main === module)) startServer()

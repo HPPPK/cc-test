@@ -1,6 +1,8 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import {
   loadCurrentWorkflowTemplate,
+  toWorkflowTemplate,
   setWorkflowRuntimeTemplateLoaderForTests,
   resolveWorkflowTemplateForRun,
   workflowTemplateSnapshotHash,
@@ -22,6 +24,7 @@ function template(version: string, instructions: string): WorkflowTemplate {
     source: 'pack',
     version,
     displayName: 'Development',
+    description: 'Pinned development workflow fixture',
     phases: [{
       id: 'route-context',
       label: 'Route',
@@ -75,7 +78,7 @@ describe('workflow runtime template snapshots', () => {
     const loader = mock(async () => ({ ...template('23', 'replacement rules'), id: 'custom-workflow' }))
     setWorkflowRuntimeTemplateLoaderForTests(loader)
 
-    expect(await loadCurrentWorkflowTemplate(session)).toEqual(session.templateSnapshot)
+    expect(await loadCurrentWorkflowTemplate(session)).toEqual(requireFixtureValue(session.templateSnapshot))
     expect(loader).not.toHaveBeenCalled()
     setWorkflowRuntimeTemplateLoaderForTests(async () => null)
     expect((await loadCurrentWorkflowTemplate(session))?.phases[0]?.instructions).toBe('original custom rules')
@@ -209,4 +212,20 @@ describe('workflow runtime template snapshots', () => {
     expect(resolveWorkflowTemplateForRun(session, installed)).toBeNull()
     expect(session.sourceTemplateStatus).toBe('stale-template')
   })
+})
+
+it('materializes complete required-artifact contracts from registry evidence policies', () => {
+  const outputArtifact = { id: 'plan', name: 'Plan', kind: 'markdown', description: 'Plan output', required: true as const }
+  const completionCriteria = { type: 'manual-checklist' as const, description: 'Review the plan' }
+  const converted = toWorkflowTemplate({
+    schemaVersion: 2, id: 'contract-fixture', source: 'pack', version: '1', name: 'Contract fixture', description: 'Registry conversion',
+    phases: [{
+      id: 'plan', name: 'Plan', instructions: 'Produce the plan', requiredIntake: [], handoffRules: [],
+      outputArtifact, completionCriteria, transition: { authority: 'user-confirmation' }, skills: [],
+      requiredArtifacts: [{ id: 'review', required: true }],
+      evidencePolicy: { outputArtifact, completionCriteria, handoffRules: [], requiredArtifacts: [{ id: 'review', required: true }] },
+    }],
+  })
+  expect(converted.phases[0]?.requiredArtifacts[0]).toEqual({ id: 'review', required: true, kind: 'json', description: 'review' })
+  expect(converted.phases[0]?.evidencePolicy?.requiredArtifacts[0]).toEqual({ id: 'review', required: true, kind: 'json', description: 'review' })
 })

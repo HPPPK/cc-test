@@ -46,7 +46,7 @@ function resetTypeahead(ta: {
  * <Box width={2}> with color="text", which would break the 1-col checkbox
  * column alignment here (other checkbox states are width-1 glyphs).
  */
-function ResolvingSpinner() {
+function ResolvingSpinner(): React.ReactNode {
   const $ = _c(4);
   const [frame, setFrame] = useState(0);
   let t0;
@@ -109,7 +109,7 @@ function formatDateDisplay(isoValue: string, schema: PrimitiveSchemaDefinition):
     return isoValue;
   }
 }
-export function ElicitationDialog(t0) {
+export function ElicitationDialog(t0: Props): React.ReactNode {
   const $ = _c(7);
   const {
     event,

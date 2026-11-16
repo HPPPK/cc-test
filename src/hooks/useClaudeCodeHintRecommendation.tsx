@@ -21,7 +21,7 @@ type UseClaudeCodeHintRecommendationResult = {
   recommendation: PluginHintRecommendation | null;
   handleResponse: (response: 'yes' | 'no' | 'disable') => void;
 };
-export function useClaudeCodeHintRecommendation() {
+export function useClaudeCodeHintRecommendation(): UseClaudeCodeHintRecommendationResult {
   const $ = _c(11);
   const pendingHint = React.useSyncExternalStore(subscribeToPendingHint, getPendingHintSnapshot);
   const {
@@ -31,7 +31,7 @@ export function useClaudeCodeHintRecommendation() {
     recommendation,
     clearRecommendation,
     tryResolve
-  } = usePluginRecommendationBase();
+  } = usePluginRecommendationBase<PluginHintRecommendation>();
   let t0;
   let t1;
   if ($[0] !== pendingHint || $[1] !== tryResolve) {

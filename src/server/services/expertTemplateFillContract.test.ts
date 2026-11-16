@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import { createHash } from 'node:crypto'
@@ -8,7 +9,7 @@ import { sessionService } from './sessionService.js'
 import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from './expertPackRegistryService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
 import { handleSessionsApi } from '../api/sessions.js'
-import { commitExpertTemplateFillCli, queryExpertTemplateFillSchema, runExpertTemplateFillCli } from '../../cli/expertTemplateFill.js'
+import { commitExpertTemplateFillCli, queryExpertTemplateFillFields, queryExpertTemplateFillSchema, runExpertTemplateFillCli } from '../../cli/expertTemplateFill.js'
 import { EXPERT_TEMPLATE_FILL_FORMAT, renderExpertTemplateFill } from '../../utils/expertTemplateFill.js'
 
 const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -57,6 +58,114 @@ async function expertOf(sessionId: string) {
 }
 
 describe('fixed-template CLI server contract', () => {
+  test('recovers exact committed fields through HTTP after a new service instance and rejects corrupt snapshots', async () => {
+    const f = await fixture()
+    const payload = { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: 'contract-v1', fields }
+    await runExpertTemplateFillCli({ dataFromStdin: true, outputPath: f.outputPath, serverUrl: 'http://local', sessionId: f.sessionId }, {
+      env: {}, readFile: fs.readFile, readStdin: async () => JSON.stringify(payload), mkdir: fs.mkdir, writeFile: fs.writeFile, fetch: f.fetch,
+    })
+    const recovered = await queryExpertTemplateFillFields({ recoverFields: true, serverUrl: 'http://local', sessionId: f.sessionId }, { env: {}, fetch: f.fetch })
+    expect(recovered).toEqual(payload)
+    expect(await new ExpertSessionService().getTemplateFillFields(f.sessionId)).toEqual(payload)
+    const expert = await expertOf(f.sessionId)
+    const originalTemplate = requireFixtureValue(expert.runtimeBinding).outputTemplate!.content
+    requireFixtureValue(expert.runtimeBinding).outputTemplate!.content = originalTemplate.replace('#123456', '#654321')
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+    requireFixtureValue(expert.runtimeBinding).outputTemplate!.content = originalTemplate
+    await fs.unlink(f.outputPath)
+    await fs.symlink('/etc/hosts', f.outputPath)
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+    await fs.unlink(f.outputPath)
+    await fs.writeFile(f.outputPath, renderExpertTemplateFill(template, payload).content)
+    expert.templateFillDelivery!.fieldSnapshot!.payload.fields = { ...fields, REPORT_TITLE: 'corrupt snapshot' }
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+    delete expert.templateFillDelivery!.fieldSnapshot
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' })
+    expect((await expertOf(f.sessionId)).templateFillDelivery?.finalizedAt).toBeTruthy()
+    expect(await fs.readFile(f.outputPath, 'utf8')).toContain('Research &amp; evidence')
+  })
+
+
+  test.each([
+    { format: 'corrupt-format' },
+    { mode: 'patch' },
+    { extra: true },
+    { templateId: ' ' },
+    { fields: [] },
+    { evidenceAbsorption: { records: [{ disposition: 'discarded', note: 'changed invisible provenance' }] } },
+  ])('rejects corrupt stored payload even when HTML bytes remain identical: %j', async changes => {
+    const f = await fixture()
+    await runExpertTemplateFillCli({ dataFromStdin: true, outputPath: f.outputPath, serverUrl: 'http://local', sessionId: f.sessionId }, {
+      env: {}, readFile: fs.readFile, readStdin: async () => JSON.stringify({ format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: 'contract-v1', fields }), mkdir: fs.mkdir, writeFile: fs.writeFile, fetch: f.fetch,
+    })
+    const original = await fs.readFile(f.outputPath, 'utf8')
+    const expert = await expertOf(f.sessionId)
+    expect(expert.templateFillDelivery?.fieldSnapshot?.payloadHash).toMatch(/^[a-f0-9]{64}$/)
+    Object.assign(expert.templateFillDelivery!.fieldSnapshot!.payload, changes)
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED', statusCode: 409 })
+    expect(await fs.readFile(f.outputPath, 'utf8')).toBe(original)
+  })
+
+  test('classifies malformed or external persisted report paths as recovery conflicts', async () => {
+    const f = await fixture()
+    await runExpertTemplateFillCli({ dataFromStdin: true, outputPath: f.outputPath, serverUrl: 'http://local', sessionId: f.sessionId }, {
+      env: {}, readFile: fs.readFile, readStdin: async () => JSON.stringify({ templateId: 'contract-v1', fields }), mkdir: fs.mkdir, writeFile: fs.writeFile, fetch: f.fetch,
+    })
+    for (const reportPath of [path.join(f.workDir, '..', 'outside.html'), 'report.txt']) {
+      const expert = await expertOf(f.sessionId)
+      expert.templateFillDelivery!.reportPath = reportPath
+      await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+      await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED', statusCode: 409 })
+    }
+  })
+
+  test('recovers unchanged reports through a selected workspace root alias with canonical or alias report paths', async () => {
+    const f = await fixture()
+    await runExpertTemplateFillCli({ dataFromStdin: true, outputPath: f.outputPath, serverUrl: 'http://local', sessionId: f.sessionId }, {
+      env: {}, readFile: fs.readFile, readStdin: async () => JSON.stringify({ templateId: 'contract-v1', fields }), mkdir: fs.mkdir, writeFile: fs.writeFile, fetch: f.fetch,
+    })
+    const alias = f.workDir + '-alias'
+    await fs.symlink(f.workDir, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    const persisted = await sessionService.getSession(f.sessionId)
+    const expert = await expertOf(f.sessionId)
+    const getSession = spyOn(sessionService, 'getSession').mockImplementation(async id => id === f.sessionId ? { ...persisted!, workDir: alias, expert } : null)
+    try {
+      for (const reportPath of [f.outputPath, path.join(alias, 'report.html')]) {
+        expert.templateFillDelivery!.reportPath = reportPath
+        expect((await f.service.getTemplateFillFields(f.sessionId)).fields).toEqual(fields)
+      }
+    } finally { getSession.mockRestore(); await fs.unlink(alias) }
+  })
+
+  test('does not recover absent, foreign, expired, rebound or inactive session fields', async () => {
+    const f = await fixture()
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' })
+    await expect(f.service.getTemplateFillFields('missing-session')).rejects.toThrow()
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'contract-v1', fields: { REPORT_TITLE: 'rejected candidate' } }, { outputPath: f.outputPath })).rejects.toThrow()
+    expect((await f.service.getTemplateFillFields(f.sessionId)).fields).toEqual({ REPORT_TITLE: 'rejected candidate' })
+    const other = await sessionService.createSession(f.workDir)
+    await f.service.enterExpertMode(other.sessionId, 'contract-expert')
+    await expect(f.service.getTemplateFillFields(other.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' })
+    const clock = spyOn(Date, 'now').mockReturnValue(Date.now() + 2 * 60 * 60 * 1000 + 1)
+    try { await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' }) } finally { clock.mockRestore() }
+    const expert = await expertOf(f.sessionId)
+    requireFixtureValue(expert.runtimeBinding).outputTemplate!.content = template.replace('#123456', '#654321')
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' })
+    expert.runtimeBinding = undefined
+    expert.status = 'exited'
+    await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
+    // Remove the active runtime fallback to model a genuinely exited session.
+    const { expertRuntimeSessionStore } = await import('./expertRuntimeSessionStore.js')
+    await expertRuntimeSessionStore.remove(f.sessionId)
+    await expect(f.service.getTemplateFillFields(f.sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' })
+  })
+
   test('queries only the active snapshot, derives real fields, and writes no session metadata', async () => {
     const f = await fixture()
     const lookup = spyOn(ExpertPackRegistryService.prototype, 'getExpert').mockRejectedValue(new Error('Installed template must not be read'))
@@ -87,7 +196,7 @@ describe('fixed-template CLI server contract', () => {
       expect(expired.lifecycle).not.toHaveProperty('repairCandidate')
     } finally { clock.mockRestore() }
     const expert = await expertOf(f.sessionId)
-    expert.runtimeBinding.outputTemplate!.content = template.replace('#123456', '#654321')
+    requireFixtureValue(expert.runtimeBinding).outputTemplate!.content = template.replace('#123456', '#654321')
     await sessionService.appendSessionMetadata(f.sessionId, { workDir: f.workDir, expert })
     const rebound = await f.service.getTemplateFillSchema(f.sessionId)
     expect(rebound.lifecycle.allowedModes).toEqual([])
@@ -106,8 +215,8 @@ describe('fixed-template CLI server contract', () => {
   test('uses CLI recovery instructions for commercial expired receipts and unconfirmed writes', async () => {
     const f = await fixture()
     const expert = await expertOf(f.sessionId)
-    expert.runtimeBinding.expertId = 'commercialization-research-report'
-    expert.runtimeBinding.outputTemplate!.content = template.replace('{{REPORT_TITLE}}', '{{REPORT_TITLE}} {{REPORT_DATE}}')
+    requireFixtureValue(expert.runtimeBinding).expertId = 'commercialization-research-report'
+    requireFixtureValue(expert.runtimeBinding).outputTemplate!.content = template.replace('{{REPORT_TITLE}}', '{{REPORT_TITLE}} {{REPORT_DATE}}')
     await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
     await expect(f.service.commitTemplateFillWrite(f.sessionId, { receipt: 'expired' })).rejects.toThrow('expert-template-fill CLI')
     const rendered = await f.service.renderTemplateFill(f.sessionId, { templateId: 'contract-v1', fields }, { outputPath: f.outputPath })
@@ -119,13 +228,13 @@ describe('fixed-template CLI server contract', () => {
     const f = await fixture()
     const expert = await expertOf(f.sessionId)
     const now = new Date().toISOString()
-    expert.runtimeBinding.expertId = 'commercialization-research-report'
+    requireFixtureValue(expert.runtimeBinding).expertId = 'commercialization-research-report'
     expert.templateFillDraft = { templateId: 'contract-v1', fields, savedAt: now, updatedAt: now, completionReview: { initialRenderedAt: now, reportPath: f.outputPath } }
     await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
     expect(await f.service.getTemplateFillSchema(f.sessionId)).toMatchObject({ delivery: 'cli-only', lifecycle: { stage: 'draft', allowedModes: ['patch', 'finalize'], reportPath: f.outputPath } })
     expert.templateFillDraft = undefined
     expert.templateFillDelivery = { templateId: 'contract-v1', finalizedAt: now, reportPath: f.outputPath }
-    expert.runtimeBinding.expertId = 'commercialization-research-report-copy'
+    requireFixtureValue(expert.runtimeBinding).expertId = 'commercialization-research-report-copy'
     await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
     expect(await f.service.getTemplateFillSchema(f.sessionId)).toMatchObject({ delivery: 'structured-write', lifecycle: { stage: 'finalized', allowedModes: [], reportPath: f.outputPath } })
   })
@@ -149,7 +258,7 @@ describe('fixed-template CLI server contract', () => {
   test('delivers a CLI draft only after the required 08 reviewer audit and finalizes idempotently', async () => {
     const f = await fixture()
     const expert = await expertOf(f.sessionId)
-    expert.runtimeBinding.researchArtifactPolicy = {
+    requireFixtureValue(expert.runtimeBinding).researchArtifactPolicy = {
       mode: 'markdown-path-only', directory: 'commercialization-research',
       briefPath: 'commercialization-research/01-research-brief.md',
       researcherPaths: ['commercialization-research/02-competitors.md'],
@@ -192,7 +301,7 @@ describe('fixed-template CLI server contract', () => {
     expect(finalState.templateFillDraft).toBeUndefined()
     expect(finalState.templateFillDelivery).toMatchObject({ templateId: 'contract-v1', reportPath: f.outputPath })
     expect(await fs.readFile(f.outputPath, 'utf8')).toBe(draftHtml)
-    const receipt = { ...finalState.templateFillDelivery }
+    const receipt = { ...requireFixtureValue(finalState.templateFillDelivery) }
     await expect(runExpertTemplateFillCli(options, dependencies)).resolves.toMatchObject({ completionReviewRequired: false })
     const retriedState = await expertOf(f.sessionId)
     expect(retriedState.templateFillDraft).toBeUndefined()
@@ -242,7 +351,7 @@ describe('fixed-template CLI server contract', () => {
   test('keeps the original HTML on missing-field renderer failure and gives CLI repair instructions', async () => {
     const f = await fixture()
     const expert = await expertOf(f.sessionId)
-    expert.runtimeBinding.expertId = 'commercialization-research-report'
+    requireFixtureValue(expert.runtimeBinding).expertId = 'commercialization-research-report'
     await sessionService.appendSessionMetadata(f.sessionId, { expert, workDir: f.workDir })
     await fs.writeFile(f.outputPath, '<html>original</html>')
     await expect(runExpertTemplateFillCli({ dataFromStdin: true, outputPath: 'report.html', serverUrl: 'http://local', sessionId: f.sessionId }, {

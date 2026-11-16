@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getKairosActive, setUserMsgOptIn } from '../bootstrap/state.js'

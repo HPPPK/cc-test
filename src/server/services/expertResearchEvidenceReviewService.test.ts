@@ -5,6 +5,20 @@ import {
 } from './expertResearchEvidenceReviewService.js'
 
 describe('expertResearchEvidenceReviewService', () => {
+  test('old receipts and page-bound excerpts survive the same persistence round trip without a new schema', () => {
+    const policy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 4, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true as const }
+    const old = { records: [{ agentId: 'legacy', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-14T20:00:00Z', content: 'Existing evidence', entries: [{ target: 'https://old.test/', status: 'opened' as const }] }], updatedAt: '2026-11-14T20:00:00Z' }
+    const before = JSON.stringify(old)
+    const state = recordExpertResearchEvidence(JSON.parse(before), policy, {
+      agentId: 'current', agentType: 'expert-evidence-researcher', recordedAt: '2026-11-15T00:00:00Z', content: 'Current evidence',
+      entries: [{ target: 'https://forum.test/thread/1', status: 'opened', detail: 'extracted text from body: 实际页面片段' }],
+    })
+    const restored = JSON.parse(JSON.stringify(state))
+    expect(restored.records[0]).toEqual(old.records[0])
+    expect(restored.records[1].entries[0].detail).toContain('实际页面片段')
+    expect(JSON.stringify(old)).toBe(before)
+    expect(restored.schemaVersion).toBeUndefined()
+  })
   test('keeps bounded researcher evidence with its Playwright audit for a ZIP-declared reviewer', () => {
     const policy = resolveExpertResearchEvidenceReviewPolicy(JSON.stringify({
       researchEvidenceReview: {
@@ -86,7 +100,7 @@ test('retains every terminal source outcome when one researcher lane exceeds six
     maxCharactersPerRecord: 120_000,
     reviewerEvidenceOnly: true as const,
   }
-  let state = undefined
+  let state: ReturnType<typeof recordExpertResearchEvidence> | undefined = undefined
   for (let batch = 0; batch < 7; batch++) {
     const entries = Array.from({ length: batch === 6 ? 8 : 10 }, (_, offset) => {
       const index = batch * 10 + offset
@@ -123,4 +137,14 @@ test('keeps every file-bound audit even after more than eight parts and pathless
   })
   expect(state!.records.filter(record => record.artifactPath)).toHaveLength(12)
   expect(state!.records.filter(record => !record.artifactPath)).toHaveLength(8)
+})
+
+
+test('records an explicitly permitted file handoff with zero browser outcomes without inventing visits', () => {
+  const policy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 8, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true as const }
+  const input = { agentId: 'budget-ended-a', agentType: 'expert-evidence-researcher', recordedAt: '2026-10-25T00:00:00Z', artifactPath: 'commercialization-research/02-competitors.md', content: '# Evidence gap\nNo browser evidence was obtained.', entries: [] }
+  expect(() => recordExpertResearchEvidence(undefined, policy, input)).toThrow('没有可验证')
+  const state = recordExpertResearchEvidence(undefined, policy, { ...input, allowEmptyEntries: true })
+  expect(state.records).toEqual([expect.objectContaining({ agentId: 'budget-ended-a', entries: [], content: input.content })])
+  expect(() => recordExpertResearchEvidence(undefined, policy, { ...input, artifactPath: undefined, allowEmptyEntries: true })).toThrow('没有可验证')
 })

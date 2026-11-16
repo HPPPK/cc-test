@@ -13,16 +13,20 @@ import {
   BatchLogRecordProcessor,
   ConsoleLogRecordExporter,
   LoggerProvider,
+  type LogRecordExporter,
 } from '@opentelemetry/sdk-logs'
 import {
   ConsoleMetricExporter,
   MeterProvider,
   PeriodicExportingMetricReader,
+  type MetricReader,
+  type PushMetricExporter,
 } from '@opentelemetry/sdk-metrics'
 import {
   BasicTracerProvider,
   BatchSpanProcessor,
   ConsoleSpanExporter,
+  type SpanExporter,
 } from '@opentelemetry/sdk-trace-base'
 import {
   ATTR_SERVICE_NAME,
@@ -69,6 +73,16 @@ import {
 const DEFAULT_METRICS_EXPORT_INTERVAL_MS = 60000
 const DEFAULT_LOGS_EXPORT_INTERVAL_MS = 5000
 const DEFAULT_TRACES_EXPORT_INTERVAL_MS = 5000
+
+
+/** @internal Keep imports lazy and preserve their exact module types. */
+export async function loadOptionalTelemetryModule<T>(packageName: string, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load()
+  } catch (cause) {
+    throw new Error(`OPTIONAL_INTEGRATION_UNAVAILABLE: ${packageName}. Install the matching optional package to enable this integration.`, { cause })
+  }
+}
 
 class TelemetryTimeoutError extends Error {}
 
@@ -127,14 +141,14 @@ export function parseExporterTypes(value: string | undefined): string[] {
     .filter(t => t !== 'none')
 }
 
-async function getOtlpReaders() {
+export async function getOtlpReaders() {
   const exporterTypes = parseExporterTypes(process.env.OTEL_METRICS_EXPORTER)
   const exportInterval = parseInt(
     process.env.OTEL_METRIC_EXPORT_INTERVAL ||
       DEFAULT_METRICS_EXPORT_INTERVAL_MS.toString(),
   )
 
-  const exporters = []
+  const exporters: (PushMetricExporter | MetricReader)[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       // Custom console exporter that shows resource attributes
@@ -166,23 +180,17 @@ async function getOtlpReaders() {
         case 'grpc': {
           // Lazy-import to keep @grpc/grpc-js (~700KB) out of the telemetry chunk
           // when the protocol is http/protobuf (ant default) or http/json.
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-grpc'
-          )
+          const { OTLPMetricExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-metrics-otlp-grpc', () => import('@opentelemetry/exporter-metrics-otlp-grpc'))
           exporters.push(new OTLPMetricExporter())
           break
         }
         case 'http/json': {
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-http'
-          )
+          const { OTLPMetricExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-metrics-otlp-http', () => import('@opentelemetry/exporter-metrics-otlp-http'))
           exporters.push(new OTLPMetricExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPMetricExporter } = await import(
-            '@opentelemetry/exporter-metrics-otlp-proto'
-          )
+          const { OTLPMetricExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-metrics-otlp-proto', () => import('@opentelemetry/exporter-metrics-otlp-proto'))
           exporters.push(new OTLPMetricExporter(httpConfig))
           break
         }
@@ -192,9 +200,7 @@ async function getOtlpReaders() {
           )
       }
     } else if (exporterType === 'prometheus') {
-      const { PrometheusExporter } = await import(
-        '@opentelemetry/exporter-prometheus'
-      )
+      const { PrometheusExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-prometheus', () => import('@opentelemetry/exporter-prometheus'))
       exporters.push(new PrometheusExporter())
     } else {
       throw new Error(
@@ -214,7 +220,7 @@ async function getOtlpReaders() {
   })
 }
 
-async function getOtlpLogExporters() {
+export async function getOtlpLogExporters() {
   const exporterTypes = parseExporterTypes(process.env.OTEL_LOGS_EXPORTER)
 
   const protocol =
@@ -226,7 +232,7 @@ async function getOtlpLogExporters() {
     `[3P telemetry] getOtlpLogExporters: types=${jsonStringify(exporterTypes)}, protocol=${protocol}, endpoint=${endpoint}`,
   )
 
-  const exporters = []
+  const exporters: LogRecordExporter[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       exporters.push(new ConsoleLogRecordExporter())
@@ -235,23 +241,17 @@ async function getOtlpLogExporters() {
 
       switch (protocol) {
         case 'grpc': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-grpc'
-          )
+          const { OTLPLogExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-logs-otlp-grpc', () => import('@opentelemetry/exporter-logs-otlp-grpc'))
           exporters.push(new OTLPLogExporter())
           break
         }
         case 'http/json': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-http'
-          )
+          const { OTLPLogExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-logs-otlp-http', () => import('@opentelemetry/exporter-logs-otlp-http'))
           exporters.push(new OTLPLogExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPLogExporter } = await import(
-            '@opentelemetry/exporter-logs-otlp-proto'
-          )
+          const { OTLPLogExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-logs-otlp-proto', () => import('@opentelemetry/exporter-logs-otlp-proto'))
           exporters.push(new OTLPLogExporter(httpConfig))
           break
         }
@@ -270,10 +270,10 @@ async function getOtlpLogExporters() {
   return exporters
 }
 
-async function getOtlpTraceExporters() {
+export async function getOtlpTraceExporters() {
   const exporterTypes = parseExporterTypes(process.env.OTEL_TRACES_EXPORTER)
 
-  const exporters = []
+  const exporters: SpanExporter[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       exporters.push(new ConsoleSpanExporter())
@@ -286,23 +286,17 @@ async function getOtlpTraceExporters() {
 
       switch (protocol) {
         case 'grpc': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-grpc'
-          )
+          const { OTLPTraceExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-trace-otlp-grpc', () => import('@opentelemetry/exporter-trace-otlp-grpc'))
           exporters.push(new OTLPTraceExporter())
           break
         }
         case 'http/json': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-http'
-          )
+          const { OTLPTraceExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-trace-otlp-http', () => import('@opentelemetry/exporter-trace-otlp-http'))
           exporters.push(new OTLPTraceExporter(httpConfig))
           break
         }
         case 'http/protobuf': {
-          const { OTLPTraceExporter } = await import(
-            '@opentelemetry/exporter-trace-otlp-proto'
-          )
+          const { OTLPTraceExporter } = await loadOptionalTelemetryModule('@opentelemetry/exporter-trace-otlp-proto', () => import('@opentelemetry/exporter-trace-otlp-proto'))
           exporters.push(new OTLPTraceExporter(httpConfig))
           break
         }
@@ -359,8 +353,8 @@ async function initializeBetaTracing(
   }
 
   const [{ OTLPTraceExporter }, { OTLPLogExporter }] = await Promise.all([
-    import('@opentelemetry/exporter-trace-otlp-http'),
-    import('@opentelemetry/exporter-logs-otlp-http'),
+    loadOptionalTelemetryModule('@opentelemetry/exporter-trace-otlp-http', () => import('@opentelemetry/exporter-trace-otlp-http')),
+    loadOptionalTelemetryModule('@opentelemetry/exporter-logs-otlp-http', () => import('@opentelemetry/exporter-logs-otlp-http')),
   ])
 
   const httpConfig = {
@@ -452,7 +446,7 @@ export async function initializeTelemetry() {
   // Enable via CLAUDE_CODE_PERFETTO_TRACE=1 or CLAUDE_CODE_PERFETTO_TRACE=<path>
   initializePerfettoTracing()
 
-  const readers = []
+  const readers: MetricReader[] = []
 
   // Add customer exporters (if enabled)
   const telemetryEnabled = isTelemetryEnabled()
@@ -765,13 +759,13 @@ function parseOtelHeadersEnvVar(): Record<string, string> {
  * - HTTP agent options (proxy, mTLS)
  * - Dynamic headers via otelHeadersHelper or static headers from env var
  */
-function getOTLPExporterConfig() {
+function getOTLPExporterConfig(): OptionalOTLPHTTPOptions {
   const proxyUrl = getProxyUrl()
   const mtlsConfig = getMTLSConfig()
   const settings = getSettings_DEPRECATED()
 
   // Build base config
-  const config: Record<string, unknown> = {}
+  const config: OptionalOTLPHTTPOptions = {}
 
   // Parse static headers from env var once (doesn't change at runtime)
   const staticHeaders = parseOtelHeadersEnvVar()

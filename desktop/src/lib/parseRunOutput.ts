@@ -1,3 +1,4 @@
+import { resolveMessageKind } from '../../../src/utils/messageKind'
 /**
  * Parse task run output into displayable text.
  *
@@ -43,6 +44,7 @@ export function parseRunOutput(raw: string): string {
     const type = parsed?.type
 
     if (type === 'assistant') {
+      if (parsed.messageKind && resolveMessageKind(parsed) !== 'assistant_response') continue
       anyRecognized = true
       const content = parsed?.message?.content
       if (!Array.isArray(content)) continue

@@ -102,31 +102,92 @@ function imageBase64FromJson(value: unknown): string | null {
   return null
 }
 
-function lastImageBase64FromSse(text: string): string | null {
+class ImageResponseFailure extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message)
+  }
+}
+
+function imageRequestFailure(error: unknown, phase: string): Pick<ImageGenerationResult, 'errorCode' | 'message'> {
+  if (error instanceof ImageResponseFailure) return { errorCode: error.code, message: error.message }
+  const code = isRecord(error) ? error.code : undefined
+  if (code === 'ECONNRESET') {
+    return { errorCode: 'IMAGE_PROVIDER_CONNECTION_RESET', message: `Image API connection was reset ${phase}. No complete image was delivered.` }
+  }
+  if (code === 'ETIMEDOUT' || (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))) {
+    return { errorCode: 'IMAGE_PROVIDER_TIMEOUT', message: `Image API request timed out ${phase}. No complete image was delivered.` }
+  }
+  // Never include raw upstream exception messages: they can contain credentials.
+  return { errorCode: 'IMAGE_PROVIDER_NETWORK_ERROR', message: `Image API network request failed ${phase}. No complete image was delivered.` }
+}
+
+async function finalImageBase64FromSse(response: Response): Promise<string | null> {
+  if (!response.body) throw new ImageResponseFailure('IMAGE_RESPONSE_INCOMPLETE', 'Image API returned no image stream.')
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let pending = ''
+  let eventName = ''
   let currentData: string[] = []
-  let latest: string | null = null
-  const flush = () => {
-    if (currentData.length === 0) return
+  let completed = false
+  let image: string | null = null
+  const flush = (): void => {
     const raw = currentData.join('\n')
     currentData = []
-    if (raw === '[DONE]') return
+    const name = eventName
+    eventName = ''
+    if (!raw || raw === '[DONE]') return
+    let value: unknown
     try {
-      const found = imageBase64FromJson(JSON.parse(raw))
-      if (found) latest = found
+      value = JSON.parse(raw)
     } catch {
-      // A malformed upstream event cannot be used as image data.
+      return
+    }
+    if (!isRecord(value)) return
+    const type = asString(value.type) ?? name
+    if (type === 'error' || type === 'image_generation.failed' || value.error) {
+      throw new ImageResponseFailure('IMAGE_PROVIDER_STREAM_ERROR', 'Image API reported an error during generation. No complete image was delivered.')
+    }
+    if (type === 'image_generation.completed') {
+      completed = true
+      image = imageBase64FromJson(value)
     }
   }
-
-  for (const line of text.split(/\r?\n/)) {
+  const line = (value: string) => {
+    const line = value.replace(/\r$/, '')
     if (!line) {
       flush()
     } else if (line.startsWith('data:')) {
       currentData.push(line.slice(5).trimStart())
+    } else if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim()
     }
   }
-  flush()
-  return latest
+  try {
+    while (!completed) {
+      const { value, done } = await reader.read()
+      pending += done ? decoder.decode() : decoder.decode(value, { stream: true })
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const value of lines) {
+        line(value)
+        if (completed) break
+      }
+      if (done) {
+        if (!completed) {
+          line(pending)
+          flush()
+        }
+        break
+      }
+    }
+    if (!completed) throw new ImageResponseFailure('IMAGE_RESPONSE_INCOMPLETE', 'Image API stream ended before the final image. Previews were not delivered as a finished image.')
+    return image
+  } finally {
+    // Completion is an SSE event, not socket EOF. Stop here even if the provider
+    // keeps the connection open or the network later resets it.
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
 }
 
 function getModelIds(payload: unknown): string[] | null {
@@ -324,7 +385,7 @@ export class ImageGenerationService {
           providerId: provider.id,
           providerName: provider.name,
           endpoint,
-          message: `Provider lists ${model} for image generation.`,
+          message: `Provider lists ${model}. Actual image generation has not been tested. No image was generated.`,
         }
       }
       return this.probeImageEndpoint(resolved)
@@ -394,11 +455,13 @@ export class ImageGenerationService {
           n: 1,
           output_format: format,
           stream: true,
-          partial_images: 0,
+          // Frequent previews keep long generations from going silent on
+          // networks that reset idle connections. Only the final event is saved.
+          partial_images: 3,
         }),
         signal: AbortSignal.timeout(IMAGE_REQUEST_TIMEOUT_MS),
       })
-    } catch {
+    } catch (error) {
       return {
         status: 'failed',
         availability: 'unverified',
@@ -406,8 +469,7 @@ export class ImageGenerationService {
         providerId: provider.id,
         providerName: provider.name,
         endpoint,
-        message: 'Image API request could not reach the provider.',
-        errorCode: 'IMAGE_PROVIDER_NETWORK_ERROR',
+        ...imageRequestFailure(error, 'before response headers'),
       }
     }
 
@@ -431,16 +493,32 @@ export class ImageGenerationService {
       }
     }
 
-    const body = await response.text()
     let imageBase64: string | null = null
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
-    if (contentType.includes('text/event-stream') || body.includes('data:')) {
-      imageBase64 = lastImageBase64FromSse(body)
-    } else {
-      try {
-        imageBase64 = imageBase64FromJson(JSON.parse(body))
-      } catch {
-        imageBase64 = null
+    try {
+      const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+      if (contentType.includes('text/event-stream')) {
+        imageBase64 = await finalImageBase64FromSse(response)
+      } else {
+        const body = await response.text()
+        if (body.includes('data:')) {
+          imageBase64 = await finalImageBase64FromSse(new Response(body))
+        } else {
+          try {
+            imageBase64 = imageBase64FromJson(JSON.parse(body))
+          } catch {
+            imageBase64 = null
+          }
+        }
+      }
+    } catch (error) {
+      return {
+        status: 'failed',
+        availability: 'unverified',
+        model,
+        providerId: provider.id,
+        providerName: provider.name,
+        endpoint,
+        ...imageRequestFailure(error, 'while receiving image data'),
       }
     }
 

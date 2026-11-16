@@ -48,7 +48,7 @@ type ModeState = {
   event: HookEvent;
   hook: IndividualHookConfig;
 };
-export function HooksConfigMenu(t0) {
+export function HooksConfigMenu(t0: Props): React.ReactNode {
   const $ = _c(100);
   const {
     toolNames,
@@ -63,7 +63,7 @@ export function HooksConfigMenu(t0) {
   } else {
     t1 = $[0];
   }
-  const [modeState, setModeState] = useState(t1);
+  const [modeState, setModeState] = useState<ModeState>(t1);
   const [disabledByPolicy, setDisabledByPolicy] = useState(_temp);
   const [restrictedByPolicy, setRestrictedByPolicy] = useState(_temp2);
   let t2;
@@ -105,7 +105,7 @@ export function HooksConfigMenu(t0) {
   } else {
     t4 = $[7];
   }
-  const hooksByEventAndMatcher = t4;
+  const hooksByEventAndMatcher: ReturnType<typeof groupHooksByEventAndMatcher> = t4;
   let t5;
   if ($[8] !== hooksByEventAndMatcher || $[9] !== selectedEvent) {
     t5 = getSortedMatchersForEvent(hooksByEventAndMatcher, selectedEvent);

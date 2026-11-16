@@ -467,7 +467,7 @@ export function MCPRemoteServerMenu({
         <Text dimColor>This may take a few moments.</Text>
       </Box>;
   }
-  const menuOptions = [];
+  const menuOptions: { label: string; value: string }[] = [];
 
   // If server is disabled, show Enable first as the primary action
   if (server.client.type === 'disabled') {

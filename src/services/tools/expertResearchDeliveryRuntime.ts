@@ -62,19 +62,21 @@ function parseExpertResearchDeliveryPolicy(
 
   try {
     const parsed = JSON.parse(raw) as Partial<ExpertResearchDeliveryPolicy>
-    const choiceLists = [parsed.continueChoiceIds, parsed.pauseChoiceIds]
+    const { continueChoiceIds, pauseChoiceIds } = parsed
     if (
       typeof parsed.questionId !== 'string' || !parsed.questionId.trim()
       || typeof parsed.acceptedChoiceId !== 'string' || !parsed.acceptedChoiceId.trim()
-      || choiceLists.some((choices) => !Array.isArray(choices) || choices.some((choice) => typeof choice !== 'string' || !choice.trim()))
+      || !Array.isArray(continueChoiceIds) || !Array.isArray(pauseChoiceIds)
+      || continueChoiceIds.some((choice) => typeof choice !== 'string' || !choice.trim())
+      || pauseChoiceIds.some((choice) => typeof choice !== 'string' || !choice.trim())
     ) {
       return undefined
     }
     return {
       questionId: parsed.questionId.trim(),
       acceptedChoiceId: parsed.acceptedChoiceId.trim(),
-      continueChoiceIds: [...new Set(parsed.continueChoiceIds.map((choice) => choice.trim()))],
-      pauseChoiceIds: [...new Set(parsed.pauseChoiceIds.map((choice) => choice.trim()))],
+      continueChoiceIds: [...new Set(continueChoiceIds.map((choice) => choice.trim()))],
+      pauseChoiceIds: [...new Set(pauseChoiceIds.map((choice) => choice.trim()))],
     }
   } catch {
     return undefined
@@ -107,6 +109,10 @@ function choiceText(question: ResearchDeliveryQuestion): string {
  * omits the required metadata. Detect that narrow intent before Desktop shows
  * it, otherwise the user can answer a card that the CLI will never recognize.
  */
+function isResearchScopeCard(input: ExpertResearchDeliveryContractInput): boolean {
+  return input.questions.length > 0 && input.questions.every(question => /^(?:expert-intake:)?(?:coreTask|audience|deliveryBoundary)$/.test(question.id ?? ''))
+}
+
 function looksLikeResearchDeliveryAttempt(input: ExpertResearchDeliveryContractInput): boolean {
   return input.questions.some((question) => {
     const prompt = questionText(question)
@@ -133,6 +139,14 @@ export function normalizeExpertResearchDeliveryQuestionContract<T extends Expert
   input: T,
   env: Record<string, string | undefined> = process.env,
 ): T {
+  // These IDs belong to intake, including deliveryBoundary (the product's
+  // platform). They never mean permission to deliver a final report.
+  if (isResearchScopeCard(input)) {
+    if (!input.metadata?.expert_research_delivery && !deliveryMetadataQuestions(input).length) return input
+    const { metadata, ...rest } = input
+    const { expert_research_delivery: _delivery, ...otherMetadata } = metadata ?? {}
+    return { ...rest, questions: input.questions.map(({ metadata: _metadata, ...question }) => question), ...(Object.keys(otherMetadata).length ? { metadata: otherMetadata } : {}) } as T
+  }
   const policy = parseExpertResearchDeliveryPolicy(env)
   if (!policy || !looksLikeResearchDeliveryAttempt(input) || input.questions.length !== 1) return input
 
@@ -249,7 +263,7 @@ export function normalizeExpertResearchDeliveryResponseContract<T extends Expert
     questions: normalizedContract.questions,
     ...(Object.keys(answers).length > 0 ? { answers } : {}),
     ...(Object.keys(answerChoiceIds).length > 0 ? { answerChoiceIds } : {}),
-    ...(normalizedContract.metadata ? { metadata: normalizedContract.metadata } : {}),
+    metadata: normalizedContract.metadata,
   } as T
 }
 
@@ -257,6 +271,7 @@ export function validateExpertResearchDeliveryQuestionContract(
   input: ExpertResearchDeliveryContractInput,
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
+  if (isResearchScopeCard(input)) return undefined
   const rootDelivery = input.metadata?.expert_research_delivery
   const questionDeliveries = deliveryMetadataQuestions(input)
   const policy = parseExpertResearchDeliveryPolicy(env)
@@ -380,6 +395,9 @@ export async function syncExpertResearchDeliveryDecision(
     fetch: globalThis.fetch,
   },
 ): Promise<void> {
+  // Match pre-display validation: model-supplied metadata cannot enable a policy.
+  if (isResearchScopeCard(input) || !parseExpertResearchDeliveryPolicy(dependencies.env)) return
+
   const delivery = resolveResearchDeliveryMetadata(input)
   const questionId = delivery?.question_id?.trim()
   if (!questionId) return

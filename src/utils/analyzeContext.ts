@@ -319,7 +319,7 @@ async function countSystemTokens(
     }),
   )
 
-  const systemPromptTokens = systemTokenCounts.reduce(
+  const systemPromptTokens = systemTokenCounts.reduce<number>(
     (sum: number, tokens) => sum + (tokens || 0),
     0,
   )

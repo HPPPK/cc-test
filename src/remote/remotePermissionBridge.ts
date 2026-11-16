@@ -15,6 +15,7 @@ export function createSyntheticAssistantMessage(
 ): AssistantMessage {
   return {
     type: 'assistant',
+    messageKind: 'tool_exchange',
     uuid: randomUUID(),
     message: {
       id: `remote-${requestId}`,

@@ -151,6 +151,9 @@ export type OpenAIResponsesResponse = {
     input_tokens: number
     output_tokens: number
     total_tokens: number
+    /** Compatibility aliases returned by some Responses gateways. */
+    prompt_tokens?: number
+    completion_tokens?: number
   }
 }
 

@@ -592,8 +592,69 @@ export const SDKControlElicitationResponseSchema = lazySchema(() =>
 // Control Request/Response Wrappers
 // ============================================================================
 
+// Requests handled by the CLI control loop in src/cli/print.ts.
+export const SDKControlEndSessionRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('end_session'), reason: z.string().optional() }),
+)
+
+export const SDKControlChannelEnableRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('channel_enable'), serverName: z.string() }),
+)
+
+export const SDKControlMcpAuthenticateRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('mcp_authenticate'), serverName: z.string() }),
+)
+
+export const SDKControlMcpOauthCallbackUrlRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('mcp_oauth_callback_url'), serverName: z.string(), callbackUrl: z.string() }),
+)
+
+export const SDKControlClaudeAuthenticateRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('claude_authenticate'), loginWithClaudeAi: z.boolean().optional() }),
+)
+
+export const SDKControlClaudeOauthCallbackRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('claude_oauth_callback'), authorizationCode: z.string(), state: z.string() }),
+)
+
+export const SDKControlClaudeOauthWaitForCompletionRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('claude_oauth_wait_for_completion') }),
+)
+
+export const SDKControlMcpClearAuthRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('mcp_clear_auth'), serverName: z.string() }),
+)
+
+export const SDKControlGenerateSessionTitleRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('generate_session_title'), description: z.string(), persist: z.boolean().optional() }),
+)
+
+export const SDKControlSideQuestionRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('side_question'), question: z.string() }),
+)
+
+export const SDKControlSetProactiveRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('set_proactive'), enabled: z.boolean() }),
+)
+
+export const SDKControlRemoteControlRequestSchema = lazySchema(() =>
+  z.object({ subtype: z.literal('remote_control'), enabled: z.boolean() }),
+)
+
 export const SDKControlRequestInnerSchema = lazySchema(() =>
   z.union([
+    SDKControlEndSessionRequestSchema(),
+    SDKControlChannelEnableRequestSchema(),
+    SDKControlMcpAuthenticateRequestSchema(),
+    SDKControlMcpOauthCallbackUrlRequestSchema(),
+    SDKControlClaudeAuthenticateRequestSchema(),
+    SDKControlClaudeOauthCallbackRequestSchema(),
+    SDKControlClaudeOauthWaitForCompletionRequestSchema(),
+    SDKControlMcpClearAuthRequestSchema(),
+    SDKControlGenerateSessionTitleRequestSchema(),
+    SDKControlSideQuestionRequestSchema(),
+    SDKControlRemoteControlRequestSchema(),
+    SDKControlSetProactiveRequestSchema(),
     SDKControlInterruptRequestSchema(),
     SDKControlPermissionRequestSchema(),
     SDKControlInitializeRequestSchema(),

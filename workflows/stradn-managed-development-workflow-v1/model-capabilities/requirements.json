@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "workflows": [
+    {
+      "id": "stradn-managed-development-workflow-v1",
+      "phases": [
+        {
+          "id": "route-context"
+        },
+        {
+          "id": "scope-plan"
+        },
+        {
+          "id": "stradn-delivery"
+        },
+        {
+          "id": "local-preview"
+        },
+        {
+          "id": "finish-memory"
+        }
+      ]
+    }
+  ]
+}

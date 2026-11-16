@@ -44,10 +44,10 @@ const questionSchema = lazySchema(() => {
     ...commonFields,
     ...completionFields,
   }).superRefine((value, ctx) => {
-    if (!value.prompt && !value.question) {
+    if (!("prompt" in value && value.prompt) && !("question" in value && value.question)) {
       ctx.addIssue({ code: 'custom', message: 'Question requires prompt (or legacy question).' })
     }
-    if (!value.choices && !value.options) {
+    if (!("choices" in value && value.choices) && !("options" in value && value.options)) {
       ctx.addIssue({ code: 'custom', message: 'Question card requires 2–4 choices (or legacy options). Keep the user interaction in AskUserQuestion: retry with 2–4 useful choices and direct the user to the built-in Other option for custom text.' })
     }
   })
@@ -93,6 +93,8 @@ const annotationsSchema = lazySchema(() => {
 const UNIQUENESS_REFINE = {
   check: (data: { questions: Array<z.infer<ReturnType<typeof questionSchema>>> }) => {
     const prompts = data.questions.map(questionPrompt)
+    const ids = data.questions.flatMap((question) => question.id ? [question.id] : [])
+    if (ids.length !== new Set(ids).size) return false
     if (prompts.length !== new Set(prompts).size) return false
     for (const question of data.questions) {
       const labels = questionChoices(question).map((option) => option.label)
@@ -100,7 +102,7 @@ const UNIQUENESS_REFINE = {
     }
     return true
   },
-  message: 'Question prompts must be unique, option labels must be unique within each question'
+  message: 'Question IDs and prompts must be unique, option labels must be unique within each question'
 } as const;
 const commonFields = lazySchema(() => ({
   answers: z.record(z.string(), z.string()).optional().describe('User answers collected by the permission component'),
@@ -114,11 +116,11 @@ const commonFields = lazySchema(() => ({
     expert_research_delivery: z.object({
       question_id: z.string().min(1).describe('Stable research-delivery question ID that the Desktop service must record before final Expert output.'),
       unresolved_evidence: z.array(z.string().min(1)).max(12).optional().describe('Remaining evidence gaps the user is explicitly accepting, continuing, or pausing.'),
-    }).optional().describe('Expert-only delivery confirmation metadata. It is not displayed to the user.'),
+    }).optional().describe('Only for an explicitly enabled Expert final-report delivery policy; never attach to scope clarification or ordinary questions. Not displayed to the user.'),
   }).passthrough().optional().describe('Optional metadata for tracking and runtime validation. Not displayed to user.')
 }));
 const inputSchema = lazySchema(() => z.strictObject({
-  questions: z.array(questionSchema()).min(1).max(4).describe('Questions to ask the user (1-4 questions)'),
+  questions: z.array(questionSchema()).min(1).max(8).describe('Questions to ask the user (1-8 independent questions; defer dependent questions until earlier answers are processed)'),
   // Compatibility alias: older providers sometimes emit multiSelect at the
   // tool root. Keep this serializable in the provider-facing JSON schema so
   // an already-issued question does not fail before Desktop can display it.
@@ -147,7 +149,9 @@ export const _sdkOutputSchema = outputSchema;
 export type Question = z.infer<ReturnType<typeof questionSchema>>;
 export type QuestionOption = z.infer<ReturnType<typeof questionOptionSchema>>;
 export type Output = z.infer<OutputSchema>;
-function AskUserQuestionResultMessage(t0) {
+function AskUserQuestionResultMessage(t0: {
+  answers: Output['answers']
+}): React.ReactNode {
   const $ = _c(3);
   const {
     answers
@@ -250,6 +254,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     if (expertBrowserVerificationHandoffEnabled() && isExpertBrowserVerificationQuestionAttempt(input)) {
       return {
         behavior: 'deny' as const,
+        decisionReason: { type: 'other' as const, reason: 'Expert question policy' },
         message: 'Browser verification is handled by the Expert Desktop modal. Do not call AskUserQuestion for CAPTCHA, slider, login, or human-verification decisions; wait for the dedicated Playwright verification result instead.',
         updatedInput: input,
       }
@@ -260,6 +265,7 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     if (researchDeliveryContractError) {
       return {
         behavior: 'deny' as const,
+        decisionReason: { type: 'other' as const, reason: 'Expert question policy' },
         message: researchDeliveryContractError,
         updatedInput: normalizedInput,
       }

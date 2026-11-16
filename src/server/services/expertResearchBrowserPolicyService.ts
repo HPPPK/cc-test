@@ -36,7 +36,8 @@ export type ExpertResearchBrowserConnection =
   | { kind: 'managed' }
   | {
       kind: 'cdp'
-      browser: 'chrome' | 'edge'
+      /** Kept only when an older client supplied it; the endpoint is authoritative. */
+      browser?: 'chrome' | 'edge'
       endpoint: string
       userAuthorizedAt: string
     }
@@ -59,7 +60,7 @@ function isLocalCdpHost(hostname: string): boolean {
  */
 export function normalizeLocalCdpEndpoint(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('请填写本机 Chrome 或 Edge 的调试地址，例如 http://127.0.0.1:9222。')
+    throw new Error('请填写本机浏览器的 CDP 调试地址，例如 http://127.0.0.1:9222。')
   }
 
   let endpoint: URL
@@ -103,18 +104,18 @@ export function resolveExpertResearchBrowserConnection(
   if (input.kind === 'managed') return { kind: 'managed' }
   if (input.kind !== 'cdp') throw new Error('浏览器连接方式必须是 managed 或 cdp。')
   if (policy?.allowUserAuthorizedCdp !== true) {
-    throw new Error('这个专家包没有声明可连接用户授权的 Chrome 或 Edge。')
+    throw new Error('这个专家包没有声明可连接用户授权的本机 CDP 浏览器。')
   }
   if (input.userAuthorized !== true) {
     throw new Error('请先确认你授权本次专家会话读取和操作该调试浏览器。')
   }
-  if (input.browser !== 'chrome' && input.browser !== 'edge') {
-    throw new Error('请选择 Chrome 或 Edge。')
+  if (input.browser !== undefined && input.browser !== 'chrome' && input.browser !== 'edge') {
+    throw new Error('旧版浏览器类型只能是 Chrome 或 Edge；新版连接只需要本机 CDP 地址。')
   }
 
   return {
     kind: 'cdp',
-    browser: input.browser,
+    ...(input.browser ? { browser: input.browser } : {}),
     endpoint: normalizeLocalCdpEndpoint(input.endpoint),
     userAuthorizedAt,
   }

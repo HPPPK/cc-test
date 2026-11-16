@@ -22,7 +22,7 @@ import {
   registerPostSamplingHook,
 } from '../../utils/hooks/postSamplingHooks.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   hasToolCallsInLastAssistantTurn,
 } from '../../utils/messages.js'
 import { sequential } from '../../utils/sequential.js'
@@ -194,7 +194,7 @@ async function updateMagicDoc(
   // Run Magic Docs update using runAgent with forked context
   for await (const _message of runAgent({
     agentDefinition: getMagicDocsAgent(),
-    promptMessages: [createUserMessage({ content: userPrompt })],
+    promptMessages: [createRuntimeUserMessage({ content: userPrompt })],
     toolUseContext: clonedToolUseContext,
     canUseTool,
     isAsync: true,

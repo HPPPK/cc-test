@@ -1,3 +1,4 @@
+import { getAntModels } from './antModels.js'
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { getInitialMainLoopModel } from '../../bootstrap/state.js'
 import {
@@ -376,7 +377,7 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   }
 
   if (hasOpenAIAuthLogin()) {
-    return getOpenAIModelOptions(fastMode)
+    return getOpenAIModelOptions()
   }
 
   if (isClaudeAISubscriber()) {

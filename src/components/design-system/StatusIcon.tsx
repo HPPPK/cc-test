@@ -69,7 +69,7 @@ const STATUS_CONFIG: Record<Status, {
  *   Waiting for response
  * </Text>
  */
-export function StatusIcon(t0) {
+export function StatusIcon(t0: Props): React.ReactNode {
   const $ = _c(5);
   const {
     status,

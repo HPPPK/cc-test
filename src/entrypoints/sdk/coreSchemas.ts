@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod/v4'
+import { MESSAGE_KINDS } from '../../utils/messageKind.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 
 // ============================================================================
@@ -1269,13 +1270,21 @@ export const SDKStatusSchema = lazySchema(() =>
   z.union([z.literal('compacting'), z.null()]),
 )
 
+export const MessageKindMetadataSchema = lazySchema(() => z.object({
+  messageKind: z.enum(MESSAGE_KINDS).optional(),
+  isMeta: z.boolean().optional(),
+  isCompactSummary: z.boolean().optional(),
+  isVisibleInTranscriptOnly: z.boolean().optional(),
+  isSynthetic: z.boolean().optional(),
+}))
+
 // SDKUserMessage content without uuid/session_id
 const SDKUserMessageContentSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('user'),
     message: APIUserMessagePlaceholder(),
     parent_tool_use_id: z.string().nullable(),
-    isSynthetic: z.boolean().optional(),
     tool_use_result: z.unknown().optional(),
     priority: z.enum(['now', 'next', 'later']).optional(),
     timestamp: z
@@ -1346,6 +1355,7 @@ export const SDKRateLimitInfoSchema = lazySchema(() =>
 
 export const SDKAssistantMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('assistant'),
     message: APIAssistantMessagePlaceholder(),
     parent_tool_use_id: z.string().nullable(),
@@ -1369,6 +1379,7 @@ export const SDKRateLimitEventSchema = lazySchema(() =>
 export const SDKStreamlinedTextMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('streamlined_text'),
       text: z
         .string()
@@ -1384,6 +1395,7 @@ export const SDKStreamlinedTextMessageSchema = lazySchema(() =>
 export const SDKStreamlinedToolUseSummaryMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('streamlined_tool_use_summary'),
       tool_summary: z
         .string()
@@ -1406,6 +1418,7 @@ export const SDKPermissionDenialSchema = lazySchema(() =>
 
 export const SDKResultSuccessSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('result'),
     subtype: z.literal('success'),
     duration_ms: z.number(),
@@ -1427,6 +1440,7 @@ export const SDKResultSuccessSchema = lazySchema(() =>
 
 export const SDKResultErrorSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('result'),
     subtype: z.enum([
       'error_during_execution',
@@ -1456,6 +1470,7 @@ export const SDKResultMessageSchema = lazySchema(() =>
 
 export const SDKSystemMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('init'),
     agents: z.array(z.string()).optional(),
@@ -1495,6 +1510,7 @@ export const SDKSystemMessageSchema = lazySchema(() =>
 
 export const SDKPartialAssistantMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('stream_event'),
     event: RawMessageStreamEventPlaceholder(),
     parent_tool_use_id: z.string().nullable(),
@@ -1505,6 +1521,7 @@ export const SDKPartialAssistantMessageSchema = lazySchema(() =>
 
 export const SDKCompactBoundaryMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('compact_boundary'),
     compact_metadata: z.object({
@@ -1532,6 +1549,7 @@ export const SDKCompactBoundaryMessageSchema = lazySchema(() =>
 
 export const SDKStatusMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('status'),
     status: SDKStatusSchema(),
@@ -1544,6 +1562,7 @@ export const SDKStatusMessageSchema = lazySchema(() =>
 export const SDKPostTurnSummaryMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('system'),
       subtype: z.literal('post_turn_summary'),
       summarizes_uuid: z.string(),
@@ -1572,6 +1591,7 @@ export const SDKPostTurnSummaryMessageSchema = lazySchema(() =>
 export const SDKAPIRetryMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('system'),
       subtype: z.literal('api_retry'),
       attempt: z.number(),
@@ -1590,6 +1610,7 @@ export const SDKAPIRetryMessageSchema = lazySchema(() =>
 export const SDKLocalCommandOutputMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('system'),
       subtype: z.literal('local_command_output'),
       content: z.string(),
@@ -1603,6 +1624,7 @@ export const SDKLocalCommandOutputMessageSchema = lazySchema(() =>
 
 export const SDKHookStartedMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('hook_started'),
     hook_id: z.string(),
@@ -1615,6 +1637,7 @@ export const SDKHookStartedMessageSchema = lazySchema(() =>
 
 export const SDKHookProgressMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('hook_progress'),
     hook_id: z.string(),
@@ -1630,6 +1653,7 @@ export const SDKHookProgressMessageSchema = lazySchema(() =>
 
 export const SDKHookResponseMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('hook_response'),
     hook_id: z.string(),
@@ -1647,6 +1671,7 @@ export const SDKHookResponseMessageSchema = lazySchema(() =>
 
 export const SDKToolProgressMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('tool_progress'),
     tool_use_id: z.string(),
     tool_name: z.string(),
@@ -1660,6 +1685,7 @@ export const SDKToolProgressMessageSchema = lazySchema(() =>
 
 export const SDKAuthStatusMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('auth_status'),
     isAuthenticating: z.boolean(),
     output: z.array(z.string()),
@@ -1671,6 +1697,7 @@ export const SDKAuthStatusMessageSchema = lazySchema(() =>
 
 export const SDKFilesPersistedEventSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('files_persisted'),
     files: z.array(
@@ -1693,6 +1720,7 @@ export const SDKFilesPersistedEventSchema = lazySchema(() =>
 
 export const SDKTaskNotificationMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('task_notification'),
     task_id: z.string(),
@@ -1701,6 +1729,8 @@ export const SDKTaskNotificationMessageSchema = lazySchema(() =>
     output_file: z.string(),
     summary: z.string(),
     result: z.string().optional(),
+    worktree_path: z.string().optional(),
+    worktree_branch: z.string().optional(),
     usage: z
       .object({
         total_tokens: z.number(),
@@ -1715,6 +1745,7 @@ export const SDKTaskNotificationMessageSchema = lazySchema(() =>
 
 export const SDKTaskStartedMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('task_started'),
     task_id: z.string(),
@@ -1736,6 +1767,7 @@ export const SDKTaskStartedMessageSchema = lazySchema(() =>
 export const SDKSessionStateChangedMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('system'),
       subtype: z.literal('session_state_changed'),
       state: z.enum(['idle', 'running', 'requires_action']),
@@ -1750,6 +1782,7 @@ export const SDKSessionStateChangedMessageSchema = lazySchema(() =>
 
 export const SDKTaskProgressMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('system'),
     subtype: z.literal('task_progress'),
     task_id: z.string(),
@@ -1769,6 +1802,7 @@ export const SDKTaskProgressMessageSchema = lazySchema(() =>
 
 export const SDKToolUseSummaryMessageSchema = lazySchema(() =>
   z.object({
+    ...MessageKindMetadataSchema().shape,
     type: z.literal('tool_use_summary'),
     summary: z.string(),
     preceding_tool_use_ids: z.array(z.string()),
@@ -1780,6 +1814,7 @@ export const SDKToolUseSummaryMessageSchema = lazySchema(() =>
 export const SDKElicitationCompleteMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('system'),
       subtype: z.literal('elicitation_complete'),
       mcp_server_name: z.string(),
@@ -1796,6 +1831,7 @@ export const SDKElicitationCompleteMessageSchema = lazySchema(() =>
 export const SDKPromptSuggestionMessageSchema = lazySchema(() =>
   z
     .object({
+      ...MessageKindMetadataSchema().shape,
       type: z.literal('prompt_suggestion'),
       suggestion: z.string(),
       uuid: UUIDPlaceholder(),

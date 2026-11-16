@@ -232,7 +232,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function selectorSummary(input: Partial<Input> | undefined): string | null {
-  const selector = isRecord(input?.selector) ? input.selector : null
+  const candidate = input && "selector" in input ? input.selector : null
+  const selector = isRecord(candidate) ? candidate : null
   const source = typeof selector?.source === 'string' ? selector.source : null
   const id = typeof selector?.id === 'string' ? selector.id : null
   if (!source || !id) return null

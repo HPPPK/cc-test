@@ -6,7 +6,7 @@ import type { WizardContextValue, WizardProviderProps } from './types.js';
 // Use any here for the context since it will be cast properly when used
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const WizardContext = createContext<WizardContextValue<any> | null>(null);
-export function WizardProvider(t0) {
+export function WizardProvider<T extends Record<string, unknown>>(t0: WizardProviderProps<T>): ReactNode {
   const $ = _c(38);
   const {
     steps,
@@ -28,7 +28,7 @@ export function WizardProvider(t0) {
   const initialData = t3;
   const showStepCounter = t2 === undefined ? true : t2;
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [wizardData, setWizardData] = useState(initialData);
+  const [wizardData, setWizardData] = useState<T>(initialData);
   const [isCompleted, setIsCompleted] = useState(false);
   let t4;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {
@@ -37,7 +37,7 @@ export function WizardProvider(t0) {
   } else {
     t4 = $[2];
   }
-  const [navigationHistory, setNavigationHistory] = useState(t4);
+  const [navigationHistory, setNavigationHistory] = useState<number[]>(t4);
   useExitOnCtrlCDWithKeybindings();
   let t5;
   let t6;

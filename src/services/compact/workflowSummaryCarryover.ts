@@ -2,7 +2,7 @@ import type { AssistantMessage, Message, UserMessage } from '../../types/message
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { FileReadTool } from '../../tools/FileReadTool/FileReadTool.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   getAssistantMessageText,
   getMessagesAfterCompactBoundary,
   normalizeMessagesForAPI,
@@ -76,7 +76,7 @@ export async function generateWorkflowSummaryCarryover({
     throw new WorkflowSummaryCarryoverError(ERROR_MESSAGE_NOT_ENOUGH_MESSAGES)
   }
 
-  const summaryRequest = createUserMessage({
+  const summaryRequest = createRuntimeUserMessage({
     content: getCompactPrompt(summaryInstructions),
   })
 

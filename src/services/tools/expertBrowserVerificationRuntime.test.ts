@@ -1,6 +1,23 @@
+import { PlaywrightTool } from '../../tools/PlaywrightTool/PlaywrightTool.js'
+import type { BrowserDiagnostics } from '../../tools/PlaywrightTool/browserDiagnostics.js'
+import { withFetchPreconnect } from "../../server/__tests__/fixtureAssertions.js"
 import { describe, expect, test } from 'bun:test'
 import { buildExpertFallbackPlaywrightContinuation, buildExpertVerifiedPlaywrightContinuation, coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
 import { ExpertHumanVerificationService } from '../../server/services/expertHumanVerificationService.js'
+
+
+// Partial browser responses represent both the paused error and resumed page.
+type VerificationFixtureData = {
+  url?: string
+  title?: string
+  text?: string
+  error?: string
+  accessLimited?: boolean
+  verificationGateId?: string
+  sharedHumanVerificationBlocked?: boolean
+  links?: Array<{ text: string; url: string }>
+  steps?: Array<{ index: number; type: string; outcome: string; url?: string; error?: string }>
+}
 
 const captchaResult = {
   data: {
@@ -25,6 +42,71 @@ const enabledEnv = {
 } as NodeJS.ProcessEnv
 
 describe('coordinateExpertBrowserVerification', () => {
+  test('preserves the original diagnostic snapshot in final history and ledger after verified and fallback continuations', async () => {
+    const browserDiagnostics: BrowserDiagnostics = { observation: 'unactionable', observedAt: '2026-11-11T00:00:00Z', readyState: 'complete', widgetCount: 0, visibleControlCount: 0, inspectedFrames: 1, inspectionIncomplete: false, mainDocumentStatus: 429, events: [{ kind: 'requestfailed', resource: 'verification', code: 'ERR_BLOCKED_BY_CLIENT' }], droppedEvents: 0 }
+    type Output = Parameters<typeof PlaywrightTool.mapToolResultToToolResultBlockParam>[0]
+    for (const resolution of ['verification_completed', 'switch_public_entry'] as const) {
+      const initial: Output = { ...captchaResult.data, text: '', links: [], durationMs: 1, truncated: false, accessLimited: true, browserDiagnostics, steps: [{ index: 0, type: 'navigate', outcome: 'success', url: captchaResult.data.url }] }
+      const resumed: Output = { url: 'https://www.baidu.com/s?wd=mac+markdown+reader', title: 'Public results', text: 'Public evidence', links: [], steps: [{ index: 0, type: 'extract', outcome: 'success', url: 'https://www.baidu.com/s?wd=mac+markdown+reader' }], durationMs: 1, truncated: false, accessLimited: false }
+      const result = await coordinateExpertBrowserVerification({
+        toolName: 'Playwright', result: { data: initial },
+        input: { actions: [{ type: 'navigate', url: captchaResult.data.url }, { type: 'extract' }] },
+        resume: async () => ({ data: resumed }),
+        env: { ...enabledEnv, CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度']) },
+        fetchImpl: withFetchPreconnect(async () => Response.json({ resolution })),
+      })
+      expect(result.data.accessLimited).toBe(false)
+      expect(result.data.browserDiagnostics).toBeUndefined()
+      expect(result.data.verificationHistory).toEqual([expect.objectContaining({ browserDiagnostics })])
+      const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(result.data, 'toolu-diagnostic-history')
+      const encoded = String(mapped.content).match(/<playwright-action-ledger encoding="base64">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/)?.[1]
+      const history = JSON.parse(Buffer.from(encoded!, 'base64').toString('utf8')).verificationHistory
+      expect(history[0].browserDiagnostics).toEqual(browserDiagnostics)
+      expect(JSON.stringify(history[0].browserDiagnostics)).not.toMatch(/https:|cookie|token|secret/)
+    }
+  })
+
+  test('exposes the current released state before historical Google errors, and a later real gate remains pending', async () => {
+    type Output = Parameters<typeof PlaywrightTool.mapToolResultToToolResultBlockParam>[0]
+    const result = await coordinateExpertBrowserVerification({
+      toolName: 'Playwright', result: { data: { ...captchaResult.data, text: '', accessLimited: true } },
+      input: { actions: [{ type: 'navigate', url: captchaResult.data.url }, { type: 'extract' }] },
+      resume: async () => ({ data: { url: 'https://www.baidu.com/s?wd=photo', text: 'saved public text', accessLimited: false } }),
+      env: { ...enabledEnv, CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: '["Google","百度"]' },
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'switch_public_entry' })),
+    })
+    const output = { title: '', links: [], durationMs: 1, truncated: false, steps: [], ...result.data } as Output
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(output, 'released-call')
+    const content = String(mapped.content)
+    expect(content).toContain('Current human verification: released; requiresUserAction=false')
+    expect(content.indexOf('requiresUserAction=false')).toBeLessThan(content.indexOf('<playwright-action-ledger'))
+    const ledger = JSON.parse(Buffer.from(content.match(/encoding="base64">([^<]+)/)![1], 'base64').toString())
+    expect(ledger.currentHumanVerification).toEqual({ state: 'released', requiresUserAction: false })
+    expect(ledger.verificationHistory[0].detail).toContain('EXPERT_HUMAN_VERIFICATION_REQUIRED')
+    const pending = String(PlaywrightTool.mapToolResultToToolResultBlockParam({ ...output, ...pendingCaptchaResult.data, accessLimited: true }, 'new-gate').content)
+    expect(pending).toContain('Current human verification: pending; requiresUserAction=true')
+    expect(pending).not.toContain('Current human verification: released')
+  })
+
+  test('marks only runtime-owned no-control observations in the existing handoff detail', async () => {
+    for (const observation of ['unactionable', 'loading', 'unknown', 'actionable']) {
+      let postedDetail: unknown
+      await coordinateExpertBrowserVerification({
+        toolName: 'Playwright',
+        result: { data: { ...captchaResult.data, browserDiagnostics: { observation } } },
+        input: { browserDiagnostics: { observation: 'unactionable' } },
+        env: enabledEnv,
+        fetchImpl: withFetchPreconnect(async (_input, init) => {
+          postedDetail = JSON.parse(String(init?.body)).verification.detail
+          return Response.json({ resolution: 'record_evidence_gap' })
+        }),
+      })
+      expect(typeof postedDetail).toBe('string')
+      expect(String(postedDetail).includes('VERIFICATION_CONTROLS_NOT_OBSERVED')).toBe(observation === 'unactionable')
+      expect(postedDetail).toContain(captchaResult.data.error)
+    }
+  })
+
   test('retries the first failed original action before continuing extraction', () => {
     expect(buildExpertVerifiedPlaywrightContinuation({
       visible: true,
@@ -52,27 +134,27 @@ describe('coordinateExpertBrowserVerification', () => {
 
   test('leaves ordinary Playwright results untouched outside a package-scoped Expert handoff', async () => {
     const fetchImpl = async () => { throw new Error('must not fetch') }
-    await expect(coordinateExpertBrowserVerification({
+    await expect(coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: captchaResult,
       env: {},
-      fetchImpl: fetchImpl as typeof fetch,
+      fetchImpl: withFetchPreconnect(fetchImpl),
     })).resolves.toBe(captchaResult)
   })
 
   test('sends a server-generated verification context and returns same-page continuation guidance', async () => {
     const requests: Request[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: captchaResult,
       agentId: 'agent-seo',
       toolUseId: 'toolu_google',
       env: enabledEnv,
-      fetchImpl: async (input, init) => {
-        expect(init?.signal).toBeInstanceOf(AbortSignal)
+      fetchImpl: withFetchPreconnect(async (input, init) => {
+        expect(init?.signal).toBeUndefined()
         requests.push(new Request(input, init))
         return Response.json({ resolution: 'verification_completed' })
-      },
+      }),
     })
 
     expect(requests).toHaveLength(1)
@@ -91,7 +173,7 @@ describe('coordinateExpertBrowserVerification', () => {
 
   test('automatically resumes the same paused Playwright call after the user completes verification', async () => {
     const resumedInputs: unknown[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -125,7 +207,7 @@ describe('coordinateExpertBrowserVerification', () => {
         }
       },
       env: enabledEnv,
-      fetchImpl: async () => Response.json({ resolution: 'verification_completed' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'verification_completed' })),
     })
 
     expect(resumedInputs).toEqual([{
@@ -160,7 +242,7 @@ describe('coordinateExpertBrowserVerification', () => {
       return true
     })
 
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -195,7 +277,7 @@ describe('coordinateExpertBrowserVerification', () => {
         }
       },
       env: enabledEnv,
-      fetchImpl: async (_input, init) => {
+      fetchImpl: withFetchPreconnect(async (_input, init) => {
         const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
         requestBodies.push(body)
         if (requestBodies.length === 1) {
@@ -220,7 +302,7 @@ describe('coordinateExpertBrowserVerification', () => {
           verificationResolution: 'verification_completed',
         })).toBe(true)
         return Response.json(await joined)
-      },
+      }),
     })
 
     await expect(owner).resolves.toEqual(expect.objectContaining({ resolution: 'verification_completed' }))
@@ -255,7 +337,7 @@ describe('coordinateExpertBrowserVerification', () => {
       ],
     }
 
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -287,10 +369,10 @@ describe('coordinateExpertBrowserVerification', () => {
         }
       },
       env: enabledEnv,
-      fetchImpl: async (input, init) => {
+      fetchImpl: withFetchPreconnect(async (input, init) => {
         requests.push(new Request(input, init))
         return Response.json({ resolution: 'verification_completed' })
-      },
+      }),
     })
 
     await expect(requests[0]!.json()).resolves.toEqual({
@@ -309,16 +391,16 @@ describe('coordinateExpertBrowserVerification', () => {
   })
   test('joins an already-visible verification instead of exposing PENDING to the model or opening another modal', async () => {
     const requests: Request[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: pendingCaptchaResult,
       agentId: 'agent-demand',
       toolUseId: 'toolu_baidu',
       env: enabledEnv,
-      fetchImpl: async (input, init) => {
+      fetchImpl: withFetchPreconnect(async (input, init) => {
         requests.push(new Request(input, init))
         return Response.json({ resolution: 'switch_public_entry' })
-      },
+      }),
     })
 
     expect(requests).toHaveLength(1)
@@ -334,11 +416,11 @@ describe('coordinateExpertBrowserVerification', () => {
   })
 
   test('tells the subagent to try another configured entry after an explicit refusal', async () => {
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: captchaResult,
       env: enabledEnv,
-      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'switch_public_entry' })),
     })
 
     const error = (result.data as { error: string }).error
@@ -348,7 +430,7 @@ describe('coordinateExpertBrowserVerification', () => {
   })
   test('automatically uses the next package-declared public search entry after an explicit refusal', async () => {
     const resumedInputs: unknown[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -384,7 +466,7 @@ describe('coordinateExpertBrowserVerification', () => {
         ...enabledEnv,
         CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度', 'Bing', '360']),
       },
-      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'switch_public_entry' })),
     })
 
     expect(resumedInputs).toEqual([{
@@ -443,7 +525,7 @@ describe('coordinateExpertBrowserVerification', () => {
 
   test('derives a public-search fallback from a direct official page after the user explicitly declines verification', async () => {
     const resumedInputs: unknown[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -480,7 +562,7 @@ describe('coordinateExpertBrowserVerification', () => {
         ...enabledEnv,
         CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度', 'Bing', '360']),
       },
-      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'switch_public_entry' })),
     })
 
     expect(resumedInputs).toEqual([{
@@ -500,7 +582,7 @@ describe('coordinateExpertBrowserVerification', () => {
 
   test('releases a declined verification instead of leaving the task blocked when no fallback query can be recovered', async () => {
     const resumedInputs: unknown[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -521,7 +603,7 @@ describe('coordinateExpertBrowserVerification', () => {
         ...enabledEnv,
         CC_JIANGXIA_EXPERT_BROWSER_VERIFICATION_FALLBACK_ENGINES: JSON.stringify(['Google', '百度']),
       },
-      fetchImpl: async () => Response.json({ resolution: 'switch_public_entry' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'switch_public_entry' })),
     })
 
     expect(resumedInputs).toEqual([{
@@ -535,7 +617,7 @@ describe('coordinateExpertBrowserVerification', () => {
   test('opens another dedicated handoff if the automatic same-page continuation still reaches verification', async () => {
     const resumedInputs: unknown[] = []
     let handoffRequests = 0
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -578,10 +660,10 @@ describe('coordinateExpertBrowserVerification', () => {
         }
       },
       env: enabledEnv,
-      fetchImpl: async () => {
+      fetchImpl: withFetchPreconnect(async () => {
         handoffRequests += 1
         return Response.json({ resolution: 'verification_completed' })
-      },
+      }),
     })
 
     expect(handoffRequests).toBe(2)
@@ -605,7 +687,7 @@ describe('coordinateExpertBrowserVerification', () => {
   })
 
   test('records the detected verification kind in final access-limited diagnostics', async () => {
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: {
         data: {
@@ -618,7 +700,7 @@ describe('coordinateExpertBrowserVerification', () => {
         },
       },
       env: enabledEnv,
-      fetchImpl: async () => { throw new Error('Desktop handoff unavailable') },
+      fetchImpl: withFetchPreconnect(async () => { throw new Error('Desktop handoff unavailable') }),
       accessDiagnostics: {
         connectionKind: 'managed',
         searchEngine: 'Google',
@@ -640,7 +722,7 @@ describe('coordinateExpertBrowserVerification', () => {
 
   test('releases the preserved page automatically when the user explicitly records an evidence gap', async () => {
     const resumedInputs: unknown[] = []
-    const result = await coordinateExpertBrowserVerification({
+    const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
       toolName: 'Playwright',
       result: captchaResult,
       input: {
@@ -658,7 +740,7 @@ describe('coordinateExpertBrowserVerification', () => {
         }
       },
       env: enabledEnv,
-      fetchImpl: async () => Response.json({ resolution: 'record_evidence_gap' }),
+      fetchImpl: withFetchPreconnect(async () => Response.json({ resolution: 'record_evidence_gap' })),
     })
 
     expect(resumedInputs).toEqual([{
@@ -671,16 +753,40 @@ describe('coordinateExpertBrowserVerification', () => {
 
 })
 
-test('a deferred verification releases the held page without claiming user approval or retrying it', async () => {
+test('a legacy deferred response rejoins the pending verification without releasing or resuming browser actions', async () => {
   const resumed: any[] = []
-  const result = await coordinateExpertBrowserVerification({ toolName: 'Playwright', result: captchaResult, env: enabledEnv,
+  let requests = 0
+  const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({ toolName: 'Playwright', result: captchaResult, env: enabledEnv,
     input: { visible: true, actions: [{ type: 'navigate', url: 'https://s.weibo.com/weibo?q=Quicker' }] },
-    fetchImpl: async () => Response.json({ resolution: 'verification_deferred' }),
-    resume: async input => { resumed.push(input); return { data: { ...captchaResult.data, error: 'EXPERT_HUMAN_VERIFICATION_RECORDED_AS_GAP', steps: [] } } },
+    fetchImpl: withFetchPreconnect(async (_url, init) => {
+      expect(init?.signal).toBeUndefined()
+      requests += 1
+      if (requests === 1) return Response.json({ resolution: 'verification_deferred' })
+      expect(JSON.parse(String(init?.body)).joinExisting).toBe(true)
+      expect(resumed).toHaveLength(0)
+      return Response.json({ resolution: 'verification_completed' })
+    }),
+    resume: async input => { resumed.push(input); return { data: { url: 'https://example.com/results', title: 'Results', text: 'Public results', steps: [] } } },
   })
+  expect(requests).toBe(2)
   expect(resumed).toHaveLength(1)
-  expect(resumed[0].verification_resolution).toBe('record_evidence_gap')
-  expect(result.data.error).toContain('EXPERT_HUMAN_VERIFICATION_DEFERRED')
-  expect(result.data.error).not.toContain('user declined')
-  expect(result.data.error).not.toContain('verified successfully')
+  expect(resumed[0].verification_resolution).toBe('verified')
+  expect(result.data.text).toBe('Public results')
+})
+
+test('keeps successive replacement challenges gated until the actual page is healthy', async () => {
+  let decisions = 0
+  let continuations = 0
+  const result = await coordinateExpertBrowserVerification<VerificationFixtureData>({
+    toolName: 'Playwright', result: captchaResult, env: enabledEnv,
+    input: { actions: [{ type: 'extract', selector: 'body' }] },
+    fetchImpl: withFetchPreconnect(async () => { decisions += 1; return Response.json({ resolution: 'verification_completed' }) }),
+    resume: async () => {
+      continuations += 1
+      return continuations < 10 ? captchaResult : { data: { text: 'Verified public results', url: 'https://example.com/results', steps: [] } }
+    },
+  })
+  expect(decisions).toBe(10)
+  expect(continuations).toBe(10)
+  expect(result.data.text).toBe('Verified public results')
 })

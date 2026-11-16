@@ -9,12 +9,12 @@ import { MessageResponse } from '../MessageResponse.js';
 type Props = {
   content: string;
 };
-export function UserLocalCommandOutputMessage(t0) {
+export function UserLocalCommandOutputMessage(t0: Props): React.ReactNode {
   const $ = _c(4);
   const {
     content
   } = t0;
-  let lines;
+  let lines: React.ReactNode[] = [];
   let t1;
   if ($[0] !== content) {
     t1 = Symbol.for("react.early_return_sentinel");
@@ -52,7 +52,7 @@ export function UserLocalCommandOutputMessage(t0) {
   }
   return lines;
 }
-function IndentedContent(t0) {
+function IndentedContent(t0: { children: string }): React.ReactNode {
   const $ = _c(5);
   const {
     children
@@ -85,7 +85,9 @@ function IndentedContent(t0) {
   }
   return t2;
 }
-function CloudLaunchContent(t0) {
+function CloudLaunchContent(t0: {
+  children: string
+}): React.ReactNode {
   const $ = _c(19);
   const {
     children

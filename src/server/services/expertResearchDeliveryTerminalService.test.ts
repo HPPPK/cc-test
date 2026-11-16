@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, it } from 'bun:test'
 import type { ExpertSessionMetadata } from './expertPackRegistryService.js'
 import { resolveExpertResearchDeliveryTerminalRecovery } from './expertResearchDeliveryTerminalService.js'
@@ -114,7 +115,7 @@ describe('Expert research-delivery terminal recovery', () => {
 
   it('does not interfere with ordinary Experts that did not opt into the policy', () => {
     const expert = activeResearchExpert()
-    delete expert.runtimeBinding.researchDeliveryPolicy
+    delete requireFixtureValue(expert.runtimeBinding).researchDeliveryPolicy
 
     expect(resolveExpertResearchDeliveryTerminalRecovery({
       expert,

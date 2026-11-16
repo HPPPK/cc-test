@@ -102,7 +102,7 @@ function gitExecutable(): string {
 
 async function git(cwd: string, args: string[], env?: Record<string, string>): Promise<string> {
   const executable = gitExecutable()
-  let proc: ReturnType<typeof Bun.spawn>
+  let proc: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
   try {
     proc = Bun.spawn([executable, ...args], {
       cwd,
@@ -210,7 +210,7 @@ async function readCheckpointTranscriptSnapshot(
     const parsed = JSON.parse(raw) as unknown
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
     const messageCount = (parsed as { messageCount?: unknown }).messageCount
-    if (!Number.isInteger(messageCount) || messageCount < 0) return undefined
+    if (typeof messageCount !== 'number' || !Number.isInteger(messageCount) || messageCount < 0) return undefined
     const lastMessageId = (parsed as { lastMessageId?: unknown }).lastMessageId
     return {
       messageCount,

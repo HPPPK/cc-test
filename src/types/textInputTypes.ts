@@ -1,3 +1,4 @@
+import type { MessageKind } from '../utils/messageKind.js'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { UUID } from 'crypto'
 import type React from 'react'
@@ -297,6 +298,12 @@ export type QueuePriority = 'now' | 'next' | 'later'
  * Queued command type
  */
 export type QueuedCommand = {
+  /** In-memory producer identity for task-notification delivery and GC. */
+  taskNotificationId?: string
+  messageKind?: MessageKind
+  isCompactSummary?: boolean
+  isVisibleInTranscriptOnly?: boolean
+  isSynthetic?: boolean
   value: string | Array<ContentBlockParam>
   mode: PromptInputMode
   /** Defaults to the priority implied by `mode` when enqueued. */

@@ -1,3 +1,4 @@
+import { invokeUncheckedFixture, requireFixtureArray, requireFixtureRecord, requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { afterEach, describe, expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
@@ -48,6 +49,14 @@ const SHIPPED_WORKFLOWS: ShippedWorkflowCase[] = [
     routeFromPhaseIds: ['feature-quality-preview'],
     routeToPhaseId: 'feature-implement',
     request: '为现有项目新增可配置的导出筛选功能，并完成实现、验证与预览。',
+  },
+  {
+    id: 'stradn-managed-development-workflow-v1',
+    packFile: 'stradn-managed-development-workflow-v1.zip',
+    implementationPhaseId: 'stradn-delivery',
+    routeFromPhaseIds: ['local-preview'],
+    routeToPhaseId: 'stradn-delivery',
+    request: '创建一个由宿主统一管理并行实现、审查、失败恢复与独立 QA 的桌面应用。',
   },
 ]
 
@@ -183,6 +192,7 @@ async function ensureDevelopmentDeliveryPlan(state: WorkflowSessionState): Promi
     '',
     '```json',
     JSON.stringify({
+      workspace_mode: 'blank-create',
       tasks: [{
         id: 'B1',
         depends_on: [],
@@ -475,15 +485,21 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       if (!workflowEntry) throw new Error('Workflow entry is missing from ' + workflow.packFile)
       const template = await archive.readJson<any>(workflowEntry.path)
       const permissions = await archive.readJson<any>('permissions/permissions.json')
-      const permissionPhases = new Map((permissions.workflows?.[0]?.phases ?? []).map((phase: any) => [phase.id, phase]))
+      const permissionPhases = new Map<string, Record<string, unknown>>(requireFixtureArray(permissions.workflows?.[0]?.phases).map(value => {
+        const phase = requireFixtureRecord(value)
+        if (typeof phase.id !== 'string') throw new Error('Expected permission phase id')
+        return [phase.id, phase]
+      }))
 
       for (const phase of template.phases) {
-        expect(phase.contract?.instructions, `${workflow.id}/${phase.id} embedded instructions`).toBe(phase.instructions)
-        expect(phase.contract?.executionRules, `${workflow.id}/${phase.id} embedded execution rules`).toEqual(phase.executionRules)
-        expect(phase.contract?.handoffRules, `${workflow.id}/${phase.id} embedded handoff rules`).toEqual(phase.handoffRules)
-        expect(phase.contract?.completionCriteria, `${workflow.id}/${phase.id} embedded completion criteria`).toEqual(phase.completionCriteria)
-        expect(phase.contract?.subagentPolicy, `${workflow.id}/${phase.id} embedded subagent policy`).toEqual(phase.subagentPolicy)
-        expect(phase.contract?.outputArtifacts, `${workflow.id}/${phase.id} embedded output artifacts`).toEqual(phase.outputArtifacts)
+        if (!(workflow.id === 'stradn-managed-development-workflow-v1' && phase.id === 'stradn-delivery')) {
+          expect(phase.contract?.instructions, `${workflow.id}/${phase.id} embedded instructions`).toBe(phase.instructions)
+          expect(phase.contract?.executionRules, `${workflow.id}/${phase.id} embedded execution rules`).toEqual(phase.executionRules)
+          expect(phase.contract?.handoffRules, `${workflow.id}/${phase.id} embedded handoff rules`).toEqual(phase.handoffRules)
+          expect(phase.contract?.completionCriteria, `${workflow.id}/${phase.id} embedded completion criteria`).toEqual(phase.completionCriteria)
+          expect(phase.contract?.subagentPolicy, `${workflow.id}/${phase.id} embedded subagent policy`).toEqual(phase.subagentPolicy)
+          expect(phase.contract?.outputArtifacts, `${workflow.id}/${phase.id} embedded output artifacts`).toEqual(phase.outputArtifacts)
+        }
         expect(phase.runtimeContract?.allowedActions, `${workflow.id}/${phase.id} runtime allowed actions`).toEqual(phase.actionPolicy?.allowedActions)
         expect(phase.runtimeContract?.forbiddenActions, `${workflow.id}/${phase.id} runtime forbidden actions`).toEqual(phase.actionPolicy?.forbiddenActions)
         expect(phase.runtimeContract?.toolAccess?.allowed, `${workflow.id}/${phase.id} runtime allowed tools`).toEqual(phase.toolPolicy?.allowedTools)
@@ -521,7 +537,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     expect(phase?.instructions).toContain('change only the agreed scope')
   })
 
-  test('keeps every shipped subagent phase host-managed and unbounded', async () => {
+  test('keeps every shipped subagent phase host-managed with its declared concurrency limit', async () => {
     const adapter = new ZipPackAdapter()
 
     for (const workflow of SHIPPED_WORKFLOWS) {
@@ -529,14 +545,16 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       const archive = await adapter.read(new Uint8Array(await fs.readFile(source)))
       const workflowEntry = archive.entries.find((entry) => entry.path.startsWith('workflows/') && entry.path.endsWith('.workflow.json'))
       if (!workflowEntry) throw new Error('Workflow entry is missing from ' + workflow.packFile)
-      const template = await archive.readJson<{ phases: Array<{ subagentPolicy?: Record<string, unknown>; contract?: { subagentPolicy?: Record<string, unknown> } }> }>(workflowEntry.path)
-      const policies = template.phases.flatMap((phase) => [phase.subagentPolicy, phase.contract?.subagentPolicy].filter(Boolean))
+      const template = await archive.readJson<{ phases: Array<{ id: string; subagentPolicy?: Record<string, unknown>; contract?: { subagentPolicy?: Record<string, unknown> } }> }>(workflowEntry.path)
+      const policies = template.phases.flatMap((phase) => [phase.subagentPolicy, phase.contract?.subagentPolicy]
+        .filter(Boolean)
+        .map(policy => ({ phaseId: phase.id, policy })))
 
       expect(policies.length).toBeGreaterThan(0)
-      for (const policy of policies) {
+      for (const { phaseId, policy } of policies) {
         expect(policy).toMatchObject({
           parallelSubagentsAllowed: true,
-          maxParallel: null,
+          maxParallel: workflow.id === 'stradn-managed-development-workflow-v1' && phaseId === 'stradn-delivery' ? 3 : null,
           controlledBy: 'host-runtime',
         })
       }
@@ -624,22 +642,25 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const development = await loadTemplate('efficient-constrained-dev-debug-workflow-v5.zip')
     const developmentIntake = development.phases.find((phase) => phase.id === 'route-context')
     const developmentPhase = (id: string) => development.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(development.version).toBe('24')
+    expect(development.version).toBe('32')
+    expect(developmentPhase('delegate-implement')).toContain('run_in_background=true')
+    expect(developmentPhase('delegate-implement')).toContain('Reviewer uses file reads and recorded evidence only')
+    expect(developmentPhase('scenario-review')).toContain('workflow_role=qa')
     expect(developmentIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
       requireAnswerProcessingBeforeNextQuestion: false,
     }))
-    expect(developmentPhase('route-context')).toContain('Continue dynamic one-question-at-a-time exploration until the current phase has enough clarity')
+    expect(developmentPhase('route-context')).toContain('Group independent questions in one AskUserQuestion batch')
     expect(developmentPhase('route-context')).toContain('AGENTS.md')
     expect(developmentPhase('route-context')).toContain('not a precondition')
     expect(developmentPhase('route-context')).toContain('### Focused clarification')
     expect(developmentPhase('route-context')).toContain('### Brainstorming mode precedence')
     expect(developmentPhase('route-context')).toContain('When brainstormingMode = on')
-    expect(developmentPhase('route-context')).toContain('complete brainstorming contract takes priority')
+    expect(developmentPhase('route-context')).toContain('development question policy')
     expect(developmentPhase('route-context')).toContain('When brainstormingMode = off')
     expect(developmentPhase('route-context')).toContain('conservative defaults and ask only missing blocking questions')
     expect(developmentPhase('scope-plan')).toContain('When brainstormingMode = on')
-    expect(developmentPhase('scope-plan')).toContain('continue dynamic one-question-at-a-time exploration')
-    expect(developmentPhase('scope-plan')).toContain('Do not cap the total number of clarification rounds')
+    expect(developmentPhase('scope-plan')).toContain('batch independent consequential questions')
+    expect(developmentPhase('scope-plan')).toContain('Stop exploration as soon as')
     expect(developmentPhase('scope-plan')).toContain('When brainstormingMode = off')
     expect(developmentPhase('scope-plan')).toContain('Do not ask too many details for perfection')
     expect(developmentPhase('route-context')).not.toContain('AskUserQuestion packet')
@@ -725,7 +746,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     for (const workflow of SHIPPED_WORKFLOWS) {
       let state = await createRealWorkflowState(workflow)
       expect(state.templateSnapshot?.id).toBe(workflow.id)
-      expect(state.activePhaseId).toBe(state.templateSnapshot?.phases[0]?.id)
+      expect(state.activePhaseId).toBe(requireFixtureValue(state.templateSnapshot?.phases[0]?.id))
 
       const stageOneDenied = getWorkflowPhaseDisallowedTools(state, {
         mode: 'system',
@@ -746,7 +767,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
         expect(stageOneDenied, `${workflow.id} stage one permits ${tool}`).not.toContain(tool)
       }
 
-      await expect(service.submitPhaseCompletion({
+      await expect(invokeUncheckedFixture(service.submitPhaseCompletion, service, [{
         state,
         requestedAt: '2026-07-17T00:00:01.000Z',
         transitionId: `e2e-missing-handoff-${workflow.id}`,
@@ -756,9 +777,9 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
           status: 'ready',
           rationale: 'Missing handoff must be rejected.',
           evidence: [],
-        } as CompletionSubmission,
-      })).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
-      await expect(service.submitPhaseCompletion({
+        },
+      }])).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
+      await expect(invokeUncheckedFixture(service.submitPhaseCompletion, service, [{
         state,
         requestedAt: '2026-07-17T00:00:02.000Z',
         transitionId: `e2e-missing-rationale-${workflow.id}`,
@@ -768,9 +789,9 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
           status: 'ready',
           handoff: { summary: 'Missing rationale must be rejected.' },
           evidence: [],
-        } as CompletionSubmission,
-      })).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
-      await expect(service.submitPhaseCompletion({
+        },
+      }])).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
+      await expect(invokeUncheckedFixture(service.submitPhaseCompletion, service, [{
         state,
         requestedAt: '2026-07-17T00:00:03.000Z',
         transitionId: `e2e-missing-evidence-${workflow.id}`,
@@ -780,8 +801,8 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
           status: 'ready',
           handoff: { summary: 'Missing evidence must be rejected.' },
           rationale: 'Missing evidence must be rejected.',
-        } as CompletionSubmission,
-      })).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
+        },
+      }])).rejects.toMatchObject({ code: 'WORKFLOW_COMPLETION_INVALID' })
 
       const pauseRequested = await service.requestWorkflowRoute({
         state,
@@ -836,7 +857,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
       })
       state = resumed.state
       expect(state.runStatus).toBe('active')
-      expect(state.activePhaseId).toBe(state.templateSnapshot?.phases[0]?.id)
+      expect(state.activePhaseId).toBe(requireFixtureValue(state.templateSnapshot?.phases[0]?.id))
 
       state = await advanceToPhase(service, state, workflow.implementationPhaseId)
       const implementationDenied = getWorkflowPhaseDisallowedTools(state, {

@@ -17,7 +17,7 @@ function formatTime(date: Date): string {
   return `${h}:${m}:${s}${ampm}`;
 }
 import { getPlatform } from 'src/utils/platform.js';
-export function SandboxViolationExpandedView() {
+export function SandboxViolationExpandedView(): ReactNode {
   const $ = _c(15);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -26,7 +26,7 @@ export function SandboxViolationExpandedView() {
   } else {
     t0 = $[0];
   }
-  const [violations, setViolations] = useState(t0);
+  const [violations, setViolations] = useState<SandboxViolationEvent[]>(t0);
   const [totalCount, setTotalCount] = useState(0);
   let t1;
   let t2;

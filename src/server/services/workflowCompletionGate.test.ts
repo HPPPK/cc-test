@@ -1,3 +1,5 @@
+import { invokeUncheckedFixture } from '../__tests__/fixtureAssertions.js'
+import type { WorkflowPhaseIssue } from './workflowTypes.js'
 import { describe, expect, test } from 'bun:test'
 import {
   applyWorkflowPhaseProgress,
@@ -41,9 +43,9 @@ function legacyState(): WorkflowSessionState {
     schemaVersion: 1,
     sessionId: SESSION_ID,
     mode: 'workflow',
-    template: { id: snapshot.id, source: snapshot.source, version: snapshot.version, snapshotId: 'fixture', sourceState: 'current' },
+    template: { id: snapshot.id, source: snapshot.source, version: String(snapshot.version), snapshotId: 'fixture', sourceState: 'current' },
     templateSnapshot: snapshot,
-    templateIdentity: { id: snapshot.id, source: snapshot.source, version: snapshot.version, registryKey: 'fixture', contentHash: 'fixture' },
+    templateIdentity: { id: snapshot.id, source: snapshot.source, version: String(snapshot.version), registryKey: 'fixture', contentHash: 'fixture' },
     sourceTemplateStatus: 'current',
     status: 'running',
     workflowStatus: 'running',
@@ -100,11 +102,59 @@ describe('workflow completion contract', () => {
         run: { [PHASE_ID]: 1, invalid: -1 },
         invalid: 'not-a-record',
       },
-    } as WorkflowSessionState
-    const migrated = migrateWorkflowRuntimeContract(malformed, template(), NOW)
+    }
+    const migrated = invokeUncheckedFixture(migrateWorkflowRuntimeContract, undefined, [malformed, template(), NOW])
 
     expect(migrated).not.toHaveProperty('autoRecovery')
-    expect(migrated.autoRecoveryAttempts).toEqual({ run: { [PHASE_ID]: 1 } })
+    expect(migrated).toHaveProperty('autoRecoveryAttempts', { run: { [PHASE_ID]: 1 } })
+  })
+
+  test('upgrades a legacy timed recovery window to a one-time recovery credential', () => {
+    const state = {
+      ...rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Build the current contract before recovery metadata migration.'),
+      autoRecovery: {
+        phaseId: PHASE_ID,
+        startedAt: NOW,
+        expiresAt: '2026-05-20T00:00:10.000Z',
+        attempt: 1,
+        source: 'phase-completion-blocked',
+      },
+    }
+
+    const migrated = invokeUncheckedFixture(migrateWorkflowRuntimeContract, undefined, [state, template(), NOW]) as ReturnType<typeof migrateWorkflowRuntimeContract>
+
+    expect(migrated.autoRecovery).toMatchObject({
+      phaseId: PHASE_ID,
+      startedAt: NOW,
+      attempt: 1,
+      source: 'phase-completion-blocked',
+      credentialId: expect.stringContaining(PHASE_ID),
+    })
+    expect(migrated.autoRecovery).not.toHaveProperty('expiresAt')
+  })
+
+  test('drops recovery metadata that belongs to a phase which is no longer active', () => {
+    const rebuilt = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Build the current contract before recovery metadata migration.')
+    const activePhaseId = 'delivery-plan'
+    const state = {
+      ...rebuilt,
+      activePhaseId,
+      phases: [
+        ...rebuilt.phases,
+        { id: activePhaseId, index: 1, status: 'running', artifactPointers: [] },
+      ],
+      autoRecovery: {
+        phaseId: PHASE_ID,
+        startedAt: NOW,
+        credentialId: `workflow-recovery:${PHASE_ID}:1`,
+        attempt: 1,
+        source: 'phase-completion-blocked',
+      },
+    }
+
+    const migrated = invokeUncheckedFixture(migrateWorkflowRuntimeContract, undefined, [state, template(), NOW]) as ReturnType<typeof migrateWorkflowRuntimeContract>
+
+    expect(migrated).not.toHaveProperty('autoRecovery')
   })
 
   test('keeps AskUserQuestion answers blocking until explicit processing and linked evidence are complete', () => {
@@ -299,9 +349,9 @@ describe('workflow completion contract', () => {
     const base = legacyState()
     const debugState = rebuildWorkflowCompletionContract({
       ...base,
-      template: { id: debugTemplate.id, source: debugTemplate.source, version: debugTemplate.version, snapshotId: 'debug-fixture', sourceState: 'current' },
+      template: { id: debugTemplate.id, source: debugTemplate.source, version: String(debugTemplate.version), snapshotId: 'debug-fixture', sourceState: 'current' },
       templateSnapshot: debugTemplate,
-      templateIdentity: { id: debugTemplate.id, source: debugTemplate.source, version: debugTemplate.version, registryKey: 'debug-fixture', contentHash: 'debug-fixture' },
+      templateIdentity: { id: debugTemplate.id, source: debugTemplate.source, version: String(debugTemplate.version), registryKey: 'debug-fixture', contentHash: 'debug-fixture' },
       activePhaseId: 'debug-memory-intake',
       phases: [{ id: 'debug-memory-intake', index: 0, status: 'running', artifactPointers: [] }],
       workflowRuns: [{
@@ -413,4 +463,17 @@ describe('workflow completion contract', () => {
     })
   })
 
+})
+
+test('a submitted batch closes skipped optional questions without inventing an answer', () => {
+  let state = rebuildWorkflowCompletionContract(legacyState(), template(), NOW, 'Rebuilt old fixture')
+  state = recordAskUserQuestionIssue(state, { requestId: 'batch', questions: [
+    { id: 'platform', prompt: 'Platform?', blocksCompletion: true },
+    { id: 'style', prompt: 'Style?', blocksCompletion: false },
+  ], now: NOW })
+  state = recordAskUserQuestionAnswer(state, { requestId: 'batch', answers: { platform: 'Mac' }, now: NOW })
+  const issues = state.runtimeContract!.phaseStates[PHASE_ID]!.issues
+  expect(issues.find((issue) => issue.questionId === 'platform')?.status).toBe('answered-pending-processing')
+  expect(issues.find((issue) => issue.questionId === 'style')).toMatchObject({ status: 'resolved', blocksCompletion: false })
+  expect(issues.find((issue) => issue.questionId === 'style')?.answer).toBeUndefined()
 })

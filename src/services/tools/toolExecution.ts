@@ -55,6 +55,8 @@ import { getAllBaseTools } from '../../tools.js'
 import { assertExpertTemplateFillToolMutationAllowed, renderExpertTemplateFillForWrite } from './expertTemplateFillRuntime.js'
 import { coordinateExpertBrowserVerification } from './expertBrowserVerificationRuntime.js'
 import { coordinateExpertBrowserSearchPacing } from './expertBrowserSearchPacingRuntime.js'
+import { guardExpertIntakeToolCall } from './expertResearchIntakeRuntime.js'
+import { guardExpertResearchToolCall } from './expertResearchBudgetRuntime.js'
 import {
   extractAgentRunArtifacts,
   recordAgentRunEvent,
@@ -64,8 +66,11 @@ import { resolveCurrentPlaywrightSessionKey } from '../../tools/PlaywrightTool/P
 import { resolveWorkflowRuntimeState } from './workflowRuntimeStateBridge.js'
 import { uiuxImageToolViolation } from './uiuxImageWorkflowRuntime.js'
 import { developmentLeaderToolViolation } from '../../server/services/workflowDevelopmentBatchAgentPolicy.js'
+import { developmentToolCallViolation } from '../../server/services/developmentToolExecutionPolicy.js'
+import { sendMessageInputForWorkflowGuard } from './sendMessageObservableInput.js'
 import {
   getWorkflowQuestionCardContractViolation,
+  getWorkflowToolDenialMessage,
   isWorkflowPhaseToolDenied,
 } from '../../server/services/workflowToolPolicy.js'
 import type { HookProgress } from '../../types/hooks.js'
@@ -93,7 +98,7 @@ import {
   createProgressMessage,
   createStopHookSummaryMessage,
   createToolResultStopMessage,
-  createUserMessage,
+  createRuntimeUserMessage,
   withMemoryCorrectionHint,
 } from '../../utils/messages.js'
 import type {
@@ -356,9 +361,13 @@ function getMcpServerBaseUrlFromToolName(
   return getLoggingSafeMcpBaseUrl(serverConnection.config)
 }
 
+function isToolInputRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === 'object' && input !== null && !Array.isArray(input)
+}
+
 function isRecoverableUnreadFileEditValidation(
   tool: Tool,
-  validation: Awaited<ReturnType<NonNullable<Tool['validateInput']>>>,
+  validation: Awaited<ReturnType<NonNullable<Tool['validateInput']>>> | undefined,
   input: unknown,
 ): input is { file_path: string } {
   return (
@@ -453,7 +462,7 @@ export async function* runToolUse(
       ...mcpToolDetailsForAnalytics(toolName, mcpServerType, mcpServerBaseUrl),
     })
     yield {
-      message: createUserMessage({
+      message: createRuntimeUserMessage({
         content: [
           {
             type: 'tool_result',
@@ -471,7 +480,7 @@ export async function* runToolUse(
 
   if (typeof toolUse.input === 'string') {
     const error = 'TOOL_INPUT_JSON_INVALID: 工具参数不是完整的 JSON 对象，本次工具未执行。原始输入已保留在会话工具记录中；请重新提交有效参数，不要把空参数当成保存失败或改走 Bash。已成功保存的文件与字段不受影响。'
-    yield { message: createUserMessage({
+    yield { message: createRuntimeUserMessage({
       content: [{ type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: '<tool_use_error>' + error + '</tool_use_error>' }],
       toolUseResult: error,
       sourceToolAssistantUUID: assistantMessage.uuid,
@@ -511,7 +520,7 @@ export async function* runToolUse(
       const content = createToolResultStopMessage(toolUse.id)
       content.content = withMemoryCorrectionHint(CANCEL_MESSAGE)
       yield {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [content],
           toolUseResult: CANCEL_MESSAGE,
           sourceToolAssistantUUID: assistantMessage.uuid,
@@ -542,7 +551,7 @@ export async function* runToolUse(
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, detailedError)
 
     yield {
-      message: createUserMessage({
+      message: createRuntimeUserMessage({
         content: [
           {
             type: 'tool_result',
@@ -695,7 +704,7 @@ async function checkPermissionsAndCallTool(
     assertExpertTemplateFillToolMutationAllowed(tool.name, input)
   } catch (error) {
     const content = errorMessage(error)
-    return [{ message: createUserMessage({
+    return [{ message: createRuntimeUserMessage({
       content: [{ type: 'tool_result', tool_use_id: toolUseID, is_error: true, content: '<tool_use_error>' + content + '</tool_use_error>' }],
       toolUseResult: content,
       sourceToolAssistantUUID: assistantMessage.uuid,
@@ -760,7 +769,7 @@ async function checkPermissionsAndCallTool(
     )
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -778,7 +787,7 @@ async function checkPermissionsAndCallTool(
 
   const uiuxViolation = uiuxImageToolViolation(tool.name, parsedInput.data, toolUseContext.messages)
   if (uiuxViolation) {
-    return [{ message: createUserMessage({
+    return [{ message: createRuntimeUserMessage({
       content: [{ type: 'tool_result', content: '<tool_use_error>' + uiuxViolation + '</tool_use_error>', is_error: true, tool_use_id: toolUseID }],
       toolUseResult: uiuxViolation,
       sourceToolAssistantUUID: assistantMessage.uuid,
@@ -790,14 +799,14 @@ async function checkPermissionsAndCallTool(
   // persisted Desktop state before every actual tool call instead of trusting
   // a launch-time deny list or an old transcript turn.
   const localWorkflowState = (toolUseContext.getAppState() as { workflow?: unknown }).workflow
-  const workflowResolution = await resolveWorkflowRuntimeState(localWorkflowState)
+  const workflowResolution = await resolveWorkflowRuntimeState(localWorkflowState, { signal: toolUseContext.abortController.signal })
   if (workflowResolution.source === 'desktop-unavailable') {
     const violation = `WORKFLOW_STATE_UNAVAILABLE: ${workflowResolution.reason} No tool was executed; retry after Desktop workflow state is available.`
     logForDebugging(violation)
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -813,6 +822,21 @@ async function checkPermissionsAndCallTool(
     ]
   }
   const workflowState = workflowResolution.state
+  const executionContractViolation = developmentToolCallViolation(
+    tool.name,
+    sendMessageInputForWorkflowGuard(tool, input, parsedInput.data as Record<string, unknown>),
+    workflowState,
+    toolUseContext.workflowWorkerContract,
+    parsedInput.data as Record<string, unknown>,
+    Boolean(toolUseContext.agentId),
+  )
+  if (executionContractViolation) {
+    return [{ message: createRuntimeUserMessage({
+      content: [{ type: 'tool_result', tool_use_id: toolUseID, is_error: true, content: '<tool_use_error>' + executionContractViolation + '</tool_use_error>' }],
+      toolUseResult: executionContractViolation,
+      sourceToolAssistantUUID: assistantMessage.uuid,
+    }) }]
+  }
   const developmentLeaderViolation = developmentLeaderToolViolation(
     tool.name,
     parsedInput.data as Record<string, unknown>,
@@ -824,7 +848,7 @@ async function checkPermissionsAndCallTool(
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, developmentLeaderViolation)
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -840,12 +864,12 @@ async function checkPermissionsAndCallTool(
     ]
   }
   if (isWorkflowPhaseToolDenied(tool.name, workflowState)) {
-    const violation = `WORKFLOW_TOOL_FORBIDDEN: ${tool.name} is not allowed in the current workflow phase. Complete or route the current phase before using this tool.`
+    const violation = getWorkflowToolDenialMessage(tool.name, workflowState)
     logForDebugging(violation)
     const workflowErrorContent = await workflowSubmitFailureText(tool, toolUseContext, violation)
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -875,7 +899,7 @@ async function checkPermissionsAndCallTool(
     )
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -911,7 +935,7 @@ async function checkPermissionsAndCallTool(
       logForDebugging(message)
       const results: MessageUpdateLazy[] = [
         {
-          message: createUserMessage({
+          message: createRuntimeUserMessage({
             content: [{
               type: 'tool_result',
               content: '<tool_use_error>' + message + '</tool_use_error>',
@@ -988,7 +1012,7 @@ async function checkPermissionsAndCallTool(
     )
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',
@@ -1023,7 +1047,7 @@ async function checkPermissionsAndCallTool(
     )
   }
 
-  const resultingMessages = []
+  const resultingMessages: MessageUpdateLazy[] = []
 
   // Defense-in-depth: strip _simulatedSedEdit from model-provided Bash input.
   // This field is internal-only — it must only be injected by the permission
@@ -1123,7 +1147,7 @@ async function checkPermissionsAndCallTool(
           Date.now() - preToolHookStart,
         )
         resultingMessages.push({
-          message: createUserMessage({
+          message: createRuntimeUserMessage({
             content: [createToolResultStopMessage(toolUseID)],
             toolUseResult: `Error: ${stopReason}`,
             sourceToolAssistantUUID: assistantMessage.uuid,
@@ -1334,7 +1358,7 @@ async function checkPermissionsAndCallTool(
     }
 
     resultingMessages.push({
-      message: createUserMessage({
+      message: createRuntimeUserMessage({
         content: messageContent,
         imagePasteIds: rejectImageIds,
         toolUseResult: `Error: ${errorMessage}`,
@@ -1363,7 +1387,7 @@ async function checkPermissionsAndCallTool(
       }
       if (hookSaysRetry) {
         resultingMessages.push({
-          message: createUserMessage({
+          message: createRuntimeUserMessage({
             content:
               'The PermissionDenied hook indicated this command is now approved. You may retry it if you would like.',
             isMeta: true,
@@ -1504,8 +1528,31 @@ async function checkPermissionsAndCallTool(
     callInput = processedInput
   }
   let searchPacing: Awaited<ReturnType<typeof coordinateExpertBrowserSearchPacing>> | undefined
+  const assertFinalWorkflowCall = async (finalInput: Record<string, unknown>) => {
+    if (workflowState?.templateIdentity?.id !== 'efficient-constrained-dev-debug-workflow-v5' && !toolUseContext.workflowWorkerContract) return
+    const latest = await resolveWorkflowRuntimeState((toolUseContext.getAppState() as { workflow?: unknown }).workflow)
+    if (latest.source === 'desktop-unavailable') throw new Error(`WORKFLOW_STATE_UNAVAILABLE: ${latest.reason} No tool was executed.`)
+    if (latest.state?.templateIdentity?.id !== workflowState?.templateIdentity?.id || latest.state?.activePhaseId !== workflowState?.activePhaseId) {
+      throw new Error('WORKFLOW_EXECUTION_STALE: The workflow binding or phase changed while this call waited for permission. Refresh the current phase before retrying.')
+    }
+    const finalParsed = tool.name === 'SendMessage' ? tool.inputSchema.safeParse(finalInput) : null
+    if (finalParsed && !finalParsed.success) {
+      throw new Error('WORKFLOW_TOOL_FIELDS_INVALID: The updated SendMessage input no longer matches its declared schema; no tool was executed.')
+    }
+    const finalGuardInput = finalParsed?.success
+      ? sendMessageInputForWorkflowGuard(tool, finalInput, finalParsed.data as Record<string, unknown>)
+      : finalInput
+    const violation = developmentToolCallViolation(tool.name, finalGuardInput, latest.state, toolUseContext.workflowWorkerContract,
+      finalParsed?.success ? finalParsed.data as Record<string, unknown> : undefined, Boolean(toolUseContext.agentId))
+      ?? developmentLeaderToolViolation(tool.name, finalInput, latest.state, Boolean(toolUseContext.agentId))
+      ?? (isWorkflowPhaseToolDenied(tool.name, latest.state) ? getWorkflowToolDenialMessage(tool.name, latest.state) : null)
+    if (violation) throw new Error(violation)
+  }
   try {
-    searchPacing = await coordinateExpertBrowserSearchPacing({ toolName: tool.name, input: callInput })
+    await guardExpertIntakeToolCall({ toolName: tool.name, input: callInput, agentId: toolUseContext.agentId })
+    searchPacing = await coordinateExpertBrowserSearchPacing({ toolName: tool.name, input: callInput, signal: toolUseContext.abortController.signal })
+    await guardExpertResearchToolCall({ toolName: tool.name, input: callInput, agentId: toolUseContext.agentId, agentType: toolUseContext.agentType })
+    await assertFinalWorkflowCall(callInput)
     const rawResult = await tool.call(
       callInput,
       {
@@ -1528,22 +1575,30 @@ async function checkPermissionsAndCallTool(
       toolName: tool.name,
       result: rawResult,
       input: callInput,
-      resume: async (continuationInput) => await tool.call(
-        continuationInput as typeof callInput,
-        {
-          ...toolUseContext,
-          toolUseId: toolUseID,
-          userModified: permissionDecision.userModified ?? false,
-        },
-        canUseTool,
-        assistantMessage,
-        progress => {
-          onToolProgress({
-            toolUseID: progress.toolUseID,
-            data: progress.data,
-          })
-        },
-      ),
+      resume: async (continuationInput) => {
+        if (!isToolInputRecord(continuationInput)) {
+          throw new Error('TOOL_CONTINUATION_INPUT_INVALID: Browser verification continuation must contain an input object. No retry was executed.')
+        }
+        await guardExpertIntakeToolCall({ toolName: tool.name, input: continuationInput, agentId: toolUseContext.agentId })
+        await guardExpertResearchToolCall({ toolName: tool.name, input: continuationInput, agentId: toolUseContext.agentId, agentType: toolUseContext.agentType })
+        await assertFinalWorkflowCall(continuationInput)
+        return await tool.call(
+          continuationInput,
+          {
+            ...toolUseContext,
+            toolUseId: toolUseID,
+            userModified: permissionDecision.userModified ?? false,
+          },
+          canUseTool,
+          assistantMessage,
+          progress => {
+            onToolProgress({
+              toolUseID: progress.toolUseID,
+              data: progress.data,
+            })
+          },
+        )
+      },
       ...(toolUseContext.agentId ? { agentId: toolUseContext.agentId } : {}),
       toolUseId: toolUseID,
       ...(tool.name === 'Playwright' ? { browserSessionKey: resolveCurrentPlaywrightSessionKey(toolUseContext) } : {}),
@@ -1753,7 +1808,7 @@ async function checkPermissionsAndCallTool(
 
     // Run PostToolUse hooks
     let toolOutput = result.data
-    const hookResults = []
+    const hookResults: MessageUpdateLazy<AttachmentMessage | ProgressMessage<HookProgress>>[] = []
     const toolContextModifier = result.contextModifier
     const mcpMeta = result.mcpMeta
 
@@ -1811,7 +1866,7 @@ async function checkPermissionsAndCallTool(
       }
 
       resultingMessages.push({
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: contentBlocks,
           imagePasteIds: allowImageIds,
           toolUseResult:
@@ -1958,7 +2013,9 @@ async function checkPermissionsAndCallTool(
         toolUseId: toolUseID,
         toolName: tool.name,
         durationMs,
-        status: 'failed',
+        // A failed tool call is recoverable model feedback, not a failed
+        // Agent run. The workflow owner records the terminal run status.
+        status: 'running',
         errorCode: error instanceof Error ? error.name.slice(0, 128) : 'tool_error',
       })
     }
@@ -2082,7 +2139,7 @@ async function checkPermissionsAndCallTool(
 
     return [
       {
-        message: createUserMessage({
+        message: createRuntimeUserMessage({
           content: [
             {
               type: 'tool_result',

@@ -71,7 +71,7 @@ const inputSchema = lazySchema(() =>
       .describe(
         feature('UDS_INBOX')
           ? 'Recipient: teammate name, "*" for broadcast, "uds:<socket-path>" for a local peer, or "bridge:<session-id>" for a Remote Control peer (use ListPeers to discover)'
-          : 'Recipient: teammate name, or "*" for broadcast to all teammates',
+          : 'Recipient: the exact agentId returned by Agent to continue that worker; teammate names and "*" broadcast require agent teams',
       ),
     summary: z
       .string()
@@ -533,7 +533,9 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     shouldDefer: true,
 
     isEnabled() {
-      return isAgentSwarmsEnabled()
+      // Ordinary Agent workers also resume through this tool. Team protocols
+      // remain gated in validateInput; hiding the whole tool strands workers.
+      return true
     },
 
     isReadOnly(input) {
@@ -626,6 +628,12 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           message:
             'to must be a bare teammate name or "*" — there is only one team per session',
           errorCode: 9,
+        }
+      }
+      if (!isAgentSwarmsEnabled()) {
+        const registered = _context.getAppState().agentNameRegistry.get(input.to)
+        if (typeof input.message !== 'string' || !(toAgentId(input.to) || (registered && toAgentId(registered)))) {
+          return { result: false, message: 'Agent teams are disabled. Use a plain message to the exact local agentId returned by Agent to continue that worker.', errorCode: 9 }
         }
       }
       if (feature('UDS_INBOX') && parseAddress(input.to).scheme === 'bridge') {

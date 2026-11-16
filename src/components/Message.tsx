@@ -1,3 +1,4 @@
+import { resolveMessageKind } from '../utils/messageKind.js';
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
 import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs';
@@ -55,7 +56,7 @@ export type Props = {
   /** UUID of the latest user bash output message (for auto-expanding) */
   latestBashOutputUUID?: string | null;
 };
-function MessageImpl(t0) {
+function MessageImpl(t0: Props): React.ReactNode {
   const $ = _c(94);
   const {
     message,
@@ -156,7 +157,8 @@ function MessageImpl(t0) {
       }
     case "user":
       {
-        if (message.isCompactSummary) {
+        if (resolveMessageKind(message) === 'internal_notification') return null;
+        if (resolveMessageKind(message) === 'context_summary') {
           const t2 = isTranscriptMode ? "transcript" : "prompt";
           let t3;
           if ($[41] !== message || $[42] !== t2) {
@@ -353,7 +355,19 @@ function MessageImpl(t0) {
       }
   }
 }
-function UserMessage(t0) {
+function UserMessage(t0: {
+  message: NormalizedUserMessage
+  addMargin: boolean
+  tools: Tools
+  progressMessagesForMessage: ProgressMessage[]
+  param: import('@anthropic-ai/sdk/resources/messages.mjs').ContentBlockParam
+  style?: 'condensed'
+  verbose: boolean
+  imageIndex?: number
+  isUserContinuation: boolean
+  lookups: ReturnType<typeof buildMessageLookups>
+  isTranscriptMode: boolean
+}): React.ReactNode {
   const $ = _c(20);
   const {
     message,
@@ -430,7 +444,35 @@ function UserMessage(t0) {
       }
   }
 }
-function AssistantMessageBlock(t0) {
+function AssistantMessageBlock(t0: {
+  param:
+    | BetaContentBlock
+    | ConnectorTextBlock
+    | AdvisorBlock
+    | TextBlockParam
+    | ImageBlockParam
+    | ThinkingBlockParam
+    | ToolUseBlockParam
+    | ToolResultBlockParam
+  addMargin: boolean
+  tools: Tools
+  commands: Command[]
+  verbose: boolean
+  inProgressToolUseIDs: Set<string>
+  progressMessagesForMessage: ProgressMessage[]
+  shouldAnimate: boolean
+  shouldShowDot: boolean
+  width?: number | string
+  inProgressToolCallCount?: number
+  isTranscriptMode: boolean
+  lookups: ReturnType<typeof buildMessageLookups>
+  onOpenRateLimitOptions?: () => void
+  /** ID of this content block's message:index for thinking block comparison */
+  thinkingBlockId: string
+  /** ID of the last thinking block to show, null means show all */
+  lastThinkingBlockId?: string | null
+  advisorModel?: string
+}): React.ReactNode {
   const $ = _c(45);
   const {
     param,

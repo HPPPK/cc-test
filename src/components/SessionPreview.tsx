@@ -17,14 +17,14 @@ type Props = {
   onExit: () => void;
   onSelect: (log: LogOption) => void;
 };
-export function SessionPreview(t0) {
+export function SessionPreview(t0: Props): React.ReactNode {
   const $ = _c(33);
   const {
     log,
     onExit,
     onSelect
   } = t0;
-  const [fullLog, setFullLog] = React.useState(null);
+  const [fullLog, setFullLog] = React.useState<LogOption | null>(null);
   let t1;
   let t2;
   if ($[0] !== log) {

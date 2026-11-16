@@ -13,15 +13,15 @@ type Props = {
   onDone: (result: 'installed' | 'use-tmux' | 'cancelled') => void;
   tmuxAvailable: boolean;
 };
-export function It2SetupPrompt(t0) {
+export function It2SetupPrompt(t0: Props): React.ReactNode {
   const $ = _c(44);
   const {
     onDone,
     tmuxAvailable
   } = t0;
-  const [step, setStep] = useState("initial");
-  const [packageManager, setPackageManager] = useState(null);
-  const [error, setError] = useState(null);
+  const [step, setStep] = useState<SetupStep>("initial");
+  const [packageManager, setPackageManager] = useState<PythonPackageManager | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const exitState = useExitOnCtrlCDWithKeybindings();
   let t1;
   let t2;

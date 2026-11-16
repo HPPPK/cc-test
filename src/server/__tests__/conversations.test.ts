@@ -510,7 +510,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     })
@@ -550,7 +550,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -589,7 +589,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -633,7 +633,7 @@ describe('ConversationService', () => {
       pendingOutbound: [],
       stderrLines: [],
       sdkMessages: [],
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -673,7 +673,7 @@ describe('ConversationService', () => {
       stderrLines: [],
       sdkMessages: [],
       sdkPayloadBuffer: '',
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -723,7 +723,7 @@ describe('ConversationService', () => {
       stderrLines: [],
       sdkMessages: [],
       sdkPayloadBuffer: '',
-      sdkUnparsedPayloads: [],
+      sdkUnparsedPayloads: new Array<{ receivedAt: string; payload: string; reason: string }>(),
       initMessage: null,
       pendingPermissionRequests: new Map(),
     }
@@ -858,10 +858,10 @@ describe('ConversationService', () => {
       const contextEstimate = await svc.getTranscriptContextEstimate(sessionId)
 
       expect(usage?.models[0]?.model).toBe('claude-sonnet-4-6')
-      expect(usage?.models[0]?.contextWindow).toBe(200_000)
+      expect(usage?.models[0]?.contextWindow).toBe(1_000_000)
       expect(contextEstimate?.model).toBe('claude-sonnet-4-6')
       expect(contextEstimate?.totalTokens).toBe(120)
-      expect(contextEstimate?.rawMaxTokens).toBe(200_000)
+      expect(contextEstimate?.rawMaxTokens).toBe(1_000_000)
       expect(contextEstimate?.categories.some((category) => category.name === 'Output tokens' && category.tokens === 20)).toBe(true)
     } finally {
       if (previousConfigDir === undefined) {

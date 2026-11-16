@@ -576,7 +576,7 @@ export async function prepareSessionWorkspace(
   }
 
   const context = await getRepositoryContext(absWorkDir)
-  if (context.state !== 'ok') {
+  if (context.state !== 'ok' || !context.repoRoot) {
     if (context.state === 'not_git_repo') {
       throw repositoryBadRequest(
         REPOSITORY_ERROR.notGit,
@@ -620,7 +620,7 @@ export async function resolveSessionWorkspaceLaunch(
   }
 
   const context = await getRepositoryContext(absWorkDir)
-  if (context.state !== 'ok') {
+  if (context.state !== 'ok' || !context.repoRoot) {
     if (context.state === 'not_git_repo') {
       throw repositoryBadRequest(
         REPOSITORY_ERROR.notGit,

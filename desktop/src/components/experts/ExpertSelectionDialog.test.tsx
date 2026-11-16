@@ -98,7 +98,8 @@ describe('ExpertSelectionDialog marketplace', () => {
 
     expect(screen.getByTestId('expert-marketplace')).toBeInTheDocument()
     const dialogShell = screen.getByTestId('expert-selection-dialog').firstElementChild
-    expect(dialogShell).toHaveClass('w-[1150px]', 'h-[680px]')
+    expect(dialogShell).toHaveClass('w-full', 'max-w-[1150px]', 'max-h-full')
+    expect(container.contains(screen.getByTestId('expert-selection-dialog'))).toBe(false)
     expect(screen.getByRole('heading', { name: '专家广场' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Development' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Project health expert' })).toBeInTheDocument()
@@ -154,40 +155,17 @@ describe('ExpertSelectionDialog marketplace', () => {
   })
 
 
-  it('requires explicit consent before connecting a package-authorized Chrome or Edge debugger', async () => {
-    const expert = makeExpert({
-      researchBrowserPolicy: {
-        sharePlaywrightSessionAcrossAgents: true,
-        allowUserAuthorizedCdp: true,
-        forceVisiblePlaywright: true,
-      },
-    })
+  it('does not expose browser mode choices and enters with the managed browser', async () => {
+    const expert = makeExpert({ researchBrowserPolicy: { sharePlaywrightSessionAcrossAgents: true, allowUserAuthorizedCdp: true, forceVisiblePlaywright: true } })
     const onEnterExpert = vi.fn().mockResolvedValue(undefined)
-    useExpertStore.setState({
-      experts: [expert],
-      packs: [makePack([expert])],
-      loadExperts: vi.fn().mockResolvedValue(undefined),
-      exportPack: vi.fn().mockResolvedValue(undefined),
-    })
-
+    useExpertStore.setState({ experts: [expert], packs: [makePack([expert])], loadExperts: vi.fn().mockResolvedValue(undefined), exportPack: vi.fn().mockResolvedValue(undefined) })
     render(<ExpertSelectionDialog open onClose={vi.fn()} projectRoot="C:/repo" onEnterExpert={onEnterExpert} />)
     fireEvent.click(screen.getByRole('button', { name: /Project health expert/ }))
-    expect(screen.getByTestId('expert-browser-connection-options')).toHaveTextContent('不会带入你日常 Chrome 的登录状态、Cookie、扩展或“浏览器扩展型 VPN/代理”')
-    fireEvent.click(screen.getByLabelText(/连接我主动开启的 Chrome/))
-    expect(screen.getByTestId('expert-browser-connection-options')).toHaveTextContent('请在这个专用调试 Profile 中自行启用同一 VPN/代理')
-    expect(screen.getByRole('button', { name: '进入专家 Mode' })).toBeDisabled()
-
-    fireEvent.click(screen.getByRole('checkbox'))
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('本机浏览器调试地址')).not.toBeInTheDocument()
+    expect(screen.queryByText(/连接我主动开启的系统默认浏览器/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '进入专家 Mode' }))
-
-    await waitFor(() => expect(onEnterExpert).toHaveBeenCalledWith(expert, {
-      researchBrowserConnection: {
-        kind: 'cdp',
-        browser: 'chrome',
-        endpoint: 'http://127.0.0.1:9222',
-        userAuthorized: true,
-      },
-    }))
+    await waitFor(() => expect(onEnterExpert).toHaveBeenCalledWith(expert, { researchBrowserConnection: { kind: 'managed' } }))
   })
 
   it('keeps package identity when experts share an expert id', () => {
@@ -206,41 +184,19 @@ describe('ExpertSelectionDialog marketplace', () => {
     expect(screen.getByTestId('expert-detail')).toHaveTextContent('Replacement package')
   })
 
-  it('offers a session-only managed presentation choice and omits it for a user-authorized CDP browser', async () => {
-    const expert = makeExpert({
-      researchBrowserPolicy: {
-        sharePlaywrightSessionAcrossAgents: false,
-        allowUserAuthorizedCdp: true,
-        managedPresentationDefault: 'assistable_background',
-        allowManagedPresentationChoice: true,
-      },
-    })
+  it('fixes research to managed background without presentation or connection controls', async () => {
+    const expert = makeExpert({ researchBrowserPolicy: { sharePlaywrightSessionAcrossAgents: false, allowUserAuthorizedCdp: true, managedPresentationDefault: 'always_visible', allowManagedPresentationChoice: true } })
     const onEnterExpert = vi.fn().mockResolvedValue(undefined)
-    useExpertStore.setState({
-      experts: [expert],
-      packs: [makePack([expert])],
-      loadExperts: vi.fn().mockResolvedValue(undefined),
-      exportPack: vi.fn().mockResolvedValue(undefined),
-    })
-
+    useExpertStore.setState({ experts: [expert], packs: [makePack([expert])], loadExperts: vi.fn().mockResolvedValue(undefined), exportPack: vi.fn().mockResolvedValue(undefined) })
     render(<ExpertSelectionDialog open onClose={vi.fn()} projectRoot="C:/repo" onEnterExpert={onEnterExpert} />)
     fireEvent.click(screen.getByRole('button', { name: /Project health expert/ }))
-
-    const background = screen.getByRole('radio', { name: /后台检索/ })
-    expect(background).toBeChecked()
-    expect(screen.getByText(/网站需要验证时会弹出提示/)).toHaveTextContent('恢复后软件不再自动最小化或收回')
-
-    fireEvent.click(screen.getByLabelText(/连接我主动开启的 Chrome/))
-    expect(screen.queryByRole('radio', { name: /后台检索/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: /全程显示浏览器操作/ })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByLabelText(/软件自带 Chromium/))
-    const visible = screen.getByRole('radio', { name: /全程显示浏览器操作/ })
-    fireEvent.click(visible)
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByText(/全程显示浏览器操作/)).not.toBeInTheDocument()
+    expect(screen.getByText(/只有你点击/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '进入专家 Mode' }))
-
     await waitFor(() => expect(onEnterExpert).toHaveBeenCalledWith(expert, {
-      researchBrowserPresentation: 'always_visible',
+      researchBrowserConnection: { kind: 'managed' }, researchBrowserPresentation: 'assistable_background',
     }))
   })
 })

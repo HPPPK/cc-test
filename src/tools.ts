@@ -5,6 +5,7 @@ import { SkillTool } from './tools/SkillTool/SkillTool.js'
 import { SubmitPhaseCompletionTool } from './tools/SubmitPhaseCompletionTool/SubmitPhaseCompletionTool.js'
 import { RequestWorkflowRouteTool } from './tools/RequestWorkflowRouteTool/RequestWorkflowRouteTool.js'
 import { WorkflowTemplateAuthoringTool } from './tools/WorkflowTemplateAuthoringTool/WorkflowTemplateAuthoringTool.js'
+import { ExpertResearchScopeTool } from './tools/ExpertResearchScopeTool/ExpertResearchScopeTool.js'
 import { ExpertPackAuthoringTool } from './tools/ExpertPackAuthoringTool/ExpertPackAuthoringTool.js'
 import { getJiangxiaEnvValue } from './utils/appIdentity.js'
 import { BashTool } from './tools/BashTool/BashTool.js'
@@ -23,12 +24,12 @@ import { BriefTool } from './tools/BriefTool/BriefTool.js'
 /* eslint-disable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 const REPLTool =
   process.env.USER_TYPE === 'ant'
-    ? require('./tools/REPLTool/REPLTool.js').REPLTool
+    ? require('./tools/REPLTool/REPLTool.js').getREPLTool()
     : null
 const SuggestBackgroundPRTool =
   process.env.USER_TYPE === 'ant'
     ? require('./tools/SuggestBackgroundPRTool/SuggestBackgroundPRTool.js')
-        .SuggestBackgroundPRTool
+        .getSuggestBackgroundPRTool()
     : null
 const SleepTool =
   feature('PROACTIVE') || feature('KAIROS')
@@ -100,7 +101,7 @@ import { isTodoV2Enabled } from './utils/tasks.js'
 const VerifyPlanExecutionTool =
   process.env.CLAUDE_CODE_VERIFY_PLAN === 'true'
     ? require('./tools/VerifyPlanExecutionTool/VerifyPlanExecutionTool.js')
-        .VerifyPlanExecutionTool
+        .getVerifyPlanExecutionTool()
     : null
 /* eslint-enable custom-rules/no-process-env-top-level, @typescript-eslint/no-require-imports */
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from './tools/SyntheticOutputTool/SyntheticOutputTool.js'
@@ -239,6 +240,7 @@ export function getAllBaseTools(): Tools {
     SkillTool,
     WorkflowTemplateAuthoringTool,
     ExpertPackAuthoringTool,
+    ExpertResearchScopeTool,
     EnterPlanModeTool,
     ...(process.env.USER_TYPE === 'ant' ? [ConfigTool] : []),
     ...(process.env.USER_TYPE === 'ant' ? [TungstenTool] : []),

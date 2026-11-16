@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute, join, sep } from 'path'
+import { stat } from 'node:fs/promises'
 import type { ToolPermissionContext } from '../Tool.js'
 import { isEnvTruthy } from './envUtils.js'
 import {
@@ -7,7 +8,7 @@ import {
 } from './permissions/filesystem.js'
 import { getPlatform } from './platform.js'
 import { getGlobExclusionsForPluginCache } from './plugins/orphanedPluginFilter.js'
-import { ripGrep } from './ripgrep.js'
+import { ripGrep, ripgrepCommand } from './ripgrep.js'
 
 /**
  * Extracts the static base directory from a glob pattern.
@@ -63,6 +64,23 @@ export function extractGlobBaseDirectory(pattern: string): {
   return { baseDir, relativePattern }
 }
 
+/** Filename-only fallback for packaged environments without rg. Read permission
+ * exclusions still apply, and directory symlinks are never traversed. */
+async function scanWithoutRipgrep(pattern: string, directory: string, exclusions: string[], hidden: boolean, signal: AbortSignal): Promise<string[]> {
+  const ignored = exclusions.map(value => value.replace(/^!/, '').replaceAll('\\', '/').replace(/^\//, ''))
+    .map(value => ({ deep: value.includes('/'), matcher: new Bun.Glob(value) }))
+  const paths: Array<{ file: string; modified: number }> = []
+  signal.throwIfAborted()
+  for await (const file of new Bun.Glob(pattern).scan({ cwd: directory, dot: hidden, onlyFiles: true, followSymlinks: false })) {
+    signal.throwIfAborted()
+    const relative = file.replaceAll('\\', '/')
+    if (ignored.some(({ deep, matcher }) => deep ? matcher.match(relative) : relative.split('/').some(part => matcher.match(part)))) continue
+    paths.push({ file: join(directory, file), modified: (await stat(join(directory, file))).mtimeMs })
+  }
+  signal.throwIfAborted()
+  return paths.sort((a, b) => a.modified - b.modified || a.file.localeCompare(b.file)).map(row => row.file)
+}
+
 export async function glob(
   filePattern: string,
   cwd: string,
@@ -112,11 +130,17 @@ export async function glob(
   }
 
   // Exclude orphaned plugin version directories
-  for (const exclusion of await getGlobExclusionsForPluginCache(searchDir)) {
+  const pluginExclusions = await getGlobExclusionsForPluginCache(searchDir)
+  for (const exclusion of pluginExclusions) {
     args.push('--glob', exclusion)
   }
 
-  const allPaths = await ripGrep(args, searchDir, abortSignal)
+  let allPaths: string[]
+  if (!ripgrepCommand().rgPath) {
+    // Do not silently change the explicitly requested .gitignore semantics.
+    if (!noIgnore) throw new Error('当前文件查找程序不可用，内置后备查找不支持 .gitignore 模式；请修复 rg 运行时。')
+    allPaths = await scanWithoutRipgrep(searchPattern, searchDir, [...ignorePatterns, ...pluginExclusions], hidden, abortSignal)
+  } else allPaths = await ripGrep(args, searchDir, abortSignal)
 
   // ripgrep returns relative paths, convert to absolute
   const absolutePaths = allPaths.map(p =>

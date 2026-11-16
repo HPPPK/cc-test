@@ -9,7 +9,7 @@ const COOLDOWN_STARTED_KEY = 'fast-mode-cooldown-started';
 const COOLDOWN_EXPIRED_KEY = 'fast-mode-cooldown-expired';
 const ORG_CHANGED_KEY = 'fast-mode-org-changed';
 const OVERAGE_REJECTED_KEY = 'fast-mode-overage-rejected';
-export function useFastModeNotification() {
+export function useFastModeNotification(): void {
   const $ = _c(13);
   const {
     addNotification

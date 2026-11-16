@@ -13,23 +13,11 @@ import type {
   WorkflowSessionMetadata,
   WorkflowSessionState,
   WorkflowSessionSummary,
+  WorkflowRecommendedSkillStatusSummary,
   WorkflowCompletionSummary,
   CompletionSubmission,
 } from './workflowTypes.js'
 
-type WorkflowRecommendedSkillStatusSummary = {
-  total: number
-  available: number
-  unavailable: number
-  degraded: number
-  evidenceCount: number
-  activePhaseItems?: Array<{
-    name: string
-    status: WorkflowPhaseSkillResolutionStatus
-    source?: WorkflowPhaseSkillSource
-    pluginName?: string
-  }>
-}
 
 function completionSummaryFromState(state: WorkflowSessionState): WorkflowCompletionSummary | null {
   const contract = state.runtimeContract

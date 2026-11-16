@@ -223,9 +223,15 @@ function formatBackgroundTaskDuration(durationMs?: number) {
   return `${minutes}m ${seconds % 60}s`
 }
 
-function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) {
+function BackgroundTaskEventCard({ message, sessionId }: { message: BackgroundTaskEvent; sessionId?: string | null }) {
   const t = useTranslation()
   const { task } = message
+  const agentCall = useChatStore(state => sessionId ? state.sessions[sessionId]?.messages.find(item =>
+    item.type === 'tool_use' && item.toolUseId === task.toolUseId) : undefined)
+  const role = agentCall?.type === 'tool_use' && agentCall.input && typeof agentCall.input === 'object'
+    ? (agentCall.input as Record<string, unknown>).workflow_role : undefined
+  const readOnlyRole = ['reviewer', 'qa', 'debug'].includes(String(role)) || /::reviewer$/.test(task.workflowTaskId ?? '')
+  const executionMode = readOnlyRole ? 'read' : task.executionMode
   const isQueued = task.status === 'queued'
   const isRunning = task.status === 'running'
   const isBlocked = task.status === 'blocked'
@@ -287,9 +293,9 @@ function BackgroundTaskEventCard({ message }: { message: BackgroundTaskEvent }) 
                   <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5">
                     {t('chat.backgroundAgents.workflowTask', { id: task.workflowTaskId })}
                   </span>
-                  {task.executionMode ? (
+                  {executionMode ? (
                     <span className="rounded border border-[var(--color-border)] px-1.5 py-0.5">
-                      {task.executionMode === 'write' ? t('chat.backgroundAgents.writeTask') : t('chat.backgroundAgents.readTask')}
+                      {executionMode === 'write' ? t('chat.backgroundAgents.writeTask') : t('chat.backgroundAgents.readTask')}
                     </span>
                   ) : null}
                   {task.worktreeIsolation ? (
@@ -1278,10 +1284,12 @@ export function MessageList({ sessionId, compact = false, workflowTransitionCard
               <div key={itemKey}>
                 {item.kind === 'tool_group' ? (
                   <ToolCallGroup
+                    sessionId={resolvedSessionId}
                     toolCalls={item.toolCalls}
                     resultMap={toolResultMap}
                     childToolCallsByParent={childToolCallsByParent}
                     agentTaskNotifications={agentTaskNotifications}
+                    backgroundAgentTasks={sessionState?.backgroundAgentTasks}
                     isStreaming={
                       chatState === 'tool_executing' &&
                       item.toolCalls.some((tc) => !toolResultMap.has(tc.toolUseId))
@@ -1510,7 +1518,7 @@ export const MessageBlock = memo(function MessageBlock({
     case 'goal_event':
       return <GoalEventCard message={message} />
     case 'background_task':
-      return <BackgroundTaskEventCard message={message} />
+      return <BackgroundTaskEventCard message={message} sessionId={sessionId} />
     case 'system':
       return (
         <div className="mb-3 text-center text-xs text-[var(--color-text-tertiary)]">

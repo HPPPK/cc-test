@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { spyOn, afterEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,7 +8,9 @@ import { ExpertSessionService, formatCommercializationReportDate, stampCommercia
 import { commercializationReportSourceBoundary } from './expertCommercializationReportScopeService.js'
 import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from './expertPackRegistryService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
+import { expertHumanVerificationService } from './expertHumanVerificationService.js'
 import { expertResearchAutoContinueService } from './expertResearchAutoContinueService.js'
+import { commercializationResearchBudgetService } from './commercializationResearchBudgetService.js'
 
 const adapter = new ZipPackAdapter()
 const previousConfigDir = process.env.CLAUDE_CONFIG_DIR
@@ -230,7 +233,7 @@ describe('commercialization report date stamping', () => {
 
     expect(rendered.content).toContain('已核验事实')
     expect(rendered.content).toContain(commercializationReportSourceBoundary)
-    expect(rendered.content.match(/本轮实际采用的网页证据/g)).toHaveLength(1)
+    expect(rendered.content.split(commercializationReportSourceBoundary)).toHaveLength(2)
   })
 })
 
@@ -293,7 +296,7 @@ describe('ExpertSessionService', () => {
     }
     await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
 
-    await service.getSubagentSkillContext(sessionId, 'general-purpose')
+    await expect(service.getSubagentSkillContext(sessionId, 'general-purpose')).rejects.toThrow('EXPERT_INTAKE_REQUIRED')
     const upgraded = (await sessionService.getSession(sessionId))?.expert?.runtimeBinding
     expect(upgraded?.researchArtifactPolicy?.routeCompletion).toBeUndefined()
   })
@@ -378,6 +381,38 @@ describe('ExpertSessionService', () => {
     expect(exited.status).toBe('exited')
     expect(exited.runtimeBinding).toBeUndefined()
     expect(exited.materialRefs[0]?.runId).toBe(written.materialRef.runId)
+  })
+
+  it('persists a brand-neutral CDP connection and still accepts legacy browser metadata', async () => {
+    const configRoot = await makeTempRoot('expert-browser-config-')
+    const projectRoot = await makeTempRoot('expert-browser-project-')
+    await installBrowserAuthorizedExpert(configRoot)
+    const service = new ExpertSessionService()
+
+    const currentSession = await sessionService.createSession(projectRoot)
+    const current = await service.enterExpertMode(currentSession.sessionId, 'browser-expert', {
+      kind: 'cdp',
+      endpoint: 'http://127.0.0.1:9222',
+      userAuthorized: true,
+    })
+    expect(current.researchBrowserConnection).toEqual({
+      kind: 'cdp',
+      endpoint: 'http://127.0.0.1:9222',
+      userAuthorizedAt: expect.any(String),
+    })
+
+    const legacySession = await sessionService.createSession(projectRoot)
+    const legacy = await service.enterExpertMode(legacySession.sessionId, 'browser-expert', {
+      kind: 'cdp',
+      browser: 'edge',
+      endpoint: 'http://127.0.0.1:9333',
+      userAuthorized: true,
+    })
+    expect(legacy.researchBrowserConnection).toMatchObject({
+      kind: 'cdp',
+      browser: 'edge',
+      endpoint: 'http://127.0.0.1:9333',
+    })
   })
 
 
@@ -547,6 +582,40 @@ describe('ExpertSessionService', () => {
     })).resolves.toMatchObject({ templateId: 'session-v1' })
   })
 
+  it('allows canonical evidence-gap rendering despite legacy numeric source and search floors', async () => {
+    const configRoot = await makeTempRoot('expert-source-coverage-config-')
+    const projectRoot = await makeTempRoot('expert-source-coverage-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const stored = await sessionService.getSession(sessionId)
+    const expert = stored?.expert
+    if (!expert?.runtimeBinding) throw new Error('expected active Expert binding')
+    expert.runtimeBinding.expertId = 'commercialization-research-report'
+    expert.runtimeBinding.outputTemplate!.content = expert.runtimeBinding.outputTemplate!.content.replace('</h1>', '</h1><p>{{REPORT_DATE}}</p>')
+    expert.runtimeBinding.researchCompletionPolicy = {
+      finalOutputBehavior: 'block',
+      trackedAgentTypes: ['expert-evidence-researcher'],
+      minimumCompletedAgents: 1,
+      requiredSearchEngines: ['Bing'],
+      requireSearchCoverageBeforeFinalOutput: true,
+      minimumDistinctSearchQueries: 1,
+      minimumOpenedSpecificPublicPages: 1,
+      requireConcreteSourcePerAgent: true,
+      finalSourceCoverage: { fieldId: 'SOURCE_ROWS', minimumRows: 3 },
+    } as never
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+
+    await service.recordResearchAudit(sessionId, { agentId: 'one-real-source', agentType: 'expert-evidence-researcher', entries: [{ kind: 'url', target: 'https://example.com/observed', status: 'opened' }] })
+    const result = await service.renderTemplateFill(sessionId, {
+      format: 'cc-jiangxia-expert-template-fill/v1', templateId: 'session-v1',
+      fields: { REPORT_TITLE: 'Sparse report', SOURCE_ROWS: [['[1]', 'https://example.com/observed']] },
+    })
+    expect(result).toMatchObject({ templateId: 'session-v1' })
+
+  })
+
   it('requires ZIP-declared source-table coverage before rendering an evidence-limited report', async () => {
     const configRoot = await makeTempRoot('expert-source-coverage-config-')
     const projectRoot = await makeTempRoot('expert-source-coverage-project-')
@@ -710,6 +779,71 @@ describe('ExpertSessionService', () => {
     await expect(readFile(path.join(projectRoot, 'commercialization-research', '06-browser-audit.md'), 'utf8')).resolves.toContain('https://example.com/0')
   })
 
+
+  it('keeps canonical required route gaps diagnostic in the review audit', async () => {
+    const configRoot = await makeTempRoot('expert-required-route-config-')
+    const projectRoot = await makeTempRoot('expert-required-route-project-')
+    await installDeliveryConfirmedExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'delivery-expert')
+    const stored = await sessionService.getSession(sessionId)
+    const expert = stored?.expert
+    if (!expert?.runtimeBinding) throw new Error('expected active Expert binding')
+    expert.runtimeBinding.expertId = 'commercialization-research-report'
+    expert.runtimeBinding.researchArtifactPolicy = {
+      mode: 'markdown-path-only',
+      directory: 'commercialization-research',
+      briefPath: 'commercialization-research/01-research-brief.md',
+      researcherPaths: [
+        'commercialization-research/02-competitors.md',
+        'commercialization-research/03-user-needs.md',
+        'commercialization-research/04-channels.md',
+      ],
+      reviewerPath: 'commercialization-research/05-evidence-review.md',
+      auditPath: 'commercialization-research/06-browser-audit.md',
+      maxCharacters: 90_000,
+      routeCompletion: { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true },
+    }
+    const artifactPolicy = expert.runtimeBinding.researchArtifactPolicy
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+
+    await mkdir(path.join(projectRoot, 'commercialization-research'), { recursive: true })
+    await writeFile(path.join(projectRoot, artifactPolicy.briefPath), [
+      '# Brief',
+      '### Route: overseas-video-demand',
+      '- Owner report: commercialization-research/03-user-needs.md',
+      '- Required route: yes',
+      '- Evidence field: user-demand',
+      '- Goal: obtain overseas video user evidence',
+      '- First route: open a concrete YouTube page',
+      '- Fallback route: open a concrete Product Hunt page for the same field',
+      '- Completion bar: a concrete page or two limited attempts',
+      '- Primary target host: youtube.com',
+      '- Fallback target host: producthunt.com',
+    ].join('\n'), 'utf8')
+    for (const artifactPath of artifactPolicy.researcherPaths) {
+      await writeFile(path.join(projectRoot, artifactPath), '# initial research', 'utf8')
+    }
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'research-competitors', agentType: 'expert-evidence-researcher', content: artifactPolicy.researcherPaths[0],
+      entries: [{ kind: 'url', target: 'https://example.com/competitor', status: 'opened', actionTypes: ['navigate', 'wait', 'extract'] }],
+    })
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'research-users-original', agentType: 'expert-evidence-researcher', content: artifactPolicy.researcherPaths[1],
+      entries: [{ kind: 'url', target: 'https://www.v2ex.com/t/1', status: 'opened', actionTypes: ['navigate', 'wait', 'extract'] }],
+    })
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'research-channels', agentType: 'expert-evidence-researcher', content: artifactPolicy.researcherPaths[2],
+      entries: [{ auditId: 'saved-channel', kind: 'url', target: 'https://example.com/channel', status: 'opened', actionTypes: ['navigate', 'wait', 'extract'] }],
+    })
+
+    await expect(service.getSubagentResearchEvidenceContext(sessionId, 'expert-evidence-reviewer')).resolves.toMatchObject({ reviewerEvidenceOnly: true })
+    expect(await readFile(path.join(projectRoot, artifactPolicy.auditPath), 'utf8')).toContain('overseas-video-demand')
+    expect(await readFile(path.join(projectRoot, artifactPolicy.auditPath), 'utf8')).toContain('audit:')
+    expect(await readFile(path.join(projectRoot, artifactPolicy.auditPath), 'utf8')).toContain('编号')
+
+  })
 
   it('holds the reviewer only for a brief-selected unattempted route, then accepts the narrow recovery on the same Markdown', async () => {
     const configRoot = await makeTempRoot('expert-required-route-config-')
@@ -1016,7 +1150,7 @@ describe('ExpertSessionService', () => {
       sourceFieldId: 'SOURCE_ROWS', requireAllOpenedSourcesDisposition: true, requireSourceFieldMapping: true,
       requireUsedSourceFieldEvidence: true,
     }
-    expert.runtimeBinding.outputTemplate.content = expert.runtimeBinding.outputTemplate.content.replace(
+    requireFixtureValue(expert.runtimeBinding.outputTemplate).content = requireFixtureValue(expert.runtimeBinding.outputTemplate).content.replace(
       '</body>',
       '<section>{{COMPETITOR_DETAIL}}</section></body>',
     )
@@ -1078,7 +1212,7 @@ describe('ExpertSessionService', () => {
       sourceFieldId: 'SOURCE_ROWS', requireAllOpenedSourcesDisposition: true, requireSourceFieldMapping: true,
       requireFieldCoverage: true, fieldCoverageFieldIds: ['COMPETITOR_DETAIL'], allowReasonedInference: true,
     }
-    expert.runtimeBinding.outputTemplate.content = expert.runtimeBinding.outputTemplate.content.replace(
+    requireFixtureValue(expert.runtimeBinding.outputTemplate).content = requireFixtureValue(expert.runtimeBinding.outputTemplate).content.replace(
       '</body>',
       '<section>{{COMPETITOR_DETAIL}}</section></body>',
     )
@@ -1163,6 +1297,38 @@ describe('ExpertSessionService', () => {
   })
 
 
+  it('rejects output review before any committed HTML draft with an actionable recovery', async () => {
+    const configRoot = await makeTempRoot('expert-review-entry-config-')
+    const projectRoot = await makeTempRoot('expert-review-entry-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const expert = (await sessionService.getSession(sessionId))!.expert!
+    expert.runtimeBinding!.researchArtifactPolicy = {
+      mode: 'markdown-path-only', directory: 'research', briefPath: 'research/01.md',
+      researcherPaths: ['research/02.md'], reviewerPath: 'research/05.md', auditPath: 'research/06.md',
+      absorptionPath: 'research/07.md', completionReviewPath: 'research/08.md', maxCharacters: 90_000,
+    }
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')).rejects.toMatchObject({
+      code: 'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED', message: expect.stringContaining('claude expert-template-fill'),
+    })
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDraft).toBeUndefined()
+    await mkdir(path.join(projectRoot, 'research'), { recursive: true })
+    await writeFile(path.join(projectRoot, 'research/01.md'), '# Brief')
+    await writeFile(path.join(projectRoot, 'research/07.md'), '# Supported fields')
+    const outputPath = path.join(projectRoot, 'report.html')
+    const rendered = await service.renderTemplateFill(sessionId, { templateId: 'session-v1', fields: { REPORT_TITLE: 'Draft', SOURCE_ROWS: [['[1]', 'https://example.com']] } }, { outputPath })
+    // Rendering and obtaining a receipt must not launch the reviewer yet.
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED' })
+    await writeFile(outputPath, rendered.content)
+    await service.commitTemplateFillWrite(sessionId, { receipt: rendered.writeReceipt! })
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')).resolves.toMatchObject({ outputReview: { reportPath: outputPath } })
+    await writeFile(outputPath, rendered.content + '<!-- external change -->')
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+  })
+
   it('keeps the initial report draft pending until completeness review chooses finalization or one patch', async () => {
     const configRoot = await makeTempRoot('expert-output-review-config-')
     const projectRoot = await makeTempRoot('expert-output-review-project-')
@@ -1214,6 +1380,7 @@ describe('ExpertSessionService', () => {
     expect(recoveredInitial.content).toBe(initialRender.content)
     expect(recoveredInitial.completionReviewRequired).toBe(true)
     await service.commitTemplateFillWrite(sessionId, { receipt: recoveredInitial.writeReceipt })
+    expect(await service.getTemplateFillFields(sessionId)).toMatchObject(firstDraft)
     const afterInitial = await sessionService.getSession(sessionId)
     expect((afterInitial?.expert as { templateFillDraft?: unknown } | undefined)?.templateFillDraft).toMatchObject({
       templateId: 'session-v1',
@@ -1262,6 +1429,10 @@ describe('ExpertSessionService', () => {
       reportPath,
       finalizedAt: expect.any(String),
     })
+    expect(await new ExpertSessionService().getTemplateFillFields(sessionId)).toMatchObject(firstDraft)
+    await writeFile(reportPath, '<html>tampered</html>', 'utf8')
+    await expect(service.getTemplateFillFields(sessionId)).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FIELDS_CHANGED' })
+    await writeFile(reportPath, finalizedRender.content, 'utf8')
     const existingFinal = await readFile(reportPath, 'utf8')
     await expect(service.renderTemplateFill(sessionId, {
       templateId: 'session-v1',
@@ -1272,7 +1443,23 @@ describe('ExpertSessionService', () => {
       templateId: 'session-v1',
       mode: 'patch',
       fields: { REPORT_TITLE: 'must not reopen delivery' },
-    }, { outputPath: reportPath })).resolves.toEqual({ content: existingFinal, templateId: 'session-v1', completionReviewRequired: false })
+    }, { outputPath: reportPath })).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FINALIZED_FIELDS_REQUIRE_NEW_DRAFT' })
+    await expect(service.renderTemplateFill(sessionId, {
+      templateId: 'session-v1',
+      mode: 'finalize',
+      fields: { REPORT_TITLE: 'must not silently discard changed fields' },
+    }, { outputPath: reportPath })).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_FILL_FINALIZED_FIELDS_REQUIRE_NEW_DRAFT' })
+    expect(await readFile(reportPath, 'utf8')).toBe(existingFinal)
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDraft).toBeUndefined()
+    const revision = await renderAndCommit(service, sessionId, {
+      ...firstDraft,
+      fields: { ...firstDraft.fields, REPORT_TITLE: 'Explicit full-field revision' },
+    }, { outputPath: reportPath })
+    expect((await service.getTemplateFillFields(sessionId)).fields.REPORT_TITLE).toBe('Explicit full-field revision')
+    expect(revision.completionReviewRequired).toBe(true)
+    expect(revision.content).toContain('Explicit full-field revision')
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDelivery).toBeUndefined()
+    expect((await sessionService.getSession(sessionId))?.expert?.templateFillDraft?.completionReview).toBeDefined()
   })
 
   it('a repaired initial candidate still creates an 08-pending draft, never a finalized delivery', async () => {
@@ -1405,6 +1592,20 @@ describe('ExpertSessionService', () => {
       },
     })).resolves.toMatchObject({ templateId: 'session-v1' })
 
+    // Bind real saved fixture artifacts before requesting the post-render worker context.
+    await writeFile(path.join(researchDir, '02-competitors.md'), 'Google SERP observed.', 'utf8')
+    await writeFile(path.join(researchDir, '05-evidence-review.md'), 'Reviewed Google evidence.', 'utf8')
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'researcher', agentType: 'expert-evidence-researcher',
+      artifactPath: 'commercialization-research/02-competitors.md', content: 'Google SERP observed.',
+      entries: [{ auditId: 'google-middle-button', target: stableUrl, finalUrl: auditedUrl, kind: 'search', searchEngine: 'Google', searchResultStatus: 'results_observed', status: 'opened' }],
+    })
+    await service.recordResearchAudit(sessionId, {
+      agentId: 'reviewer', agentType: 'expert-evidence-reviewer',
+      artifactPath: 'commercialization-research/05-evidence-review.md', content: 'Reviewed Google evidence.', entries: [],
+    })
+    const reviewerContext = await service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')
+    expect(reviewerContext.outputReview?.templateFields).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'REPORT_TITLE' }), expect.objectContaining({ id: 'SOURCE_ROWS' })]))
     const rendered = await sessionService.getSession(sessionId)
     expect((rendered?.expert as { templateFillDraft?: { fields?: { SOURCE_ROWS?: unknown } } } | undefined)?.templateFillDraft?.fields?.SOURCE_ROWS)
       .toEqual([{ value: ['[1]', auditedUrl], auditId: 'google-middle-button' }])
@@ -1720,6 +1921,25 @@ describe('ExpertSessionService', () => {
     expect(afterRejectedAudit?.expert?.researchEvidence).toBeUndefined()
   })
 
+  it('returns saved decision gaps with real remaining budget to the parent researcher handoff', async () => {
+    const configRoot = await makeTempRoot('expert-followup-context-config-')
+    const projectRoot = await makeTempRoot('expert-followup-context-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const expert = (await sessionService.getSession(sessionId))!.expert!
+    expert.runtimeBinding!.outputProtocol = { path: 'protocol.json', content: JSON.stringify({ researchQualityCheckpoint: { version: 1, minimumDistinctSuppliers: 2, minimumUserSignals: 2, minimumChannelMechanisms: 2 } }) }
+    expert.researchEvidence = { records: [{ agentId: 'original-a', agentType: 'expert-evidence-researcher', recordedAt: new Date().toISOString(), artifactPath: 'commercialization-research/02-competitors.parts/a.md', content: '# Evidence\n## 关键缺口与下一路线\n已有相关官方链接未跟进，缺收费边界。', entries: [] }], updatedAt: new Date().toISOString() }
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+    const budget = spyOn(commercializationResearchBudgetService, 'inspect').mockReturnValue({ remainingStarts: 3, timeRemainingMs: 60_000, remainingByLane: { 'commercialization-research/02-competitors.md': 1 }, pendingByLane: {} })
+    try {
+      expect((await service.getPostReviewEvidenceAbsorptionContext(sessionId, 'expert-evidence-researcher'))?.instruction).toContain('已有相关官方链接未跟进')
+      budget.mockReturnValue({ remainingStarts: 0, timeRemainingMs: 0, remainingByLane: {}, pendingByLane: {} })
+      expect(await service.getPostReviewEvidenceAbsorptionContext(sessionId, 'expert-evidence-researcher')).toBeUndefined()
+    } finally { budget.mockRestore() }
+  })
+
   it('returns a compact post-review instruction only to the ZIP-designated reviewer', async () => {
     const configRoot = await makeTempRoot('expert-absorption-context-config-')
     const projectRoot = await makeTempRoot('expert-absorption-context-project-')
@@ -1972,6 +2192,7 @@ describe('ExpertSessionService', () => {
       completionReviewPath: artifactPolicy.completionReviewPath,
     })
 
+    await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields: { REPORT_TITLE: 'Saved draft', SOURCE_ROWS: [['[1]', 'https://example.com/0']] } })
     const outputReviewerContext = await service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')
     expect(outputReviewerContext.artifactPaths).toEqual({
       briefPath: artifactPolicy.briefPath,
@@ -2034,6 +2255,7 @@ describe('ExpertSessionService', () => {
       content: 'commercialization-research/02-competitors.md',
       entries: [{
         auditId: 'talkingdata-opened',
+        detail: 'extracted text from body: ' + 'Navigation and feature overview. '.repeat(30) + '\nFree commercial use is allowed. Renewal discount continues.\n[partial excerpt; absence here does not prove absence from the page]',
         target: 'https://www.talkingdata.com/',
         finalUrl: 'https://www.talkingdata.com/reports/mobile-market',
         kind: 'url',
@@ -2053,6 +2275,9 @@ describe('ExpertSessionService', () => {
     expect(audit).toContain('同域具体页已打开：https://www.talkingdata.com/reports/mobile-market')
     expect(audit).toContain('talkingdata.com')
     expect(audit).toContain('talkingdata-opened')
+    expect(audit).toContain('Free commercial use is allowed. Renewal discount continues.')
+    expect(audit).toContain('partial excerpt; absence here does not prove absence from the page')
+    expect(audit).toContain('原文摘录')
 
     // The receipt belongs only to Experts that actually ship the optional
     // user-curated source-library skill. It must not leak into unrelated
@@ -2069,6 +2294,111 @@ describe('ExpertSessionService', () => {
 
 
 
+
+  it('allows canonical D E F with unvisited candidates while retaining audited ABC handoffs', async () => {
+    const configRoot = await makeTempRoot('expert-source-terminal-gate-config-')
+    const projectRoot = await makeTempRoot('expert-source-terminal-gate-project-')
+    await installExpert(configRoot)
+    const service = new ExpertSessionService()
+    const { sessionId } = await sessionService.createSession(projectRoot)
+    await service.enterExpertMode(sessionId, 'session-expert')
+    const stored = await sessionService.getSession(sessionId)
+    const expert = stored?.expert
+    if (!expert?.runtimeBinding) throw new Error('expected runtime binding')
+    expert.runtimeBinding.expertId = 'commercialization-research-report'
+    expert.runtimeBinding.subagentSkillIdsByAgentType = { 'expert-evidence-researcher': ['session-skill', 'research-source-library'] }
+    const artifactPolicy = {
+      mode: 'markdown-path-only' as const,
+      directory: 'commercialization-research',
+      briefPath: 'commercialization-research/01-research-brief.md',
+      researcherPaths: [
+        'commercialization-research/02-competitors.md',
+        'commercialization-research/03-user-needs.md',
+        'commercialization-research/04-channels.md',
+      ],
+      reviewerPath: 'commercialization-research/05-evidence-review.md',
+      auditPath: 'commercialization-research/06-browser-audit.md',
+      absorptionPath: 'commercialization-research/07-report-field-absorption.md',
+      completionReviewPath: 'commercialization-research/08-report-completeness-review.md',
+      maxCharacters: 90_000,
+    }
+    expert.runtimeBinding.researchArtifactPolicy = artifactPolicy
+    expert.runtimeBinding.researchEvidenceReviewPolicy = {
+      reviewerAgentType: 'expert-evidence-reviewer',
+      sourceAgentTypes: ['expert-evidence-researcher'],
+      maxRecords: 8,
+      maxCharactersPerRecord: 20_000,
+      reviewerEvidenceOnly: true,
+    }
+    expert.runtimeBinding.researchEvidenceAbsorptionPolicy = {
+      required: true, userInteraction: 'none', before: 'template-fill',
+      reviewerAgentType: 'expert-evidence-reviewer', absorberAgentType: 'expert-evidence-absorber',
+      sourceAgentTypes: ['expert-evidence-researcher'], sourceFieldId: 'SOURCE_ROWS',
+      requireAllOpenedSourcesDisposition: true, requireSourceFieldMapping: true,
+    }
+    expert.runtimeBinding.skills.push({
+      skillId: 'research-source-library', title: 'Source library', path: 'skills/research-source-library/SKILL.md', sha256: 'terminal-gate',
+      content: [
+        '### 移动应用、产品数据与 ASO / 增长',
+        '- A：https://source-a.example.com/',
+        '### 行业、用户、内容与品牌',
+        '- B：https://source-b.example.com/',
+        '### 投融资、公司与战略研究',
+        '- C：https://source-c.example.com/',
+      ].join('\n'),
+    })
+    expert.researchEvidence = {
+      updatedAt: '2026-08-27T08:00:00.000Z',
+      records: artifactPolicy.researcherPaths.map((artifactPath, index) => ({
+        agentId: 'researcher-' + index,
+        agentType: 'expert-evidence-researcher',
+        artifactPath,
+        recordedAt: '2026-08-27T08:00:00.000Z',
+        content: '# existing research',
+        entries: [{ target: 'https://unrelated-' + index + '.example.net/', status: 'opened' as const, kind: 'url' as const }],
+      })),
+    }
+    expert.researchSourceDispatches = {
+      receipts: [],
+      recoveredBatchFingerprints: ['already-dispatched-is-not-evidence'],
+    }
+    const researchDir = path.join(projectRoot, 'commercialization-research')
+    await mkdir(researchDir, { recursive: true })
+    for (const [name, content] of [
+      ['01-research-brief.md', '# Brief'],
+      ['02-competitors.md', '# A'],
+      ['03-user-needs.md', '# B'],
+      ['04-channels.md', '# C'],
+      ['05-evidence-review.md', '# Review'],
+      ['07-report-field-absorption.md', '# Absorption'],
+    ]) await writeFile(path.join(researchDir, name), content, 'utf8')
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+
+    const legacyBatch = await service.getSubagentSkillContext(sessionId, 'expert-evidence-researcher', 'source-batch')
+    expect(legacyBatch.researchSourcePlan).toBeUndefined()
+    expect(legacyBatch.researchTaskKind).toBe('targeted-evidence')
+    expect(legacyBatch.skills.find((skill) => skill.skillId === 'research-source-library')?.content).toContain('候选来源目录')
+    expect(legacyBatch.skills.find((skill) => skill.skillId === 'research-source-library')?.content).toContain('https://source-a.example.com/')
+
+    for (const agentType of ['expert-evidence-reviewer', 'expert-evidence-absorber']) {
+      await expect(service.getSubagentSkillContext(sessionId, agentType)).resolves.toMatchObject({ expertId: 'commercialization-research-report' })
+    }
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-output-reviewer')).rejects.toMatchObject({ code: 'EXPERT_TEMPLATE_OUTPUT_REVIEW_DRAFT_REQUIRED' })
+
+    expert.runtimeBinding.researchCompletionPolicy = { finalOutputBehavior: 'block', trackedAgentTypes: ['expert-evidence-researcher'], minimumCompletedAgents: 3, requiredSearchEngines: ['Bing'], minimumDistinctSearchQueries: 1, minimumOpenedSpecificPublicPages: 3, requireConcreteSourcePerAgent: true }
+    expert.researchEvidence!.records = expert.researchEvidence!.records.filter((record) => record.artifactPath !== artifactPolicy.researcherPaths[0])
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+    await expect(service.recordResearchAudit(sessionId, {
+      agentId: 'budget-ended-a', agentType: 'expert-evidence-researcher', artifactPath: artifactPolicy.researcherPaths[0], entries: [], completed: true,
+    })).resolves.toMatchObject({ researchEvidence: { records: expect.arrayContaining([expect.objectContaining({ agentId: 'budget-ended-a' })]) } })
+    const emptyRecord = (await sessionService.getSession(sessionId))!.expert!.researchEvidence!.records.find((record) => record.agentId === 'budget-ended-a')!
+    expect((await sessionService.getSession(sessionId))!.expert!.researchCompletion!.audits.find((audit) => audit.agentId === 'budget-ended-a')?.entries).toEqual([])
+    expect(emptyRecord.entries).toHaveLength(0) // A real file handoff does not fabricate a visit.
+    await expect(service.getSubagentSkillContext(sessionId, 'expert-evidence-reviewer')).resolves.toMatchObject({ expertId: 'commercialization-research-report' })
+    await expect(service.recordResearchAudit(sessionId, {
+      agentId: 'no-saved-file', agentType: 'expert-evidence-researcher', content: '# unsupported pathless claims', entries: [], completed: true,
+    })).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_AUDIT_INVALID' })
+  })
 
   it('blocks reviewer absorber and output reviewer until every assigned source URL has a real terminal browser outcome', async () => {
     const configRoot = await makeTempRoot('expert-source-terminal-gate-config-')
@@ -2362,7 +2692,7 @@ describe('ExpertSessionService', () => {
     expect((await service.getSubagentSkillContext(sessionId, 'expert-evidence-researcher')).researchSourcePlan!.batches.every((item) => item.entries.length === 0)).toBe(true)
   })
 
-async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
+async function makeReviewedDraft(reviewContent: string, withEvidence = false, commercial = false, skipAudit = false) {
   const configRoot = await makeTempRoot('expert-loop-regression-config-')
   const projectRoot = await makeTempRoot('expert-loop-regression-project-')
   await installExpert(configRoot)
@@ -2371,6 +2701,11 @@ async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
   await service.enterExpertMode(sessionId, 'session-expert')
   const expert = (await sessionService.getSession(sessionId))!.expert!
   const binding = expert.runtimeBinding!
+  if (commercial) {
+    binding.expertId = 'commercialization-research-report'
+    binding.outputTemplate!.content = binding.outputTemplate!.content.replace('</h1>', '</h1><p>{{REPORT_DATE}}</p>')
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+  }
   if (withEvidence) {
     binding.researchEvidenceReviewPolicy = {
       reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'],
@@ -2409,12 +2744,86 @@ async function makeReviewedDraft(reviewContent: string, withEvidence = false) {
   const fields = { REPORT_TITLE: 'Original detailed report', SOURCE_ROWS: [['[1]', 'https://example.com/']] }
   const rendered = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath })
   await writeFile(path.join(researchDir, '08-report-completeness-review.md'), reviewContent)
-  await service.recordResearchAudit(sessionId, {
+  if (!skipAudit) await service.recordResearchAudit(sessionId, {
     agentId: 'output-reviewer', agentType: 'expert-evidence-output-reviewer', entries: [],
     artifactPath: 'commercialization-research/08-report-completeness-review.md', content: '已写入复核。',
   })
   return { service, sessionId, projectRoot, reportPath, fields, rendered }
 }
+
+function structuredReview(findings: Array<{ fieldId: string; kind: string; reason: string }>, calculations: unknown[] = []) {
+  return '结论：可原样定稿。\n```expert-report-review\n' + JSON.stringify({ version: 1, findings, calculations }) + '\n```'
+}
+
+describe('commercial report structured corrections', () => {
+  it('requires every factual and source correction, rejects fake unchanged patches, and retains the complete merged payload', async () => {
+    const findings = [
+      { fieldId: 'REPORT_TITLE', kind: 'factual-error', reason: '原始来源属于另一产品，标题归因错误。' },
+      { fieldId: 'SOURCE_ROWS', kind: 'source-error', reason: '来源名称与原始页面不一致。' },
+      { fieldId: 'REPORT_DATE', kind: 'optional', reason: '可选日期排版建议。' },
+    ]
+    const f = await makeReviewedDraft(structuredReview(findings), false, true)
+    const before = (await sessionService.getSession(f.sessionId))!.expert!
+    const incomplete = { SOURCE_ROWS: [['Corrected source', 'https://example.com/']] }
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED' })
+    for (const fields of [incomplete, { ...incomplete, REPORT_TITLE: f.fields.REPORT_TITLE }]) {
+      await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'patch', fields }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING', statusCode: 409, message: expect.stringContaining('REPORT_TITLE') })
+    }
+    expect(await readFile(f.reportPath, 'utf8')).toBe(f.rendered.content)
+    expect((await sessionService.getSession(f.sessionId))!.expert!.templateFillDraft).toEqual(before.templateFillDraft)
+    expect((await sessionService.getSession(f.sessionId))!.expert!.reportCompletenessReview).toEqual(before.reportCompletenessReview)
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { ...incomplete, REPORT_TITLE: 'Corrected product attribution' } }, { outputPath: f.reportPath })
+    const recovered = await f.service.getTemplateFillFields(f.sessionId)
+    expect(recovered.fields).toMatchObject({ REPORT_TITLE: 'Corrected product attribution', SOURCE_ROWS: incomplete.SOURCE_ROWS, REPORT_DATE: expect.any(String) })
+  })
+
+  it('accumulates local correction attempts without changing the report until all required fields pass', async () => {
+    const f = await makeReviewedDraft(structuredReview([
+      { fieldId: 'REPORT_TITLE', kind: 'factual-error', reason: 'Correct attribution.' },
+      { fieldId: 'SOURCE_ROWS', kind: 'source-error', reason: 'Correct source label.' },
+    ]), false, true)
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: {
+      SOURCE_ROWS: [['Corrected source label', 'https://example.com/']],
+    } }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING' })
+    expect(await readFile(f.reportPath, 'utf8')).toBe(f.rendered.content)
+    expect((await f.service.getTemplateFillFields(f.sessionId)).fields.SOURCE_ROWS).toEqual([['Corrected source label', 'https://example.com/']])
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: {
+      REPORT_TITLE: 'Corrected attribution without resubmitting source rows',
+    } }, { outputPath: f.reportPath })
+    expect((await f.service.getTemplateFillFields(f.sessionId)).fields).toMatchObject({
+      REPORT_TITLE: 'Corrected attribution without resubmitting source rows', SOURCE_ROWS: [['Corrected source label', 'https://example.com/']],
+    })
+  })
+
+  it('forces a correction for unit-cost arithmetic even with no findings and includes the independently computed cost', async () => {
+    const calculation = { fieldId: 'REPORT_TITLE', amount: 120, amountPeriod: 'year', allowance: 10, allowancePeriod: 'month', unitsPerTask: 1, reportedCost: 12 }
+    const f = await makeReviewedDraft(structuredReview([], [calculation]), false, true)
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_COMPLETENESS_PATCH_REQUIRED', message: expect.stringContaining('expectedCost=1') })
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { SOURCE_ROWS: [['Changed label', 'https://example.com/']] } }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REQUIRED_CORRECTIONS_MISSING', message: expect.stringContaining('expectedCost=1') })
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'patch', fields: { REPORT_TITLE: 'Annual cost per task: 1' } }, { outputPath: f.reportPath })
+    expect((await f.service.getTemplateFillFields(f.sessionId)).fields.REPORT_TITLE).toBe('Annual cost per task: 1')
+  })
+
+  it('rejects invalid actual 08 before a receipt and permits the same reviewer to repair its contract', async () => {
+    const f = await makeReviewedDraft('# Legacy review without structured findings', false, true, true)
+    const audit = { agentId: 'output-reviewer', agentType: 'expert-evidence-output-reviewer', entries: [], artifactPath: 'commercialization-research/08-report-completeness-review.md', content: structuredReview([]) }
+    await expect(f.service.recordResearchAudit(f.sessionId, audit)).rejects.toMatchObject({ code: 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID', statusCode: 409 })
+    expect((await sessionService.getSession(f.sessionId))!.expert!.reportCompletenessReview).toBeUndefined()
+    await writeFile(path.join(f.projectRoot, audit.artifactPath), structuredReview([]))
+    await f.service.recordResearchAudit(f.sessionId, audit)
+    await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })
+  })
+
+  it('reparses current 08 at finalization and does not require optional corrections', async () => {
+    const f = await makeReviewedDraft(structuredReview([{ fieldId: 'REPORT_TITLE', kind: 'optional', reason: '可选标题润色。' }]), false, true)
+    const reviewPath = path.join(f.projectRoot, 'commercialization-research/08-report-completeness-review.md')
+    await writeFile(reviewPath, '# Removed contract')
+    await expect(f.service.renderTemplateFill(f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_REVIEW_CONTRACT_INVALID' })
+    await writeFile(reviewPath, structuredReview([{ fieldId: 'REPORT_TITLE', kind: 'optional', reason: '可选标题润色。' }]))
+    const final = await renderAndCommit(f.service, f.sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: f.reportPath })
+    expect(final.content).toBe(f.rendered.content)
+  })
+})
 
 describe('report delivery loop regressions', () => {
   it.each([
@@ -2472,6 +2881,7 @@ describe('report delivery loop regressions', () => {
     expect((await sessionService.getSession(sessionId))!.expert!.templateFillDraft).toEqual(before)
     await writeFile(reportPath, patch.content)
     await service.commitTemplateFillWrite(sessionId, { receipt: patch.writeReceipt })
+    expect((await service.getTemplateFillFields(sessionId)).fields).toBeDefined()
     expect((await sessionService.getSession(sessionId))!.expert!.templateFillDelivery?.reportPath).toBe(reportPath)
   })
 
@@ -2556,7 +2966,7 @@ it('ingests a legacy general-purpose research audit only for a declared Expert a
 })
 
 
-it.each(['url', 'audit'])('carries a legacy child audit and a 07 reference through rendering and confirmed file delivery (%s)', async (referenceKind) => {
+it.each([['url', false], ['audit', false], ['url', true], ['audit', true]] as const)('carries a legacy child audit and a 07 reference through rendering and confirmed file delivery (%s canonical=%s)', async (referenceKind, canonical) => {
   const configRoot = await makeTempRoot('expert-reference-delivery-config-')
   const projectRoot = await makeTempRoot('expert-reference-delivery-project-')
   await installExpert(configRoot)
@@ -2565,6 +2975,11 @@ it.each(['url', 'audit'])('carries a legacy child audit and a 07 reference throu
   await service.enterExpertMode(sessionId, 'session-expert')
   const expert = (await sessionService.getSession(sessionId))!.expert!
   const binding = expert.runtimeBinding!
+  if (canonical) {
+    binding.expertId = 'commercialization-research-report'
+    binding.outputTemplate!.content = binding.outputTemplate!.content.replace('</h1>', '</h1><p>{{REPORT_DATE}}</p>')
+    binding.skills.push({ skillId: 'research-source-library', title: 'Candidates', path: 'skills/candidates.md', sha256: 'test', content: '### 产品数据\n- https://unvisited.example.com/' })
+  }
   binding.researchArtifactPolicy = {
     mode: 'markdown-path-only', directory: 'commercialization-research',
     briefPath: 'commercialization-research/01-research-brief.md', researcherPaths: ['commercialization-research/03-user-needs.md'],
@@ -2573,9 +2988,10 @@ it.each(['url', 'audit'])('carries a legacy child audit and a 07 reference throu
   }
   binding.researchEvidenceReviewPolicy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 4, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true }
   binding.researchEvidenceAbsorptionPolicy = { required: true, userInteraction: 'none', before: 'template-fill', reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], sourceFieldId: 'SOURCE_ROWS', requireSourceFieldMapping: true }
+  if (canonical) binding.researchArtifactPolicy.routeCompletion = { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true }
   await mkdir(path.join(projectRoot, 'commercialization-research'), { recursive: true })
   for (const [name, content] of Object.entries({
-    '01-research-brief.md': '# Brief',
+    '01-research-brief.md': canonical ? '# 用户需求\nB站、YouTube 具体内容取证' : '# Brief',
     '03-user-needs.md': '# Observed user task\nConcrete discussion https://www.v2ex.com/t/1171074',
     '05-evidence-review.md': '# Review\nKeep the observed user-task boundary.',
     '07-report-field-absorption.md': '# Report material\nBounded observed user task [S1].\n\n[S1]: https://www.v2ex.com/t/1171074',
@@ -2586,6 +3002,7 @@ it.each(['url', 'audit'])('carries a legacy child audit and a 07 reference throu
   await service.recordResearchAudit(sessionId, { agentId: 'reviewer', agentType: 'expert-evidence-reviewer', artifactPath: 'commercialization-research/05-evidence-review.md', entries: [] })
   if (referenceKind === 'audit') await writeFile(path.join(projectRoot, binding.researchArtifactPolicy!.absorptionPath!), '# Report material\nBounded observed user task [S1].\n[S1]: audit:exact-user-task')
   const outputPath = path.join(projectRoot, 'report.html')
+  if (canonical) await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', fields: { REPORT_TITLE: 'Unsupported [S2]', SOURCE_ROWS: [['S2', 'https://unvisited.example.com/claim']] } }, { outputPath })).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_EVIDENCE_ABSORPTION_REQUIRED' })
   const rendered = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields: { REPORT_TITLE: 'Bounded observed user task [S1]', SOURCE_ROWS: [] } }, { outputPath })
   expect(rendered.content).toContain('href="https://www.v2ex.com/t/1171074"')
   expect(rendered.content).toContain('[S1]')
@@ -2637,4 +3054,141 @@ it('keeps an oversized legacy ledger and twelve independent parts bound through 
   expect(rendered.content).toContain('https://example.com/0')
   expect((await sessionService.getSession(sessionId))!.expert!.templateFillDelivery?.reportPath).toBeDefined()
   expect(await readFile(path.join(projectRoot, base), 'utf8')).toContain('真实完整证据')
+})
+
+
+it('renders and finalizes a canonical zero-browser evidence-gap report through actual ABC D 07 08 files and write receipts', async () => {
+  const configRoot = await makeTempRoot('expert-zero-browser-config-')
+  const projectRoot = await makeTempRoot('expert-zero-browser-project-')
+  await installExpert(configRoot)
+  const service = new ExpertSessionService()
+  const { sessionId } = await sessionService.createSession(projectRoot)
+  await service.enterExpertMode(sessionId, 'session-expert')
+  const expert = (await sessionService.getSession(sessionId))!.expert!
+  const binding = expert.runtimeBinding!
+  binding.expertId = 'commercialization-research-report'
+  binding.outputTemplate!.content = binding.outputTemplate!.content.replace('</h1>', '</h1><p>{{REPORT_DATE}}</p>')
+  binding.researchArtifactPolicy = {
+    mode: 'markdown-path-only', directory: 'commercialization-research', briefPath: 'commercialization-research/01-research-brief.md',
+    researcherPaths: ['02-competitors.md', '03-user-needs.md', '04-channels.md'].map((name) => 'commercialization-research/' + name),
+    reviewerPath: 'commercialization-research/05-evidence-review.md', auditPath: 'commercialization-research/06-browser-audit.md',
+    absorptionPath: 'commercialization-research/07-report-field-absorption.md', completionReviewPath: 'commercialization-research/08-report-completeness-review.md', maxCharacters: 90000,
+    routeCompletion: { mode: 'dynamic-route-status-v2', requireAttemptedRequiredRoutes: true },
+  }
+  binding.researchEvidenceReviewPolicy = { reviewerAgentType: 'expert-evidence-reviewer', sourceAgentTypes: ['expert-evidence-researcher'], maxRecords: 8, maxCharactersPerRecord: 2000, reviewerEvidenceOnly: true }
+  binding.researchEvidenceAbsorptionPolicy = { required: true, userInteraction: 'none', before: 'template-fill', reviewerAgentType: 'expert-evidence-reviewer', absorberAgentType: 'expert-evidence-absorber', sourceAgentTypes: ['expert-evidence-researcher'], sourceFieldId: 'SOURCE_ROWS', requireSourceFieldMapping: true }
+  binding.researchCompletionPolicy = { finalOutputBehavior: 'block', trackedAgentTypes: ['expert-evidence-researcher'], minimumCompletedAgents: 3, requiredSearchEngines: ['Google', '百度', 'Bing', '360'], requireSearchCoverageBeforeFinalOutput: true, minimumDistinctSearchQueries: 4, minimumOpenedSpecificPublicPages: 6, requireConcreteSourcePerAgent: true, finalSourceCoverage: { fieldId: 'SOURCE_ROWS', minimumRows: 6 } }
+  binding.skills.push({ skillId: 'research-source-library', title: 'Candidates', path: 'skills/candidates.md', sha256: 'test', content: '### 产品数据\n- https://unvisited.example.com/' })
+  await mkdir(path.join(projectRoot, 'commercialization-research'), { recursive: true })
+  const policy = binding.researchArtifactPolicy
+  await writeFile(path.join(projectRoot, policy.briefPath), '# 用户需求\nB站、YouTube 具体内容取证')
+  await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+  for (const [index, artifactPath] of policy.researcherPaths.entries()) {
+    await writeFile(path.join(projectRoot, artifactPath), '# 证据缺口\n本轮未取得浏览证据，不对市场、价格或渠道作事实判断。')
+    await service.recordResearchAudit(sessionId, { agentId: 'zero-browser-' + index, agentType: 'expert-evidence-researcher', artifactPath, entries: [], completed: true })
+  }
+  await service.getSubagentResearchEvidenceContext(sessionId, 'expert-evidence-reviewer')
+  await writeFile(path.join(projectRoot, policy.reviewerPath), '# 复核\n三线均未取得证据，候选入口未访问；所有外部结论保留证据缺口。')
+  await service.recordResearchAudit(sessionId, { agentId: 'gap-reviewer', agentType: 'expert-evidence-reviewer', artifactPath: policy.reviewerPath, entries: [] })
+  await writeFile(path.join(projectRoot, policy.absorptionPath!), '# 报告材料\n证据缺口：未取得可核验来源，不作外部事实判断。')
+  const outputPath = path.join(projectRoot, 'gap-report.html')
+  const fields = { REPORT_TITLE: '证据缺口：本轮未取得可核验公开来源，不作市场或价格事实判断。', SOURCE_ROWS: [] }
+  await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', fields: { ...fields, SOURCE_ROWS: [['S1', 'https://unvisited.example.com/fact']] } }, { outputPath })).rejects.toMatchObject({ code: 'EXPERT_RESEARCH_EVIDENCE_ABSORPTION_REQUIRED' })
+  const initial = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields }, { outputPath })
+  expect(initial.content).toContain('本轮未取得可核验公开来源')
+  expect(initial.content).not.toContain('href=')
+  expect(initial.completionReviewRequired).toBe(true)
+  await writeFile(path.join(projectRoot, policy.completionReviewPath!), '# 完整性复核\n证据缺口已明确；无 MUST_PATCH。无需补写。\n' + structuredReview([]))
+  await service.recordResearchAudit(sessionId, { agentId: 'gap-output-reviewer', agentType: 'expert-evidence-output-reviewer', artifactPath: policy.completionReviewPath, entries: [] })
+  const final = await renderAndCommit(service, sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath })
+  expect(final.content).toBe(initial.content)
+  expect(await readFile(outputPath, 'utf8')).toBe(final.content)
+  const saved = (await sessionService.getSession(sessionId))!.expert!
+  expect(saved.researchEvidence!.records.every((record) => record.entries.length === 0)).toBe(true)
+  expect(saved.templateFillDelivery?.reportPath).toBe(outputPath)
+})
+
+
+it('blocks final report rendering while user verification is pending and preserves the reviewed draft', async () => {
+  const { service, sessionId, reportPath, rendered } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const before = (await sessionService.getSession(sessionId))!.expert!
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://example.com/login', title: 'Sign in', detail: 'Login verification required' } })
+  try {
+    await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath }))
+      .rejects.toMatchObject({ statusCode: 409, code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+    expect((await sessionService.getSession(sessionId))!.expert).toEqual(before)
+    expect(await readFile(reportPath, 'utf8')).toBe(rendered.content)
+    const requestId = expertHumanVerificationService.getPendingRequest(sessionId)!.requestId
+    expertHumanVerificationService.resolveVerification(requestId, true, { verificationResolution: 'record_evidence_gap' })
+    await waiting
+    await expect(renderAndCommit(service, sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath })).resolves.toMatchObject({ completionReviewRequired: false })
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
+})
+
+it('rejects a prepared final report commit if a verification starts after rendering', async () => {
+  const { service, sessionId, reportPath } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const final = await service.renderTemplateFill(sessionId, { templateId: 'session-v1', mode: 'finalize', fields: {} }, { outputPath: reportPath })
+  await writeFile(reportPath, final.content, 'utf8')
+  const before = (await sessionService.getSession(sessionId))!.expert!
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://www.google.com/sorry/index', title: 'Verify', detail: 'CAPTCHA required' } })
+  try {
+    await expect(service.commitTemplateFillWrite(sessionId, { receipt: final.writeReceipt })).rejects.toMatchObject({ statusCode: 409, code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+    expect((await sessionService.getSession(sessionId))!.expert).toEqual(before)
+    expect(await readFile(reportPath, 'utf8')).toBe(final.content)
+    expertHumanVerificationService.resolveVerification(expertHumanVerificationService.getPendingRequest(sessionId)!.requestId, true, { verificationResolution: 'switch_public_entry' })
+    await waiting
+    await expect(service.commitTemplateFillWrite(sessionId, { receipt: final.writeReceipt })).resolves.toEqual({ committed: true })
+    expect((await sessionService.getSession(sessionId))!.expert!.templateFillDelivery?.reportPath).toBe(reportPath)
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
+})
+
+it('allows a review-required draft during verification but blocks an initial report that would finalize immediately', async () => {
+  const { service, sessionId, reportPath, projectRoot } = await makeReviewedDraft('未发现遗漏，可原样定稿。')
+  const expert = (await sessionService.getSession(sessionId))!.expert!
+  const fields = expert.templateFillDraft!.fields
+  expert.templateFillDraft = undefined
+  expert.reportCompletenessReview = undefined
+  expert.templateFillDelivery = undefined
+  await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert })
+  expertHumanVerificationService.setDelivery(() => true)
+  const waiting = expertHumanVerificationService.requestVerification({ sessionId, verification: { url: 'https://example.com/login', title: 'Sign in', detail: 'Login required' } })
+  try {
+    const draft = await renderAndCommit(service, sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath })
+    expect(draft.completionReviewRequired).toBe(true)
+    const saved = (await sessionService.getSession(sessionId))!.expert!
+    expect(saved.templateFillDraft).toBeDefined()
+    expect(saved.templateFillDelivery).toBeUndefined()
+    expect(expertHumanVerificationService.getPendingRequest(sessionId)).not.toBeNull()
+    // Experts without a review stage finalize on their first successful write.
+    saved.templateFillDraft = undefined
+    saved.runtimeBinding!.researchArtifactPolicy = undefined
+    await sessionService.appendSessionMetadata(sessionId, { workDir: projectRoot, expert: saved })
+    await expect(service.renderTemplateFill(sessionId, { templateId: 'session-v1', fields }, { outputPath: reportPath }))
+      .rejects.toMatchObject({ code: 'EXPERT_HUMAN_VERIFICATION_PENDING' })
+  } finally {
+    const cancelled = waiting.catch(() => undefined)
+    expertHumanVerificationService.cancelSession(sessionId)
+    await cancelled
+    expertHumanVerificationService.setDelivery(() => false)
+  }
+})
+
+it('checks final rendered citation labels after a reviewed patch without requiring full-text or more research', async () => {
+  const f = await makeReviewedDraft(structuredReview([{ fieldId: 'REPORT_TITLE', kind: 'source-error', reason: '补齐实际引用。' }]), false, true)
+  const patch = { templateId: 'session-v1', mode: 'patch' as const, fields: { REPORT_TITLE: '真实搜索摘要，原文未核验 [S14]' } }
+  await expect(f.service.renderTemplateFill(f.sessionId, patch, { outputPath: f.reportPath })).rejects.toMatchObject({ code: 'EXPERT_REPORT_CITATION_REQUIRED', message: expect.stringContaining('[S14]') })
+  expect(await readFile(f.reportPath, 'utf8')).toBe(f.rendered.content)
+  await expect(f.service.renderTemplateFill(f.sessionId, { ...patch, fields: { ...patch.fields, SOURCE_ROWS: [['[S14]', 'https://example.com/search?q=task']] } }, { outputPath: f.reportPath })).resolves.toMatchObject({ completionReviewRequired: false })
 })

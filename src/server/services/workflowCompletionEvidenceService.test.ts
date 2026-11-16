@@ -1,4 +1,4 @@
-﻿import { expect, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -11,6 +11,9 @@ function stateFor(workspaceRoot: string): WorkflowSessionState {
     schemaVersion: 1,
     sessionId: 'session-evidence-test',
     mode: 'workflow',
+    templateIdentity: { id: 'test-template', source: 'user', version: '1' },
+    sourceTemplateStatus: 'current', status: 'running', workflowStatus: 'running',
+    finalReportRef: null, transitionHistory: [],
     workspaceRoot,
     activePhaseId: 'planning',
     activeWorkflowRunId: 'run-001',
@@ -53,7 +56,7 @@ function stateFor(workspaceRoot: string): WorkflowSessionState {
         completionCriteria: [],
         transitionAuthority: 'user-confirmation',
         evidencePolicy: {
-          outputArtifact: { id: 'planning-output', name: 'Planning output', description: 'All declared planning files.', required: true },
+          outputArtifact: { kind: 'markdown', id: 'planning-output', name: 'Planning output', description: 'All declared planning files.', required: true },
           requiredArtifacts: [],
           completionCriteria: { type: 'manual-checklist', description: 'test' },
           handoffRules: [],

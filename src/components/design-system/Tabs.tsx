@@ -63,7 +63,7 @@ const TabsContext = createContext<TabsContextValue>({
   blurHeader: () => {},
   registerOptIn: () => () => {}
 });
-export function Tabs(t0) {
+export function Tabs(t0: TabsProps): React.ReactNode {
   const $ = _c(25);
   const {
     title,
@@ -258,7 +258,7 @@ type TabProps = {
   id?: string;
   children: React.ReactNode;
 };
-export function Tab(t0) {
+export function Tab(t0: TabProps): React.ReactNode {
   const $ = _c(4);
   const {
     title,
@@ -286,7 +286,7 @@ export function Tab(t0) {
   }
   return t2;
 }
-export function useTabsWidth() {
+export function useTabsWidth(): number | undefined {
   const {
     width
   } = useContext(TabsContext);
@@ -304,7 +304,11 @@ export function useTabsWidth() {
  * no onUpFromFirstItem to recover. Split the component so the hook only runs
  * when the Select renders.
  */
-export function useTabHeaderFocus() {
+export function useTabHeaderFocus(): {
+  headerFocused: boolean
+  focusHeader: () => void
+  blurHeader: () => void
+} {
   const $ = _c(6);
   const {
     headerFocused,

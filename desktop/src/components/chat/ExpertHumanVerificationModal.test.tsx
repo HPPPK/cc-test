@@ -82,6 +82,24 @@ function setPendingRequest(requestInput: unknown = input, toolName = 'Playwright
 }
 
 describe('ExpertHumanVerificationModal', () => {
+  it('describes a no-control snapshot honestly while retaining manual inspection, passive checks and explicit fallback', async () => {
+    setPendingRequest({ ...input, verification: { ...input.verification, detail: 'EXPERT_HUMAN_VERIFICATION_REQUIRED: Google security verification. VERIFICATION_CONTROLS_NOT_OBSERVED' } })
+    render(<ExpertHumanVerificationModal sessionId={SESSION_ID} request={useChatStore.getState().sessions[SESSION_ID]!.pendingPermission} />)
+    expect(screen.getByRole('dialog', { name: 'Google 访问需要处理' })).not.toBeNull()
+    expect(screen.getByText('当前快照未观察到可见的验证控件')).not.toBeNull()
+    expect(screen.getByText(/页面可能仍在加载，或当前访问受到限制/)).not.toBeNull()
+    expect(screen.queryByText('请完成：Google 安全验证')).toBeNull()
+    expect(screen.getByText(/软件每 3 秒检查一次/)).not.toBeNull()
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '打开验证浏览器' }))
+    await waitFor(() => expect(requestBrowserVisibilityMock).toHaveBeenCalledWith(SESSION_ID))
+    await waitFor(() => expect(screen.getByRole('button', { name: '改查其他入口' }).hasAttribute('disabled')).toBe(false))
+    expect(sendMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '改查其他入口' }))
+    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, expect.objectContaining({ updatedInput: { verificationResolution: 'switch_public_entry' } }))
+  })
+
   beforeEach(() => {
     notifyDesktopMock.mockReset()
     sendMock.mockReset()
@@ -92,7 +110,7 @@ describe('ExpertHumanVerificationModal', () => {
     setPendingRequest()
   })
 
-  it('sends a desktop reminder when research is blocked for human verification', () => {
+  it('leaves notification delivery to the global store and opens no browser on mount', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -100,12 +118,8 @@ describe('ExpertHumanVerificationModal', () => {
       />,
     )
 
-    expect(notifyDesktopMock).toHaveBeenCalledWith(expect.objectContaining({
-      dedupeKey: 'expert-human-verification:expert-session:verification-request',
-      title: expect.stringContaining('Google'),
-      requestAttention: true,
-      target: { type: 'session', sessionId: SESSION_ID },
-    }))
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
   })
 
   it('shows only the website and the concrete action, not a long verification URL', () => {
@@ -121,7 +135,7 @@ describe('ExpertHumanVerificationModal', () => {
     expect(screen.getByText(/已为你保留 Google 的验证页面。完成网页验证后，软件会自动检测并继续当前检索/)).not.toBeNull()
     expect(screen.getByText(/点击“打开验证浏览器”才会按你的这次操作恢复该托管 Chromium/)).not.toBeNull()
     expect(screen.getByRole('button', { name: '打开验证浏览器' })).not.toBeNull()
-    expect(screen.getByText(/关闭此提示会改查其他公开入口/)).not.toBeNull()
+    expect(screen.getByText(/关闭提示只会暂时收起，调研仍保持暂停/)).not.toBeNull()
     expect(screen.queryByText('https://www.google.com/search?q=markdown+reader')).toBeNull()
     expect(screen.queryByText(/不要刷新页面/)).toBeNull()
   })
@@ -225,7 +239,7 @@ describe('ExpertHumanVerificationModal', () => {
     expect(sendMock).not.toHaveBeenCalled()
   })
 
-  it('treats Escape as an explicit decision to check another public entry', () => {
+  it('dismisses with Escape while keeping research paused', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -235,15 +249,14 @@ describe('ExpertHumanVerificationModal', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' })
 
-    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
-      type: 'permission_response',
-      requestId: 'verification-request',
-      allowed: true,
-      updatedInput: { verificationResolution: 'switch_public_entry' },
-    })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /调研已暂停/ }))
+    expect(screen.getByRole('dialog')).not.toBeNull()
   })
 
-  it('treats the close button as an explicit decision to check another public entry', () => {
+  it('dismisses with the close button while keeping research paused', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -253,15 +266,14 @@ describe('ExpertHumanVerificationModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
 
-    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
-      type: 'permission_response',
-      requestId: 'verification-request',
-      allowed: true,
-      updatedInput: { verificationResolution: 'switch_public_entry' },
-    })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /调研已暂停/ }))
+    expect(screen.getByRole('dialog')).not.toBeNull()
   })
 
-  it('treats a backdrop click as an explicit decision to check another public entry', () => {
+  it('dismisses with a backdrop click while keeping research paused', () => {
     render(
       <ExpertHumanVerificationModal
         sessionId={SESSION_ID}
@@ -274,12 +286,11 @@ describe('ExpertHumanVerificationModal', () => {
     if (!backdrop) throw new Error('Expected verification modal backdrop')
     fireEvent.click(backdrop)
 
-    expect(sendMock).toHaveBeenCalledWith(SESSION_ID, {
-      type: 'permission_response',
-      requestId: 'verification-request',
-      allowed: true,
-      updatedInput: { verificationResolution: 'switch_public_entry' },
-    })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(requestBrowserVisibilityMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /调研已暂停/ }))
+    expect(screen.getByRole('dialog')).not.toBeNull()
   })
 
   it('returns the explicit public-entry fallback decision', () => {

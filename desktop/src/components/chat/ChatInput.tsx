@@ -1,3 +1,4 @@
+import { ContentOverlay } from '../shared/ContentOverlay'
 import { forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from '../../i18n'
 import { useChatStore } from '../../stores/chatStore'
@@ -27,7 +28,7 @@ import { AttachmentGallery } from './AttachmentGallery'
 import { ComposerDropOverlay } from './ComposerDropOverlay'
 import { ProjectContextChip } from '../shared/ProjectContextChip'
 import { ExpertSelectionDialog } from '../experts/ExpertSelectionDialog'
-import type { ExpertDefinition } from '../../api/experts'
+import type { ExpertDefinition, ExpertResearchBrowserStartOptions } from '../../api/experts'
 import { modelCapabilitiesApi } from '../../api/modelCapabilities'
 import { RepositoryLaunchControls } from '../shared/RepositoryLaunchControls'
 import {
@@ -1174,9 +1175,9 @@ export function ChatInput({ variant = 'default', compact = false }: ChatInputPro
     setExpertDialogOpen(true)
   }
 
-  const handleEnterExpertMode = async (expert: ExpertDefinition) => {
+  const handleEnterExpertMode = async (expert: ExpertDefinition, researchBrowserOptions?: ExpertResearchBrowserStartOptions) => {
     if (!activeTabId) throw new Error('请先打开或创建一个聊天会话。')
-    const expertMetadata = await useExpertStore.getState().enterExpertMode(activeTabId, expert.id)
+    const expertMetadata = await useExpertStore.getState().enterExpertMode(activeTabId, expert.id, researchBrowserOptions)
     useSessionStore.setState((state) => ({
       sessions: state.sessions.map((session) => session.id === activeTabId
         ? { ...session, expert: expertMetadata, modifiedAt: new Date().toISOString() }
@@ -2020,7 +2021,7 @@ function WorkflowContextStrategyDialog({
   if (!open) return null
 
   return (
-    <div
+    <ContentOverlay
       className="workflow-content-modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/35 py-4"
       role="presentation"
       onMouseDown={(event) => {
@@ -2038,7 +2039,7 @@ function WorkflowContextStrategyDialog({
         onKeyDown={(event) => {
           if (event.key === 'Escape' && !starting) onClose()
         }}
-        className="flex w-full max-w-xl flex-col overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl focus-visible:outline-none"
+        className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-[8px] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl focus-visible:outline-none"
       >
         <header className="flex min-w-0 items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3">
           <div className="min-w-0">
@@ -2066,7 +2067,7 @@ function WorkflowContextStrategyDialog({
           </button>
         </header>
 
-        <div className="space-y-3 p-4">
+        <div className="min-h-0 overflow-y-auto space-y-3 p-4">
           <ContextStrategyButton
             icon="backspace"
             title={t('workflows.linkedStart.clear.title')}
@@ -2163,7 +2164,7 @@ function WorkflowContextStrategyDialog({
           </span>
         </footer>
       </div>
-    </div>
+    </ContentOverlay>
   )
 }
 

@@ -756,7 +756,7 @@ export class ProviderService {
     }
 
     const presetDefaultEnv = getPresetDefaultEnv(provider.presetId)
-    const customProviderCapabilityEnv =
+    const customProviderCapabilityEnv: Record<string, string> =
       provider.presetId === 'custom'
         ? {
             ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES: CUSTOM_PROVIDER_MODEL_CAPABILITIES,

@@ -97,91 +97,24 @@ type ProcessedMessage = {
  * For ants only - returns original messages for non-ants.
  * @param isAgentRunning - If true, the last group is always marked as active (in progress)
  */
-function processProgressMessages(messages: ProgressMessage<Progress>[], tools: Tools, isAgentRunning: boolean): ProcessedMessage[] {
+export function processProgressMessages(messages: ProgressMessage<Progress>[], tools: Tools, isAgentRunning: boolean): ProcessedMessage[] {
   // Only process for ants
-  if ("external" !== 'ant') {
+  if (true) {
     return messages.filter((m): m is ProgressMessage<AgentToolProgress> => hasProgressMessage(m.data) && m.data.message.type !== 'user').map(m => ({
       type: 'original',
       message: m
     }));
   }
-  const result: ProcessedMessage[] = [];
-  let currentGroup: {
-    searchCount: number;
-    readCount: number;
-    replCount: number;
-    startUuid: string;
-  } | null = null;
-  function flushGroup(isActive: boolean): void {
-    if (currentGroup && (currentGroup.searchCount > 0 || currentGroup.readCount > 0 || currentGroup.replCount > 0)) {
-      result.push({
-        type: 'summary',
-        searchCount: currentGroup.searchCount,
-        readCount: currentGroup.readCount,
-        replCount: currentGroup.replCount,
-        uuid: `summary-${currentGroup.startUuid}`,
-        isActive
-      });
-    }
-    currentGroup = null;
-  }
-  const agentMessages = messages.filter((m): m is ProgressMessage<AgentToolProgress> => hasProgressMessage(m.data));
 
-  // Build tool_use lookup incrementally as we iterate
-  const toolUseByID = new Map<string, ToolUseBlockParam>();
-  for (const msg of agentMessages) {
-    // Track tool_use blocks as we see them
-    if (msg.data.message.type === 'assistant') {
-      for (const c of msg.data.message.message.content) {
-        if (c.type === 'tool_use') {
-          toolUseByID.set(c.id, c as ToolUseBlockParam);
-        }
-      }
-    }
-    const info = getSearchOrReadInfo(msg, tools, toolUseByID);
-    if (info && (info.isSearch || info.isRead || info.isREPL)) {
-      // This is a search/read/REPL operation - add to current group
-      if (!currentGroup) {
-        currentGroup = {
-          searchCount: 0,
-          readCount: 0,
-          replCount: 0,
-          startUuid: msg.uuid
-        };
-      }
-      // Only count tool_result messages (not tool_use) to avoid double counting
-      if (msg.data.message.type === 'user') {
-        if (info.isSearch) {
-          currentGroup.searchCount++;
-        } else if (info.isREPL) {
-          currentGroup.replCount++;
-        } else if (info.isRead) {
-          currentGroup.readCount++;
-        }
-      }
-    } else {
-      // Non-search/read/REPL message - flush current group (completed) and add this message
-      flushGroup(false);
-      // Skip user tool_result messages — subagent progress messages lack
-      // toolUseResult, so UserToolSuccessMessage returns null and the
-      // height=1 Box in renderToolUseProgressMessage shows as a blank line.
-      if (msg.data.message.type !== 'user') {
-        result.push({
-          type: 'original',
-          message: msg
-        });
-      }
-    }
-  }
-
-  // Flush any remaining group - it's active if the agent is still running
-  flushGroup(isAgentRunning);
-  return result;
 }
 const ESTIMATED_LINES_PER_TOOL = 9;
 const TERMINAL_BUFFER_LINES = 7;
 type Output = z.input<ReturnType<typeof outputSchema>>;
-export function AgentPromptDisplay(t0) {
+export function AgentPromptDisplay(t0: {
+  prompt: string
+  theme?: ThemeName // deprecated, kept for compatibility - Markdown uses useTheme internally
+  dim?: boolean // deprecated, kept for compatibility - dimColor cannot be applied to Box (Markdown returns Box)
+}): React.ReactNode {
   const $ = _c(3);
   const {
     prompt,
@@ -205,7 +138,10 @@ export function AgentPromptDisplay(t0) {
   }
   return t3;
 }
-export function AgentResponseDisplay(t0) {
+export function AgentResponseDisplay(t0: {
+  content: { type: string; text: string }[]
+  theme?: ThemeName // deprecated, kept for compatibility - Markdown uses useTheme internally
+}): React.ReactNode {
   const $ = _c(5);
   const {
     content
@@ -243,7 +179,7 @@ type VerboseAgentTranscriptProps = {
   tools: Tools;
   verbose: boolean;
 };
-function VerboseAgentTranscript(t0) {
+function VerboseAgentTranscript(t0: VerboseAgentTranscriptProps): React.ReactNode {
   const $ = _c(15);
   const {
     progressMessages,
@@ -385,7 +321,7 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
     }
   });
   return <Box flexDirection="column">
-      {"external" === 'ant' && <MessageResponse>
+      {false && <MessageResponse>
           <Text color="warning">
             [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
           </Text>
@@ -477,7 +413,7 @@ export function renderToolUseProgressMessage(progressMessages: ProgressMessage<P
       return message.message.content.some(content => content.type === 'tool_use');
     });
     const latestAssistant = progressMessages.findLast((msg): msg is ProgressMessage<AgentToolProgress> => hasProgressMessage(msg.data) && msg.data.message.type === 'assistant');
-    let tokens = null;
+    let tokens: number | null = null;
     if (latestAssistant?.data.message.type === 'assistant') {
       const usage = latestAssistant.data.message.message.usage;
       tokens = (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.input_tokens + usage.output_tokens;
@@ -591,7 +527,7 @@ export function renderToolUseRejectedMessage(_input: {
   const firstData = progressMessagesForMessage[0]?.data;
   const agentId = firstData && hasProgressMessage(firstData) ? firstData.agentId : undefined;
   return <>
-      {"external" === 'ant' && agentId && <MessageResponse>
+      {false && agentId && <MessageResponse>
           <Text color="warning">
             [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
           </Text>
@@ -636,7 +572,7 @@ function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
     return message.type === 'user' && message.message.content.some(content => content.type === 'tool_result');
   });
   const latestAssistant = progressMessages.findLast((msg): msg is ProgressMessage<AgentToolProgress> => hasProgressMessage(msg.data) && msg.data.message.type === 'assistant');
-  let tokens = null;
+  let tokens: number | null = null;
   if (latestAssistant?.data.message.type === 'assistant') {
     const usage = latestAssistant.data.message.message.usage;
     tokens = (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + usage.input_tokens + usage.output_tokens;

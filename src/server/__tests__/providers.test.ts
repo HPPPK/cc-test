@@ -1,3 +1,4 @@
+import { withFetchPreconnect } from './fixtureAssertions.js'
 /**
  * Unit tests for ProviderService and Providers REST API
  */
@@ -627,7 +628,7 @@ describe('ProviderService', () => {
       expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
       expect(JSON.parse(env.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
         'anthropic/claude-sonnet-4.6': 1000000,
-        'anthropic/claude-haiku-4.5:thinking': 200000,
+        'anthropic/claude-haiku-4.5:thinking': 1_000_000,
         'anthropic/claude-opus-4.7': 1000000,
       })
 
@@ -637,7 +638,7 @@ describe('ProviderService', () => {
       expect(runtimeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
       expect(JSON.parse(runtimeEnv.CLAUDE_CODE_MODEL_CONTEXT_WINDOWS)).toEqual({
         'anthropic/claude-sonnet-4.6': 1000000,
-        'anthropic/claude-haiku-4.5:thinking': 200000,
+        'anthropic/claude-haiku-4.5:thinking': 1_000_000,
         'anthropic/claude-opus-4.7': 1000000,
       })
 
@@ -795,7 +796,7 @@ describe('ProviderService', () => {
     test('should use preset default auth for saved no-key Anthropic-compatible providers', async () => {
       const originalFetch = globalThis.fetch
       const calls: Array<{ headers: Record<string, string> }> = []
-      globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
+      globalThis.fetch = withFetchPreconnect(mock(async (_url: string | URL | Request, init?: RequestInit) => {
         calls.push({ headers: init?.headers as Record<string, string> })
         return new Response(JSON.stringify({
           type: 'message',
@@ -805,7 +806,7 @@ describe('ProviderService', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
-      }) as typeof fetch
+      }))
 
       try {
         const svc = new ProviderService()
@@ -836,7 +837,7 @@ describe('ProviderService', () => {
     test('should use auth strategy headers for Anthropic-compatible tests', async () => {
       const originalFetch = globalThis.fetch
       const calls: Array<{ url: string; headers: Record<string, string> }> = []
-      globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      globalThis.fetch = withFetchPreconnect(mock(async (url: string | URL | Request, init?: RequestInit) => {
         calls.push({
           url: String(url),
           headers: init?.headers as Record<string, string>,
@@ -849,7 +850,7 @@ describe('ProviderService', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
-      }) as typeof fetch
+      }))
 
       try {
         const svc = new ProviderService()
@@ -893,6 +894,15 @@ describe('ProviderService', () => {
 // =============================================================================
 
 describe('Providers API', () => {
+  test('rejects unsupported saved-provider test overrides before any connection', async () => {
+    for (const override of [{ apiFormat: 'invented' }, { authStrategy: 'invented' }]) {
+      const { req, url, segments } = makeRequest('POST', '/api/providers/unknown/test', override)
+      const response = await handleProvidersApi(req, url, segments)
+      expect(response.status).toBe(400)
+      expect(await response.text()).toContain('Invalid provider test overrides')
+    }
+  })
+
   beforeEach(setup)
   afterEach(teardown)
 

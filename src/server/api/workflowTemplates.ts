@@ -296,7 +296,7 @@ async function previewImport(req: Request): Promise<Response> {
       skillInstallPlan: packPreview.skillInstallPlan ?? [],
       candidates: candidates.map(publicImportCandidate),
       invalidTemplates: candidates.flatMap((candidate) => candidate.issues),
-      canCommit: candidates.some((candidate) => candidate.selectable) && !(packPreview.skillInstallPlan ?? []).some((item) => item.status === 'conflict'),
+      canCommit: candidates.some((candidate) => candidate.selectable),
     })
   }
   const candidates = await buildImportCandidates(payload, registry)

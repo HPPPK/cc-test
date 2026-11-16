@@ -36,7 +36,7 @@ const REMEMBER_DIRECTORY_OPTIONS: Array<{
   value: 'no',
   label: 'No'
 }];
-function PermissionDescription() {
+function PermissionDescription(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
@@ -47,7 +47,7 @@ function PermissionDescription() {
   }
   return t0;
 }
-function DirectoryDisplay(t0) {
+function DirectoryDisplay(t0: { path: string }): React.ReactNode {
   const $ = _c(5);
   const {
     path
@@ -77,7 +77,14 @@ function DirectoryDisplay(t0) {
   }
   return t3;
 }
-function DirectoryInput(t0) {
+function DirectoryInput(t0: {
+  value: string
+  onChange: (value: string) => void
+  onSubmit: (value: string) => void
+  error: string | null
+  suggestions: SuggestionItem[]
+  selectedSuggestion: number
+}): React.ReactNode {
   const $ = _c(14);
   const {
     value,
@@ -134,7 +141,7 @@ function DirectoryInput(t0) {
   return t5;
 }
 function _temp() {}
-export function AddWorkspaceDirectory(t0) {
+export function AddWorkspaceDirectory(t0: Props): React.ReactNode {
   const $ = _c(34);
   const {
     onAddDirectory,
@@ -143,7 +150,7 @@ export function AddWorkspaceDirectory(t0) {
     directoryPath
   } = t0;
   const [directoryInput, setDirectoryInput] = useState("");
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -151,7 +158,7 @@ export function AddWorkspaceDirectory(t0) {
   } else {
     t1 = $[0];
   }
-  const [suggestions, setSuggestions] = useState(t1);
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>(t1);
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
   let t2;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {

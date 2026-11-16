@@ -108,7 +108,7 @@ describe('AskUserQuestion', () => {
     expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
   })
 
-  it('notifies the user when a successful AskUserQuestion call is waiting for an answer', () => {
+  it('renders a pending question without owning notification delivery', () => {
     render(
       <AskUserQuestion
         toolUseId="tool-1"
@@ -123,13 +123,7 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    expect(notifyDesktopMock).toHaveBeenCalledWith({
-      dedupeKey: 'ask-user-question:active-tab:perm-1',
-      title: 'Claude needs your input',
-      body: 'Should we persist data?',
-      requestAttention: true,
-      target: { type: 'session', sessionId: ACTIVE_TAB },
-    })
+    expect(notifyDesktopMock).not.toHaveBeenCalled()
   })
 
   it('does not notify again for an AskUserQuestion that already has a result', () => {
@@ -367,7 +361,7 @@ describe('AskUserQuestion', () => {
     })
   })
 
-  it('advances to the next question after choosing a single-select option', () => {
+  it('keeps all questions visible after choosing a single-select option', () => {
     render(
       <AskUserQuestion
         toolUseId="tool-1"
@@ -391,7 +385,7 @@ describe('AskUserQuestion', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Web$/ }))
 
     expect(screen.getByText('Which features are in scope?')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^Web$/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Web$/ })).toBeTruthy()
   })
 
   it('preserves multiSelect for single-question input shape', () => {
@@ -675,25 +669,22 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Type your answer...')[0]!, {
       target: { value: 'transient-q1' },
     })
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Type your answer...')[0]!, {
       target: { value: '' },
     })
     fireEvent.click(screen.getByRole('button', { name: /^A1$/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Type your answer...')[0]!, {
       target: { value: 'custom-q1' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Q2$/ }))
 
-    expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('')
+    expect((screen.getAllByPlaceholderText('Type your answer...')[1]! as HTMLTextAreaElement).value).toBe('')
 
     fireEvent.click(screen.getByRole('button', { name: /^A2$/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Q1$/ }))
 
-    expect((screen.getByPlaceholderText('Type your answer...') as HTMLTextAreaElement).value).toBe('custom-q1')
+    expect((screen.getAllByPlaceholderText('Type your answer...')[0]! as HTMLTextAreaElement).value).toBe('custom-q1')
 
     fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
@@ -734,7 +725,7 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText('Type your answer...'), {
+    fireEvent.change(screen.getAllByPlaceholderText('Type your answer...')[0]!, {
       target: { value: 'Please only fix the current issue and keep the workflow unchanged.' },
     })
 
@@ -770,7 +761,7 @@ describe('AskUserQuestion', () => {
       />,
     )
 
-    const textarea = screen.getByPlaceholderText('Type your answer...')
+    const textarea = screen.getAllByPlaceholderText('Type your answer...')[0]!
     expect(textarea.tagName).toBe('TEXTAREA')
     expect(textarea.getAttribute('rows')).toBe('3')
 
@@ -990,6 +981,64 @@ describe('AskUserQuestion', () => {
     expect(screen.queryByRole('button', { name: /submit/i })).toBeNull()
     expect(sendMock.mock.calls.map(([, message]) => message.requestId)).toEqual(['perm-1', 'perm-2'])
     expect(useChatStore.getState().sessions[ACTIVE_TAB]!.pendingPermission).toBeNull()
+  })
+
+})
+
+ describe('expanded question batches', () => {
+  beforeEach(() => {
+    sendMock.mockReset()
+    useSettingsStore.setState({ locale: 'en' })
+    useTabStore.setState({ activeTabId: ACTIVE_TAB })
+    useChatStore.setState({ sessions: { [ACTIVE_TAB]: { messages: [], chatState: 'permission_pending', pendingPermission: { requestId: 'batch-request', toolName: 'AskUserQuestion', toolUseId: 'batch-tool', input: {} } } } } as never)
+  })
+  it('shows all questions, requires every blocking answer, and submits one batch', () => {
+    render(<AskUserQuestion toolUseId="batch-tool" input={{ questions: [
+      { id: 'platform', prompt: 'Target platform?', blocksCompletion: true, choices: [{ label: 'Mac', description: 'Runs locally on your Mac.' }, { label: 'Windows' }] },
+      { id: 'purpose', prompt: 'Primary purpose?', blocksCompletion: true, choices: [{ label: 'Personal' }, { label: 'Work' }] },
+      { id: 'style', prompt: 'Visual preference?', blocksCompletion: false, choices: [{ label: 'Simple' }, { label: 'Rich' }] },
+    ] }} />)
+    expect(screen.getByText('Target platform?')).toBeTruthy()
+    expect(screen.getByText('Runs locally on your Mac.')).toBeTruthy()
+    expect(screen.getByText('Primary purpose?')).toBeTruthy()
+    expect(screen.getByText('Visual preference?')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('ask-user-option-0-Mac'))
+    expect((screen.getByTestId('ask-user-submit') as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByTestId('ask-user-option-1-Personal'))
+    fireEvent.click(screen.getByTestId('ask-user-submit'))
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({ requestId: 'batch-request', updatedInput: expect.objectContaining({ answers: { platform: 'Mac', purpose: 'Personal' } }) }))
+  })
+  it('lets the user explicitly delegate an optional preference and restores submitted batch answers', () => {
+    const input = { questions: [
+      { id: 'style', prompt: 'Visual preference?', blocksCompletion: false, choices: [{ label: 'Simple' }, { label: 'Rich' }] },
+      { id: 'tone', prompt: 'Writing tone?', blocksCompletion: false, choices: [{ label: 'Plain' }, { label: 'Playful' }] },
+    ] }
+    const view = render(<AskUserQuestion toolUseId="batch-tool" input={input} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Let the system decide' })[0]!)
+    fireEvent.click(screen.getByTestId('ask-user-submit'))
+    expect(sendMock).toHaveBeenCalledWith(ACTIVE_TAB, expect.objectContaining({ updatedInput: expect.objectContaining({ answers: { style: 'Let the system decide' } }) }))
+    view.unmount()
+    render(<AskUserQuestion toolUseId="batch-tool" input={input} result={{ answers: { style: 'Let the system decide' } }} />)
+    expect(screen.queryByTestId('ask-user-submit')).toBeNull()
+  })
+
+  it('shows expiry after the server rejects a stale batch, without reviving submission', async () => {
+    render(<AskUserQuestion toolUseId="batch-tool" input={{ questions: [{ id: 'style', prompt: 'Visual preference?', blocksCompletion: false, choices: [{ label: 'Simple' }, { label: 'Rich' }] }] }} />)
+    fireEvent.click(screen.getByTestId('ask-user-option-0-Simple'))
+    fireEvent.click(screen.getByTestId('ask-user-submit'))
+    await act(async () => { useChatStore.getState().handleServerMessage(ACTIVE_TAB, { type: 'permission_response_ack', requestId: 'batch-request', status: 'stale', message: 'This workflow question has expired.' }) })
+    expect(screen.getByRole('alert').textContent).toContain('expired')
+    expect(screen.queryByTestId('ask-user-submit')).toBeNull()
+  })
+
+  it('keeps a historical terminal result visible when no structured answers were recorded', () => {
+    render(<AskUserQuestion toolUseId="historical-batch" input={{ questions: [
+      { id: 'style', prompt: 'Visual preference?', choices: [{ label: 'Simple', description: 'Keep the interface simple.' }, { label: 'Rich' }] },
+    ] }} result="This question was closed without an answer." />)
+    expect(screen.getByText('This question was closed without an answer.')).toBeTruthy()
+    expect(screen.getByText('Keep the interface simple.')).toBeTruthy()
+    expect(screen.queryByTestId('ask-user-submit')).toBeNull()
+    expect((screen.getByTestId('ask-user-option-0-Simple') as HTMLButtonElement).disabled).toBe(true)
   })
 
 })

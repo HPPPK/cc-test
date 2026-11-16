@@ -9,6 +9,7 @@ import {
   type DevelopmentBatchAgentRole,
   type DevelopmentBatchPlanTask,
 } from './workflowDevelopmentBatchAgentPolicy.js'
+import type { AgentRunEventInput } from './agentRunLedgerService.js'
 import type { WorkflowSessionState, WorkflowTaskSnapshot } from './workflowTypes.js'
 
 function cloneState(state: WorkflowSessionState): WorkflowSessionState {
@@ -116,13 +117,19 @@ export function recordDevelopmentBatchAgentProgress(
   }
 
   const signature = developmentBatchPlanSignature(input.plan)
-  const existingSignature = phaseState.taskSnapshots
+  const currentExecutionSnapshots = phaseState.taskSnapshots.filter(snapshot =>
+    !(isDevelopmentBatchTaskSnapshot(snapshot) && snapshot.status === 'stale'))
+  const existingSignature = currentExecutionSnapshots
     .find(isDevelopmentBatchTaskSnapshot)?.developmentPlanSignature
   if (existingSignature && existingSignature !== signature) {
     throw new Error('WORKFLOW_DEVELOPMENT_BATCH_PLAN_MISMATCH: Every Stage 4 Agent must use the same complete Batch plan.')
   }
 
-  const byTaskId = new Map(phaseState.taskSnapshots.map((snapshot) => [snapshot.taskId, snapshot]))
+  // Stale receipts belong to a superseded Stage 4 execution. They remain in
+  // persisted history until the revised phase actually dispatches work, then
+  // the first new receipt atomically replaces them with snapshots derived from
+  // the newly validated Stage 3 plan.
+  const byTaskId = new Map(currentExecutionSnapshots.map((snapshot) => [snapshot.taskId, snapshot]))
   for (const task of input.plan) {
     const batchId = task.id.trim()
     for (const role of ['coder', 'reviewer'] as const) {
@@ -149,6 +156,14 @@ export function recordDevelopmentBatchAgentProgress(
     && current.readyForNextBatch === input.reviewerOutcome?.readyForNextBatch
     && JSON.stringify(current.requiredFixes ?? []) === JSON.stringify(input.reviewerOutcome?.requiredFixes ?? [])
   ) return state
+
+  if (input.status === 'succeeded' && (
+    (state.runStatus !== undefined && state.runStatus !== 'active')
+    || ['paused', 'cancelled', 'completed', 'exited'].includes(state.status)
+    || state.pendingConfirmation || state.pendingRoute
+  )) {
+    throw new Error('WORKFLOW_EXECUTION_SUSPENDED: A successful task receipt requires the current workflow to be active without a pending confirmation or route. Preserve completed work and resume through the Leader.')
+  }
 
   const nextStateVersion = state.stateVersion + 1
   if (input.status === 'running') {
@@ -259,4 +274,32 @@ export function recordDevelopmentBatchAgentProgress(
   }, undefined, input.recordedAt)
 
   return updated
+}
+
+export type DevelopmentBatchAgentLedgerEventAppender = (event: AgentRunEventInput) => Promise<unknown>
+
+function ledgerStatusForDevelopmentBatch(
+  status: DevelopmentBatchAgentProgressInput['status'],
+): AgentRunEventInput['status'] {
+  if (status === 'running') return 'running'
+  if (status === 'blocked') return 'blocked'
+  if (status === 'succeeded') return 'completed'
+  return 'failed'
+}
+
+export async function recordDevelopmentBatchAgentProgressWithLedger(
+  state: WorkflowSessionState,
+  input: DevelopmentBatchAgentProgressInput,
+  appendLedgerEvent: DevelopmentBatchAgentLedgerEventAppender,
+): Promise<WorkflowSessionState> {
+  const next = recordDevelopmentBatchAgentProgress(state, input)
+  const receiptId = input.toolUseId?.trim() || input.agentId
+  await appendLedgerEvent({
+    sessionId: state.sessionId,
+    runId: input.agentId,
+    eventType: 'status_changed',
+    toolUseId: `${receiptId}:workflow-task-${input.status}`,
+    status: ledgerStatusForDevelopmentBatch(input.status),
+  })
+  return next
 }

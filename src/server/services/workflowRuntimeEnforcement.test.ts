@@ -1,3 +1,4 @@
+import { requireFixtureValue } from '../__tests__/fixtureAssertions.js'
 import { describe, expect, test } from 'bun:test'
 import type {
   WorkflowSessionState,
@@ -18,6 +19,7 @@ import {
   resolveWorkflowSkillBindings,
 } from './workflowSkillRegistry.js'
 import { routeWorkflowTask } from './workflowTaskRouter.js'
+import { DEVELOPMENT_QUESTION_POLICY } from './workflowDevelopmentQuestionPolicy.js'
 
 const NOW = '2026-07-01T09:00:00.000Z'
 const SESSION_ID = 'workflow-runtime-enforcement-test'
@@ -138,7 +140,7 @@ function makeDebugRepairTemplate(): WorkflowTemplate {
 function makeState(
   route: WorkflowTaskRouterResult = makeRoute('开发一个学生管理系统'),
   overrides: Partial<WorkflowSessionState> = {},
-): WorkflowSessionState {
+): WorkflowSessionState & { templateSnapshot: WorkflowTemplate } {
   const template = makeTemplate()
   return {
     schemaVersion: 2,
@@ -224,9 +226,9 @@ function makeState(
 
 describe('workflow runtime enforcement v5', () => {
   test('selects follow-up defaults from templates supplied by the ZIP pack registry', () => {
-    const development = { ...makeTemplate(), id: 'development-flow', labels: ['new-product'] }
-    const extension = { ...makeTemplate(), id: 'extension-flow', labels: ['enhancement'] }
-    const repair = { ...makeTemplate(), id: 'repair-flow', labels: ['bug'] }
+    const development: WorkflowTemplate = { ...makeTemplate(), id: 'development-flow', labels: ['new-product'] }
+    const extension: WorkflowTemplate = { ...makeTemplate(), id: 'extension-flow', labels: ['enhancement'] }
+    const repair: WorkflowTemplate = { ...makeTemplate(), id: 'repair-flow', labels: ['bug'] }
 
     expect(selectFollowUpWorkflowTemplate([development, extension, repair], 'development').id).toBe('development-flow')
     expect(selectFollowUpWorkflowTemplate([development, extension, repair], 'feature-extension').id).toBe('extension-flow')
@@ -391,9 +393,9 @@ describe('workflow runtime enforcement v5', () => {
     expect(followUpRun.artifacts.filter((artifact) => artifact.id === 'follow-up-context')).toHaveLength(1)
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: next.templateSnapshot,
+      template: requireFixtureValue(next.templateSnapshot),
       run: followUpRun,
-      phase: next.templateSnapshot.phases[0]!,
+      phase: requireFixtureValue(next.templateSnapshot).phases[0]!,
       sessionState: next,
       inheritedArtifacts: followUpRun.artifacts.filter((artifact) => artifact.inheritedFromRunId),
       userMessage: '继续',
@@ -503,13 +505,13 @@ describe('workflow runtime enforcement v5', () => {
     })
     state.activePhaseId = 'plan-batches'
     state.workflowRuns![0]!.currentPhaseId = 'plan-batches'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'plan-batches')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'plan-batches')!
     const skillAvailability = resolveWorkflowSkillBindings(phase.skillBindings, {
       installedSkillIds: new Set<string>(),
     })
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -555,6 +557,11 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('do not hide a route inside handoff')
     expect(prompt).toContain('do not ask the user to bypass the workflow')
     expect(prompt).toContain('rework_current_phase or jump_to_phase')
+    expect(prompt).toContain('blocked or unable')
+    expect(prompt).toContain('needs_user is a legacy confirmation alias')
+    expect(prompt).not.toContain('blocked/needs_user')
+    expect(prompt).toContain('does not satisfy a required file-output contract')
+    expect(prompt).toContain('repair the content in the same phase')
   })
 
   test('runtime prompt injects stable phase execution contract for questions, output, gates, handoff, and internal safety', () => {
@@ -564,10 +571,10 @@ describe('workflow runtime enforcement v5', () => {
     })
     state.activePhaseId = 'route-context'
     state.workflowRuns![0]!.currentPhaseId = 'route-context'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'route-context')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'route-context')!
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -576,19 +583,19 @@ describe('workflow runtime enforcement v5', () => {
     })
 
     expect(prompt).toContain('Stable phase execution contract')
-    expect(prompt).toContain('Objective: Classify the request and create project context.')
+    expect(prompt).toContain('Phase instructions: Classify the request and create project context.')
     expect(prompt).toContain('Scope boundaries:')
     expect(prompt).toContain('Required intake:')
     expect(prompt).toContain('Thinking style:')
     expect(prompt).toContain('AskQuestion policy:')
-    expect(prompt).toContain('Ask one primary question at a time')
+    expect(prompt).toContain('Batch independent questions')
     expect(prompt).toContain('why the information is needed and what the answer will affect')
     expect(prompt).toContain('at least 3 mutually exclusive, actionable options')
     expect(prompt).toContain('recommended option first')
     expect(prompt).toContain('(Recommended)')
     expect(prompt).toContain('plain language for non-technical users')
-    expect(prompt).toContain('recommend the default and ask for confirmation')
-    expect(prompt).toContain('conservative default and record the assumption')
+    expect(prompt).toContain('proposed defaults')
+    expect(prompt).toContain('reversible defaults')
     expect(prompt).toContain('Output contract:')
     expect(prompt).toContain('current phase name, phase goal, in-scope work, out-of-scope work')
     expect(prompt).toContain('Completion gate:')
@@ -608,10 +615,10 @@ describe('workflow runtime enforcement v5', () => {
     state.brainstormingMode = 'on'
     state.activePhaseId = 'design-spec'
     state.workflowRuns![0]!.currentPhaseId = 'design-spec'
-    const phase = state.templateSnapshot.phases.find((item) => item.id === 'design-spec')!
+    const phase = requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'design-spec')!
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run: state.workflowRuns![0]!,
       phase,
       sessionState: state,
@@ -629,12 +636,12 @@ describe('workflow runtime enforcement v5', () => {
     })
 
     expect(prompt).toContain('Brainstorming: on')
-    expect(prompt).toContain('complete runtime-managed brainstorming contract')
+    expect(prompt).toContain('development question policy')
     expect(prompt).toContain('Brainstorming contract injection')
     expect(prompt).toContain('# COMPLETE BRAINSTORMING CONTRACT')
-    expect(prompt).toContain('Do not reduce discovery to blocker-only questions')
-    expect(prompt).toContain('Do not replace unresolved material requirements with conservative defaults')
-    expect(prompt).toContain('do not stop because of a workflow-local preference to ask fewer questions')
+    expect(prompt).toContain('Never classify every preference as blocking')
+    expect(prompt).toContain('consequential preferences')
+    expect(prompt).toContain('Stop exploration as soon as')
     expect(prompt).toContain('Do not replace it with a workflow-local fixed direction count or questionnaire')
     expect(prompt).not.toContain('If missing information blocks the current phase, ask one structured question; if it does not block, choose a conservative default')
     expect(prompt).not.toContain('If missing information is not blocking, proceed with a conservative default')
@@ -649,7 +656,7 @@ describe('workflow runtime enforcement v5', () => {
     })
     const run = state.workflowRuns![0]!
     const phase = {
-      ...state.templateSnapshot.phases.find((item) => item.id === 'execute')!,
+      ...requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'execute')!,
       id: 'delegate-implement',
       subagentPolicy: {
         role: 'coder',
@@ -688,7 +695,9 @@ describe('workflow runtime enforcement v5', () => {
     expect(brief.content).toContain('Workflow subagent capabilities')
     expect(brief.content).toContain('terminal command capability')
     expect(brief.content).not.toContain('Bash')
-    expect(brief.content).not.toContain('Write')
+    expect(brief.content).not.toMatch(/\bWrite\b/)
+    expect(brief.content).toContain('scopeAmendment={batchId,addWriteScopes}')
+    expect(brief.content).toContain('An ordinary AskUserQuestion answer does not amend scope')
     expect(brief.content).not.toContain('Edit')
     expect(brief.content).not.toContain('MultiEdit')
     expect(brief.content).not.toContain('FULL CHAT HISTORY SHOULD NOT BE INCLUDED')
@@ -715,7 +724,7 @@ describe('workflow runtime enforcement v5', () => {
     state.workflowRuns![0]!.currentPhaseId = 'delegate-implement'
     const run = state.workflowRuns![0]!
     const phase = {
-      ...state.templateSnapshot.phases.find((item) => item.id === 'execute')!,
+      ...requireFixtureValue(state.templateSnapshot).phases.find((item) => item.id === 'execute')!,
       id: 'delegate-implement',
       subagentPolicy: {
         allowedRoles: ['coder', 'reviewer'],
@@ -724,7 +733,7 @@ describe('workflow runtime enforcement v5', () => {
     }
 
     const prompt = buildWorkflowRuntimePrompt({
-      template: state.templateSnapshot,
+      template: requireFixtureValue(state.templateSnapshot),
       run,
       phase,
       sessionState: state,
@@ -739,6 +748,11 @@ describe('workflow runtime enforcement v5', () => {
     expect(prompt).toContain('matching top-level workflow_role')
     expect(prompt).toContain('Required workflow roles: coder, reviewer')
     expect(prompt).toContain('summaryForLeader')
+    expect(prompt).toContain('Whenever workflow_role is set, use subagent_type=general-purpose')
+    expect(prompt).toContain('explicit readyForReview boolean')
+    expect(prompt).toContain('the Leader delegates implementation and test commands')
+    expect(prompt).toContain('Ending a reply does not complete a Batch')
+    expect(prompt).toContain('not permission to start a nested workflow')
   })
 
   test('validates structural evidence for v7 work-order, quality report, preview, and handoff gates', () => {
@@ -810,4 +824,117 @@ describe('workflow runtime enforcement v5', () => {
       }),
     ])
   })
+})
+
+test('development dispatch guidance references artifacts instead of repeating their contents for every role', () => {
+  const template = makeTemplate()
+  const state = makeState()
+  const phase = { ...template.phases[0]!, id: 'delegate-implement', subagentPolicy: { allowedRoles: ['coder', 'reviewer'] } }
+  const artifact = { id: 'plan', filename: 'delivery-plan.md', phaseId: 'delivery-plan', kind: 'markdown', required: true, content: 'unique-large-artifact-body '.repeat(100), createdAt: NOW, updatedAt: NOW }
+  const input = { template, run: state.workflowRuns![0]!, phase, sessionState: state, inheritedArtifacts: [artifact], userMessage: '' }
+  const prompt = buildWorkflowRuntimePrompt(input)
+  expect(prompt).not.toContain('unique-large-artifact-body')
+  expect(prompt).toContain('delivery-plan.md')
+  expect(prompt).toContain('Callable Agent tool subagent_type: general-purpose')
+  expect(prompt).toContain('workflow_role=reviewer')
+  expect(prompt).toContain('summaryForLeader')
+  expect(buildWorkflowRuntimePrompt({ ...input, template: { ...template, id: 'custom-workflow' } })).toContain('unique-large-artifact-body')
+})
+
+test('development artifact pointers retain inline-only evidence once and bound its model view', () => {
+  const template = makeTemplate()
+  const state = makeState()
+  const phase = { ...template.phases[0]!, id: 'delegate-implement', subagentPolicy: { allowedRoles: ['coder', 'reviewer'] } }
+  const inline = { id: 'inline-accepted-decision', phaseId: 'delivery-plan', kind: 'markdown', required: true,
+    content: 'Accepted user decision: offline-only student records.\n' + 'inline-remaining-detail '.repeat(300), createdAt: NOW, updatedAt: NOW }
+  const file = { ...inline, id: 'known-file', filename: 'delivery-plan.md', content: 'FILE_BODY_SHOULD_NOT_REPEAT' }
+  const stored = JSON.stringify([inline, file])
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, inheritedArtifacts: [inline, file], userMessage: '' })
+  expect(prompt.match(/Accepted user decision: offline-only student records\./g)).toHaveLength(1)
+  expect(prompt).toContain('inline-accepted-decision')
+  expect(prompt).toContain('additional inline content omitted')
+  expect(prompt).not.toContain('FILE_BODY_SHOULD_NOT_REPEAT')
+  expect(prompt).toContain('delivery-plan.md')
+  expect(prompt.match(/inline-remaining-detail/g)!.length).toBeLessThan(100)
+  expect(JSON.stringify([inline, file])).toBe(stored)
+})
+
+test('development policy overrides old single-question brainstorming and defines convergence', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a video editor', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  state.activePhaseId = template.phases[0]!.id
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase: template.phases[0]!, sessionState: state, userMessage: 'Build a video editor',
+    brainstormingContract: { content: 'Ask one question at a time forever.', identity: 'old', source: 'workflow-pack', sourcePath: 'old-skill' } })
+  expect(prompt).toContain('Group independent questions in one AskUserQuestion batch')
+  expect(prompt).not.toContain('structured question UI. Ask one question at a time.')
+  expect(prompt).toContain('Stop exploration as soon as')
+  expect(prompt).toContain('Never classify every preference as blocking')
+  expect(prompt.lastIndexOf('Development question policy')).toBeGreaterThan(prompt.indexOf('Ask one question at a time forever.'))
+})
+
+test('development runtime prompt keeps long phase instructions and the question policy exactly once', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a video editor', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = `Stage-specific grounding rules.\n\n${DEVELOPMENT_QUESTION_POLICY}`
+  state.activePhaseId = phase.id
+  state.workflowRuns![0]!.currentPhaseId = phase.id
+
+  const prompt = buildWorkflowRuntimePrompt({
+    template,
+    run: state.workflowRuns![0]!,
+    phase,
+    sessionState: state,
+    userMessage: 'Build a video editor',
+    brainstormingContract: {
+      content: `Inherited brainstorming guidance.\n\n## Development workflow exploration and convergence\n\n${DEVELOPMENT_QUESTION_POLICY}`,
+      identity: 'legacy-development-skill',
+      source: 'workflow-pack',
+      sourcePath: 'skills/superpowers-brainstorming/SKILL.md',
+    },
+  })
+
+  expect(prompt.match(/Stage-specific grounding rules\./g)).toHaveLength(1)
+  expect(prompt.match(/Inherited brainstorming guidance\./g)).toHaveLength(1)
+  expect(prompt.match(/Development question policy \(takes precedence/g)).toHaveLength(1)
+})
+
+test('development artifact applicability overrides inherited unconditional material field lists', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a student manager without reference material', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = 'Handoff sourceMaterialSummary and sourceMaterialFindings before completion.'
+  const input = { template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Build a student manager' }
+  const prompt = buildWorkflowRuntimePrompt(input)
+
+  expect(prompt).toContain('sourceMaterialSummary is required only when source material was provided or mentioned')
+  expect(prompt).toContain('sourceMaterialFindings is required only when accessible material can actually be extracted')
+  expect(prompt).toContain('When sourceMaterialType is none, inherit that fact')
+  expect(prompt).toContain('An unavailable material remains a blocker only when it is necessary')
+  expect(prompt).toContain('exact camelCase heading names are not a completion requirement')
+  expect(prompt).toContain('update the existing artifact and submit when ready')
+  expect(prompt.lastIndexOf('Development artifact applicability policy')).toBeGreaterThan(prompt.indexOf(phase.instructions))
+  expect(prompt).toContain('each question accepts 2–4 choices')
+
+  template.id = 'debug-repair-workflow-v8'
+  expect(buildWorkflowRuntimePrompt(input)).not.toContain('Development artifact applicability policy')
+})
+
+test('fresh phase prompts distinguish output declarations from existing inputs even with legacy instructions', () => {
+  const state = ensureMandatoryWorkflowArtifacts(makeState(), { request: 'Build a student manager', now: NOW })
+  const template = requireFixtureValue(state.templateSnapshot)
+  template.id = 'efficient-constrained-dev-debug-workflow-v5'
+  const phase = template.phases[0]!
+  phase.instructions = 'Read app-framing.md before asking questions.'
+  const prompt = buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Build a student manager' })
+  expect(prompt).toContain('Output declarations are creation obligations, not existing inputs')
+  expect(prompt).toContain('Do not Read a new phase output merely because its target path is known')
+  expect(prompt).toContain('Missing genuine required inputs remain blockers')
+  expect(prompt.lastIndexOf('Artifact lifecycle policy')).toBeGreaterThan(prompt.indexOf(phase.instructions))
+  expect(prompt).toContain('QA and Debug must omit workflow_parallel_plan')
+  template.id = 'debug-repair-workflow-v8'
+  expect(buildWorkflowRuntimePrompt({ template, run: state.workflowRuns![0]!, phase, sessionState: state, userMessage: 'Debug' })).not.toContain('Development Agent field policy')
 })

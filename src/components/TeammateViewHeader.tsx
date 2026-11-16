@@ -11,7 +11,7 @@ import { OffscreenFreeze } from './OffscreenFreeze.js';
  * Header shown when viewing a teammate's transcript.
  * Displays teammate name (colored), task description, and exit hint.
  */
-export function TeammateViewHeader() {
+export function TeammateViewHeader(): React.ReactNode {
   const $ = _c(14);
   const viewedTeammate = useAppState(_temp);
   if (!viewedTeammate) {

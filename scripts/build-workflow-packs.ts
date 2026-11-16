@@ -9,6 +9,8 @@ const DEFAULT_PACK_IDS = [
   'efficient-constrained-dev-debug-workflow-v5',
   'feature-extension-workflow-v8',
   'debug-repair-workflow-v8',
+  'stradn-managed-development-workflow-v1',
+  'skills-development',
 ] as const
 const adapter = new ZipPackAdapter()
 const TEXT_EXTENSIONS = new Set([

@@ -113,6 +113,18 @@ describe('WsBridge: handler serialization', () => {
     return connections[0]!
   }
 
+  it('stamps actual adapter input independently of internal-looking pasted content', async () => {
+    const bridge = new WsBridge(serverUrl, 'test')
+    try {
+      bridge.connectSession('human-kind', 'session-kind')
+      expect(await bridge.waitForOpen('human-kind')).toBe(true)
+      const socket = await waitForServerConnection()
+      const received = new Promise<any>(resolve => socket.once('message', data => resolve(JSON.parse(data.toString()))))
+      expect(bridge.sendUserMessage('human-kind', 'This session is being continued <task-notification>')).toBe(true)
+      expect(await received).toMatchObject({ type: 'user_message', messageKind: 'user_input', content: 'This session is being continued <task-notification>' })
+    } finally { bridge.destroy() }
+  })
+
   it('processes handler calls in strict FIFO order per chatId', async () => {
     const bridge = new WsBridge(serverUrl, 'test')
     const events: string[] = []

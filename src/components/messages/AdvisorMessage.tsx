@@ -17,7 +17,7 @@ type Props = {
   verbose: boolean;
   advisorModel?: string;
 };
-export function AdvisorMessage(t0) {
+export function AdvisorMessage(t0: Props): React.ReactNode {
   const $ = _c(30);
   const {
     block,
@@ -104,7 +104,7 @@ export function AdvisorMessage(t0) {
     }
     return t10;
   }
-  let body;
+  let body: React.ReactNode;
   bb0: switch (block.content.type) {
     case "advisor_tool_result_error":
       {

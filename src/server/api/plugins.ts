@@ -65,9 +65,9 @@ export async function handlePluginsApi(
 
       switch (sub) {
         case 'enable':
-          return Response.json(await pluginService.enablePlugin(pluginId, scope))
+          return Response.json(await pluginService.enablePlugin(pluginId, installableScope(scope)))
         case 'disable':
-          return Response.json(await pluginService.disablePlugin(pluginId, scope))
+          return Response.json(await pluginService.disablePlugin(pluginId, installableScope(scope)))
         case 'update':
           return Response.json(
             await pluginService.updatePlugin(pluginId, scope as PluginScope | undefined),
@@ -76,7 +76,7 @@ export async function handlePluginsApi(
           return Response.json(
             await pluginService.uninstallPlugin(
               pluginId,
-              scope,
+              installableScope(scope),
               body.keepData === true,
             ),
           )
@@ -171,4 +171,9 @@ function coerceScope(value: unknown):
   throw ApiError.badRequest(
     'Invalid "scope". Expected one of: user, project, local, managed',
   )
+}
+
+function installableScope(scope: ReturnType<typeof coerceScope>): 'user' | 'project' | 'local' | undefined {
+  if (scope === 'managed') throw ApiError.badRequest('Managed plugins cannot be changed through user actions')
+  return scope
 }

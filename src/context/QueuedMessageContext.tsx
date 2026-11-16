@@ -8,7 +8,7 @@ type QueuedMessageContextValue = {
   paddingWidth: number;
 };
 const QueuedMessageContext = React.createContext<QueuedMessageContextValue | undefined>(undefined);
-export function useQueuedMessage() {
+export function useQueuedMessage(): QueuedMessageContextValue | undefined {
   return React.useContext(QueuedMessageContext);
 }
 const PADDING_X = 2;
@@ -17,7 +17,7 @@ type Props = {
   useBriefLayout?: boolean;
   children: React.ReactNode;
 };
-export function QueuedMessageProvider(t0) {
+export function QueuedMessageProvider(t0: Props): React.ReactNode {
   const $ = _c(9);
   const {
     isFirst,

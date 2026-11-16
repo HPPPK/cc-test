@@ -14,6 +14,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(target_os = "windows")]
+mod system_proxy;
+
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use tauri::menu::MenuBuilder;
@@ -26,6 +29,24 @@ use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
 };
+
+#[cfg(target_os = "macos")]
+mod project_folder_picker;
+
+#[tauri::command]
+async fn pick_project_folder(title: String) -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        tauri::async_runtime::spawn_blocking(move || project_folder_picker::pick(&title))
+            .await
+            .map_err(|error| format!("Folder picker task failed: {error}"))?
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = title;
+        Err("Isolated folder picker is only available on macOS".to_string())
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod macos_notifications {
@@ -46,7 +67,7 @@ mod macos_notifications {
         fn cchh_request_notification_authorization(
             error_buffer: *mut c_char,
             error_buffer_len: usize,
-        ) -> bool;
+        ) -> c_int;
         fn cchh_send_user_notification(
             title: *const c_char,
             body: *const c_char,
@@ -105,19 +126,14 @@ mod macos_notifications {
 
     pub fn request_permission() -> Result<String, String> {
         let mut error_buffer = new_error_buffer();
-        let granted = unsafe {
+        let status = unsafe {
             cchh_request_notification_authorization(error_buffer.as_mut_ptr(), ERROR_BUFFER_LEN)
         };
-
-        if granted {
-            return Ok("granted".to_string());
+        if status < 0 {
+            return Err(read_error(&error_buffer)
+                .unwrap_or_else(|| "failed to request macOS notification permission".to_string()));
         }
-
-        if let Some(error) = read_error(&error_buffer) {
-            return Err(error);
-        }
-
-        permission_state()
+        Ok(permission_from_status(status).to_string())
     }
 
     extern "C" fn handle_notification_response(target: *const c_char) {
@@ -1669,7 +1685,15 @@ fn select_bundled_node_executable(resource_dir: Option<&Path>) -> Option<PathBuf
     node_executable.is_file().then_some(node_executable)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn select_bundled_node_executable(resource_dir: Option<&Path>) -> Option<PathBuf> {
+    let platform = if cfg!(target_arch = "aarch64") { "darwin-arm64" } else { "darwin-x64" };
+    let node = resource_dir?.join("binaries").join("node-runtime")
+        .join(format!("node-v22.23.1-{platform}")).join("bin").join("node");
+    node.is_file().then_some(node)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn select_bundled_node_executable(_resource_dir: Option<&Path>) -> Option<PathBuf> {
     None
 }
@@ -1698,6 +1722,8 @@ fn resolve_dev_sidecar_script(app_root: &Path) -> Option<PathBuf> {
 
 fn base_sidecar_environment(app_root: &Path, extra: &[(&str, String)]) -> Vec<(String, String)> {
     let mut envs = terminal_environment(&default_shell(None));
+    #[cfg(target_os = "windows")]
+    system_proxy::apply_system_proxy(&mut envs, &system_proxy::read_system_proxy());
     if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
         let cache_dir = PathBuf::from(&config_dir).join("Cache");
         if let Err(e) = fs::create_dir_all(&cache_dir) {
@@ -2382,6 +2408,22 @@ mod tests {
         fs::remove_dir_all(root).expect("remove temp app tree");
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bundled_macos_node_uses_packaged_runtime_without_system_path() {
+        let root = std::env::temp_dir().join(format!("ccj-macos-node-{}", std::process::id()));
+        let platform = if cfg!(target_arch = "aarch64") { "darwin-arm64" } else { "darwin-x64" };
+        let resource_dir = root.join("Resources");
+        let node = resource_dir.join("binaries").join("node-runtime")
+            .join(format!("node-v22.23.1-{platform}")).join("bin").join("node");
+        assert_eq!(select_bundled_node_executable(Some(&resource_dir)), None);
+        fs::create_dir_all(node.parent().unwrap()).unwrap();
+        fs::write(&node, "fixture").unwrap();
+        assert_eq!(select_bundled_node_executable(Some(&resource_dir)), Some(node));
+        assert_eq!(select_bundled_node_executable(None), None);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn bundled_node_executable_uses_the_packaged_resource_when_present() {
@@ -2487,6 +2529,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            pick_project_folder,
             get_server_url,
             restart_adapters_sidecar,
             prepare_for_update_install,

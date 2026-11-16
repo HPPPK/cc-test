@@ -7,7 +7,7 @@ import { Text } from '../../ink.js';
 import { useAppState } from '../../state/AppState.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { plural } from '../../utils/stringUtils.js';
-export function usePluginInstallationStatus() {
+export function usePluginInstallationStatus(): void {
   const $ = _c(20);
   const {
     addNotification

@@ -1,7 +1,10 @@
+import type { Message } from './types/message.js'
+import { getDefaultAppState } from './state/AppStateStore.js'
 import { expect, test } from 'bun:test'
-import type { BetaContentBlock, ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ToolUseBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { z } from 'zod'
-import { getEmptyToolPermissionContext, type Tool, type ToolUseContext } from './Tool.js'
+import { buildTool, getEmptyToolPermissionContext, type ToolUseContext } from './Tool.js'
 import type { CanUseToolFn } from './hooks/useCanUseTool.js'
 import { query } from './query.js'
 import type { QueryDeps } from './query/deps.js'
@@ -10,7 +13,10 @@ import { createFileStateCacheWithSizeLimit } from './utils/fileStateCache.js'
 import { createAssistantMessage, createUserMessage } from './utils/messages.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
 
-const repeatedFailureTool: Tool = {
+const repeatedFailureTool = buildTool({
+  maxResultSizeChars: 1000, renderToolUseMessage() { return null },
+  async prompt() { return 'Deterministic failure probe' },
+  mapToolResultToToolResultBlockParam(_data, id) { return { type: 'tool_result', tool_use_id: id, content: 'probe' } },
   name: 'RepeatedFailure',
   inputSchema: z.object({}),
   async call() {
@@ -22,7 +28,7 @@ const repeatedFailureTool: Tool = {
   isConcurrencySafe: () => true,
   isEnabled: () => true,
   isReadOnly: () => true,
-}
+})
 
 const allowTool = (async () => ({
   behavior: 'allow',
@@ -43,14 +49,13 @@ function createContext(): ToolUseContext {
       isNonInteractiveSession: true,
       agentDefinitions: {
         activeAgents: [],
-        errors: [],
-        warnings: [],
-        metadata: { directories: [], loadedFromSettings: [] },
+        allAgents: [],
       },
     },
     abortController: new AbortController(),
     readFileState: createFileStateCacheWithSizeLimit(10),
     getAppState: () => ({
+      ...getDefaultAppState(),
       toolPermissionContext: {
         ...getEmptyToolPermissionContext(),
         mode: 'acceptEdits',
@@ -58,8 +63,8 @@ function createContext(): ToolUseContext {
       tasks: {},
       effortValue: undefined,
       sessionHooks: new Map(),
-      mcp: { clients: [], tools: [] },
-    }) as ReturnType<ToolUseContext['getAppState']>,
+      mcp: { ...getDefaultAppState().mcp, clients: [], tools: [] },
+     }),
     setAppState: () => {},
     setInProgressToolUseIDs: () => {},
     setResponseLength: () => {},
@@ -72,6 +77,7 @@ function createContext(): ToolUseContext {
 function repeatedToolUse(id: string): ToolUseBlock {
   return {
     type: 'tool_use',
+    caller: { type: 'direct' },
     id,
     name: repeatedFailureTool.name,
     input: {},
@@ -79,7 +85,7 @@ function repeatedToolUse(id: string): ToolUseBlock {
 }
 
 async function drainStreamingExecutor(executor: StreamingToolExecutor) {
-  const updates = []
+  const updates: (ReturnType<StreamingToolExecutor["getRemainingResults"]> extends AsyncGenerator<infer Update> ? Update : never)[] = []
   for await (const update of executor.getRemainingResults()) updates.push(update)
   return updates
 }
@@ -97,13 +103,13 @@ test('continues the query after repeated deterministic tool errors until the mod
   const deps: QueryDeps = {
     callModel,
     microcompact: (async messages => ({ messages })) as QueryDeps['microcompact'],
-    autocompact: (async () => ({ compactionResult: null, consecutiveFailures: undefined })) as QueryDeps['autocompact'],
-    uuid: () => 'query-continuation-error-feedback-test',
+    autocompact: (async () => ({ wasCompacted: false, consecutiveFailures: 0 })) as QueryDeps['autocompact'],
+    uuid: () => crypto.randomUUID(),
   }
 
   const generator = query({
     messages: [createUserMessage({ content: 'Run the tool.' })],
-    systemPrompt: asSystemPrompt('Regression test.'),
+    systemPrompt: asSystemPrompt(['Regression test.']),
     userContext: {},
     systemContext: {},
     canUseTool: allowTool,
@@ -112,7 +118,7 @@ test('continues the query after repeated deterministic tool errors until the mod
     deps,
   })
 
-  const emitted = []
+  const emitted: unknown[] = []
   let terminal: unknown
   while (true) {
     const next = await generator.next()
@@ -143,4 +149,22 @@ test('keeps repeated streamed tool errors as feedback without emitting a continu
   const second = await drainStreamingExecutor(executor)
   expect(JSON.stringify(second)).toContain('deterministic query regression failure')
   expect(JSON.stringify(second)).not.toContain('hook_stopped_continuation')
+})
+
+
+test('blocks an expert with no browser before the query can call its model', async () => {
+  const original = process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+  process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = 'cli-only'
+  let modelCalls = 0
+  const deps = { callModel: async function* () { modelCalls++ } } as unknown as QueryDeps
+  const run = async () => {
+    for await (const _message of query({ messages: [createUserMessage({ content: '老照片修复' })], systemPrompt: asSystemPrompt([]), userContext: {}, systemContext: {}, canUseTool: allowTool, toolUseContext: createContext(), querySource: 'sdk', deps })) {}
+  }
+  try {
+    await expect(run()).rejects.toMatchObject({ code: 'EXPERT_RUNTIME_BROWSER_UNAVAILABLE' })
+    expect(modelCalls).toBe(0)
+  } finally {
+    if (original === undefined) delete process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY
+    else process.env.CC_JIANGXIA_EXPERT_TEMPLATE_FILL_DELIVERY = original
+  }
 })

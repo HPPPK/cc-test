@@ -9,7 +9,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import type { HookResult } from '../hooks.js'
 import { safeParseJSON } from '../json.js'
-import { createUserMessage, extractTextContent } from '../messages.js'
+import { createRuntimeUserMessage, extractTextContent } from '../messages.js'
 import { getSmallFastModel } from '../model/model.js'
 import type { PromptHook } from '../settings/types.js'
 import { asSystemPrompt } from '../systemPromptType.js'
@@ -39,7 +39,7 @@ export async function execPromptHook(
 
     // Create user message directly - no need for processUserInput which would
     // trigger UserPromptSubmit hooks and cause infinite recursion
-    const userMessage = createUserMessage({ content: processedPrompt })
+    const userMessage = createRuntimeUserMessage({ content: processedPrompt })
 
     // Prepend conversation history if provided
     const messagesToQuery =

@@ -1,3 +1,4 @@
+import type * as React from 'react'
 import { c as _c } from "react/compiler-runtime";
 import { useEffect } from 'react';
 import type { ScopedMcpServerConfig } from '../services/mcp/types.js';
@@ -12,7 +13,7 @@ type UseIDEIntegrationProps = {
   setShowIdeOnboarding: React.Dispatch<React.SetStateAction<boolean>>;
   setIDEInstallationState: React.Dispatch<React.SetStateAction<IDEExtensionInstallationStatus | null>>;
 };
-export function useIDEIntegration(t0) {
+export function useIDEIntegration(t0: UseIDEIntegrationProps): void {
   const $ = _c(7);
   const {
     autoConnectIdeFlag,

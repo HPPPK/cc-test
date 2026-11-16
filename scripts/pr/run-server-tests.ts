@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { readdirSync, statSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { loadQuarantineManifest, quarantinedPathSet } from '../quality-gate/quarantine'
 
 const root = process.cwd()
@@ -55,7 +55,7 @@ if (testFiles.length === 0) {
 const failedFiles: string[] = []
 
 if (!isolateFiles) {
-  const proc = Bun.spawn(['bun', 'test', '--isolate', `--max-concurrency=${maxConcurrency}`, `--timeout=${testTimeoutMs}`, ...testFiles], {
+  const proc = Bun.spawn(['bun', 'test', '--isolate', `--max-concurrency=${maxConcurrency}`, `--timeout=${testTimeoutMs}`, ...testFiles.map(file => resolve(root, file))], {
     cwd: root,
     stdout: 'inherit',
     stderr: 'inherit',
@@ -65,7 +65,7 @@ if (!isolateFiles) {
 
 for (const testFile of testFiles) {
   console.log(`\n[check:server] ${testFile}`)
-  const proc = Bun.spawn(['bun', 'test', `--timeout=${testTimeoutMs}`, testFile], {
+  const proc = Bun.spawn(['bun', 'test', `--timeout=${testTimeoutMs}`, resolve(root, testFile)], {
     cwd: root,
     stdout: 'inherit',
     stderr: 'inherit',

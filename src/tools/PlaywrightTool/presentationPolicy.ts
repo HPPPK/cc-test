@@ -24,3 +24,15 @@ export function managedPresentationLaunchArgs(
     '--window-size=1,1',
   ]
 }
+
+export type PresentationControl = { endpoint: string; sessionId: string; browserKey?: string }
+
+export function consumePresentationRequest(consumed: Map<string, number>, control: PresentationControl, generation: number): boolean {
+  if (!Number.isSafeInteger(generation) || generation <= 0) return false
+  const key = JSON.stringify([control.endpoint, control.sessionId, control.browserKey ?? ''])
+  if (generation <= (consumed.get(key) ?? 0)) return false
+  // Mark synchronously before any native operation awaits: two sibling polling
+  // responses for the same click must never restore the shared window twice.
+  consumed.set(key, generation)
+  return true
+}

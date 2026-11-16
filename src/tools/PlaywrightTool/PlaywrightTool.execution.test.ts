@@ -54,6 +54,54 @@ afterEach(() => {
 })
 
 describe('PlaywrightTool validation and execution mode', () => {
+  test('local progress reporting is bounded and direct and does not discard successful browser evidence', async () => {
+    expertEnvironment()
+    process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'research-session'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:3456'
+    const reports: RequestInit[] = []
+    const failingFetch = Object.assign(async (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      reports.push(init!)
+      throw new Error('progress endpoint unavailable')
+    }, { preconnect: fetch.preconnect })
+    spyOn(globalThis, 'fetch').mockImplementation(failingFetch)
+    spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue(pageResult)
+    const result = await PlaywrightTool.call(input(), context('user-needs'))
+    expect(result.data.text).toBe(pageResult.text)
+    expect(reports).toHaveLength(2)
+    for (const report of reports) {
+      expect(report.signal).toBeInstanceOf(AbortSignal)
+      expect((report as RequestInit & { proxy?: string }).proxy).toBe('')
+    }
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(result.data, 'timing')
+    expect(String(mapped.content)).toContain('activityBeforeMs=')
+    expect(String(mapped.content)).toContain('browserMs=')
+    expect(String(mapped.content)).toContain('activityAfterMs=')
+  })
+
+  test('a stalled real local status endpoint cannot hold successful browser evidence indefinitely', async () => {
+    expertEnvironment()
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch() { return new Promise<Response>(() => {}) } })
+    process.env.CC_JIANGXIA_EXPERT_SESSION_ID = 'research-session'
+    process.env.CC_JIANGXIA_DESKTOP_SERVER_URL = 'http://127.0.0.1:' + server.port
+    spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue(pageResult)
+    try {
+      const result = await PlaywrightTool.call(input(), context('user-needs'))
+      expect(result.data.text).toBe(pageResult.text)
+      expect(result.data.error).toBeUndefined()
+      expect(result.data.timings?.activityBeforeMs).toBeGreaterThan(0)
+      expect(result.data.timings?.activityAfterMs).toBeGreaterThan(0)
+    } finally { server.stop(true) }
+  }, 10_000)
+  test('retains runner widget diagnostics through execution normalization and tool ledger', async () => {
+    const browserDiagnostics = { observation: 'unknown' as const, observedAt: '2026-11-11T00:00:00Z', inspectedFrames: 0, inspectionIncomplete: true, events: [], droppedEvents: 0 }
+    spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue({ ...pageResult, accessLimited: true, browserDiagnostics })
+    const result = await PlaywrightTool.call(input(), context())
+    expect(result.data.browserDiagnostics).toEqual(browserDiagnostics)
+    const mapped = PlaywrightTool.mapToolResultToToolResultBlockParam(result.data, 'toolu-diagnostic-transport')
+    const encoded = String(mapped.content).match(/<playwright-action-ledger encoding="base64">([A-Za-z0-9+/=]+)<\/playwright-action-ledger>/)?.[1]
+    expect(JSON.parse(Buffer.from(encoded!, 'base64').toString('utf8')).browserDiagnostics).toEqual(browserDiagnostics)
+  })
+
   test('ordinary chat validates and reaches the managed runner without UIUX settings', async () => {
     const runner = spyOn(nodeBridge, 'runPlaywrightWithNodeBridge').mockResolvedValue(pageResult)
     const request = input()

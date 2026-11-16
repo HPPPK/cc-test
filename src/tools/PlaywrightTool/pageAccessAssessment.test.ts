@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { classifyRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent } from './pageAccessAssessment.js'
+import { classifyRenderedPageAccess, detectHumanVerificationKind, isHumanVerificationSurfaceStillPresent, isHumanVerificationRecoveryHealthy } from './pageAccessAssessment.js'
 
 describe('detectHumanVerificationKind', () => {
   test('detects Google Chinese sorry / reCAPTCHA interstitial even when iframe text is missing', () => {
@@ -175,4 +175,58 @@ test('recognizes denial titles or leading body messages separately from the URL 
     expect(classifyRenderedPageAccess('https://example.com/article', title!, text!)).toContain('ACCESS_LIMITED_PAGE')
     expect(detectHumanVerificationKind('https://example.com/article', title!, text!)).toBeNull()
   }
+})
+
+
+test('replacement verification surfaces remain blocked regardless of the initial challenge kind', () => {
+  for (const initialKind of ['Google security verification', 'Baidu security verification', 'Bing security verification', 'human verification', 'login verification']) {
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://example.com/login', 'Sign in', 'Email Password Sign in to continue')).toBe(true)
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://www.google.com/sorry/index', '', '')).toBe(true)
+    expect(isHumanVerificationSurfaceStillPresent(initialKind, 'https://www.bing.com/search?q=x', 'Bing', '请解决以下难题以继续')).toBe(true)
+  }
+})
+
+test('recovery requires readable public content and rejects loading, blank, closed and denied pages', async () => {
+  const { isHumanVerificationRecoveryHealthy } = await import('./pageAccessAssessment.js')
+  const healthy = { url: 'https://example.com/results', title: 'Results', text: 'Public results have loaded.', readyState: 'complete', closed: false }
+  expect(isHumanVerificationRecoveryHealthy(healthy)).toBe(true)
+  for (const invalid of [
+    { closed: true }, { readyState: 'loading' }, { url: 'about:blank' }, { text: '' },
+    { title: '403 Forbidden' }, { title: '404 Not Found' },
+    { url: 'https://example.com/login', title: 'Sign in', text: 'Email Password' },
+    { text: '请解决以下难题以继续' },
+  ]) expect(isHumanVerificationRecoveryHealthy({ ...healthy, ...invalid })).toBe(false)
+})
+
+test('recognizes the observed Reddit and Cloudflare challenge surfaces consistently', () => {
+  const cases = [
+    ['https://www.reddit.com/r/Windows10/search/?js_challenge=1', 'Reddit - Prove your humanity', 'Prove your humanity\nComplete the challenge below and let us know you’re a real person.'],
+    ['https://www.v2ex.com/?__cf_chl_rt_tk=token', 'Just a moment...', ''],
+  ]
+  for (const [url, title, text] of cases) {
+    expect(detectHumanVerificationKind(url!, title!, text!)).toBeTruthy()
+    expect(isHumanVerificationSurfaceStillPresent(undefined, url!, title!, text!)).toBe(true)
+    expect(classifyRenderedPageAccess(url!, title!, text!)).toContain('ACCESS_LIMITED_PAGE')
+  }
+  expect(detectHumanVerificationKind('https://example.com/article', 'How Reddit verifies users', 'The challenge says “Prove your humanity”.')).toBeNull()
+})
+
+
+test('keeps the real Cloudflare security-verification wording paused without treating a discussion as a challenge', () => {
+  const text = 'www.autohotkey.com\nPerforming security verification\nThis website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot.\nRay ID: example\nPerformance and security by Cloudflare'
+  for (const url of ['https://www.autohotkey.com/', 'https://cn.v2ex.com/t/723554']) {
+    expect(detectHumanVerificationKind(url, 'Just a moment...', text)).toBe('human verification')
+    expect(isHumanVerificationSurfaceStillPresent(undefined, url, 'Just a moment...', text)).toBe(true)
+    expect(classifyRenderedPageAccess(url, 'Just a moment...', text)).toContain('ACCESS_LIMITED_PAGE')
+  }
+  expect(detectHumanVerificationKind('https://example.com/blog', 'How security verification works', text)).toBeNull()
+})
+
+test('recognizes the recorded Chinese Cloudflare page without blocking articles that quote it', () => {
+  const body = 'www.v2ex.com\n正在进行安全验证\n本网站使用安全服务防护恶意自动程序。在验证您不是自动程序期间，将显示此页面。\n由 Cloudflare 提供的性能和安全服务'
+  expect(detectHumanVerificationKind('https://www.v2ex.com/t/165355', '请稍候…', body)).toBe('human verification')
+  expect(classifyRenderedPageAccess('https://www.v2ex.com/t/165355', '请稍候…', body)).toContain('ACCESS_LIMITED_PAGE')
+  expect(isHumanVerificationRecoveryHealthy({ url: 'https://www.v2ex.com/t/165355', title: '请稍候…', text: body, readyState: 'complete', closed: false })).toBe(false)
+  expect(detectHumanVerificationKind('https://example.com/article', 'Cloudflare 验证说明', body)).toBeNull()
+  expect(detectHumanVerificationKind('https://example.com/', '请稍候…', '正在加载公开产品说明')).toBeNull()
 })

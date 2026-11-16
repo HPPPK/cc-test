@@ -25,20 +25,22 @@ function validPhase(overrides: Record<string, unknown> = {}) {
       name: 'Plan Output',
       kind: 'markdown',
       description: 'A plan.',
-      required: true,
+      required: true as const,
     },
     completionCriteria: {
-      type: 'manual-checklist',
+      type: 'manual-checklist' as const,
       description: 'Plan is complete.',
     },
-    transition: { authority: 'auto' },
+    transition: { authority: 'auto' as const },
+    skills: [], requiredArtifacts: [],
     ...overrides,
   }
 }
 
 function validWorkflow(overrides: Record<string, unknown> = {}) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 2 as const,
+    source: 'user' as const,
     id: 'save-flow',
     version: '1.0.0',
     name: 'Save Flow',

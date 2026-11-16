@@ -19,17 +19,35 @@ import { getPlatform } from '../utils/platform.js'
 // startup freeze is worse than a first-press delay.
 type AudioNapi = typeof import('audio-capture-napi')
 let audioNapi: AudioNapi | null = null
-let audioNapiPromise: Promise<AudioNapi> | null = null
+let audioNapiPromise: Promise<AudioNapi | null> | null = null
 
-function loadAudioNapi(): Promise<AudioNapi> {
+function isAudioNapi(value: unknown): value is AudioNapi {
+  return typeof value === 'object' && value !== null
+    && 'isNativeAudioAvailable' in value && typeof value.isNativeAudioAvailable === 'function'
+    && 'isNativeRecordingActive' in value && typeof value.isNativeRecordingActive === 'function'
+    && 'startNativeRecording' in value && typeof value.startNativeRecording === 'function'
+    && 'stopNativeRecording' in value && typeof value.stopNativeRecording === 'function'
+}
+
+/** Load optional exports only; never start recording during availability checks. */
+export async function loadOptionalAudioNapi(importer: () => Promise<unknown>): Promise<AudioNapi | null> {
+  try {
+    const mod = await importer()
+    if (!isAudioNapi(mod)) throw new Error('Native audio module has invalid exports')
+    if (typeof mod.isNativeAudioAvailable() !== 'boolean') throw new Error('Native audio availability must be boolean')
+    return mod
+  } catch (error) {
+    logForDebugging(`[voice] native audio unavailable: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+function loadAudioNapi(): Promise<AudioNapi | null> {
   audioNapiPromise ??= (async () => {
     const t0 = Date.now()
-    const mod = await import('audio-capture-napi')
-    // vendor/audio-capture-src/index.ts defers require(...node) until the
-    // first function call — trigger it here so timing reflects real cost.
-    mod.isNativeAudioAvailable()
+    const mod = await loadOptionalAudioNapi(() => import('audio-capture-napi'))
     audioNapi = mod
-    logForDebugging(`[voice] audio-capture-napi loaded in ${Date.now() - t0}ms`)
+    logForDebugging(`[voice] native audio availability checked in ${Date.now() - t0}ms`)
     return mod
   })()
   return audioNapiPromise
@@ -194,12 +212,22 @@ export async function checkVoiceDependencies(): Promise<{
 }> {
   // Native audio module (cpal) handles everything on macOS, Linux, and Windows
   const napi = await loadAudioNapi()
-  if (napi.isNativeAudioAvailable()) {
+  if (napi?.isNativeAudioAvailable()) {
     return { available: true, missing: [], installCommand: null }
   }
 
+  return getVoiceDependencyStatus(false, process.platform, hasCommand, detectPackageManager)
+}
+
+export function getVoiceDependencyStatus(
+  nativeAvailable: boolean,
+  platform: NodeJS.Platform,
+  commandAvailable: (command: string) => boolean,
+  packageManager: () => PackageManagerInfo | null,
+): { available: boolean; missing: string[]; installCommand: string | null } {
+  if (nativeAvailable) return { available: true, missing: [], installCommand: null }
   // Windows has no supported fallback — native module is required
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     return {
       available: false,
       missing: ['Voice mode requires the native audio module (not loaded)'],
@@ -208,17 +236,17 @@ export async function checkVoiceDependencies(): Promise<{
   }
 
   // On Linux, arecord (ALSA utils) is a valid fallback recording backend
-  if (process.platform === 'linux' && hasCommand('arecord')) {
+  if (platform === 'linux' && commandAvailable('arecord')) {
     return { available: true, missing: [], installCommand: null }
   }
 
   const missing: string[] = []
 
-  if (!hasCommand('rec')) {
+  if (!commandAvailable('rec')) {
     missing.push('sox (rec command)')
   }
 
-  const pm = missing.length > 0 ? detectPackageManager() : null
+  const pm = missing.length > 0 ? packageManager() : null
   return {
     available: missing.length === 0,
     missing,
@@ -240,7 +268,7 @@ export type RecordingAvailability = {
 // signed or cross-architecture binaries (e.g., x64-on-arm64).
 export async function requestMicrophonePermission(): Promise<boolean> {
   const napi = await loadAudioNapi()
-  if (!napi.isNativeAudioAvailable()) {
+  if (!napi?.isNativeAudioAvailable()) {
     return true // non-native platforms skip this check
   }
 
@@ -268,7 +296,7 @@ export async function checkRecordingAvailability(): Promise<RecordingAvailabilit
 
   // Native audio module (cpal) handles everything on macOS, Linux, and Windows
   const napi = await loadAudioNapi()
-  if (napi.isNativeAudioAvailable()) {
+  if (napi?.isNativeAudioAvailable()) {
     return { available: true, reason: null }
   }
 
@@ -342,10 +370,10 @@ export async function startRecording(
   // Try native audio module first (macOS, Linux, Windows via cpal)
   const napi = await loadAudioNapi()
   const nativeAvailable =
-    napi.isNativeAudioAvailable() &&
+    napi !== null && napi.isNativeAudioAvailable() &&
     (process.platform !== 'linux' || (await linuxHasAlsaCards()))
   const useSilenceDetection = options?.silenceDetection !== false
-  if (nativeAvailable) {
+  if (nativeAvailable && napi) {
     // Ensure any previous recording is fully stopped
     if (nativeRecordingActive || napi.isNativeRecordingActive()) {
       napi.stopNativeRecording()

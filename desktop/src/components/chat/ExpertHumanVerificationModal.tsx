@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { expertsApi } from '../../api/experts'
 import { useChatStore, type PerSessionState } from '../../stores/chatStore'
 import { Button } from '../shared/Button'
 import { Modal } from '../shared/Modal'
-import { notifyDesktop } from '../../lib/desktopNotifications'
 
 type PendingPermission = PerSessionState['pendingPermission']
 type VerificationResolution = 'switch_public_entry'
@@ -87,23 +86,22 @@ export function ExpertHumanVerificationModal({
   const respondToPermission = useChatStore((state) => state.respondToPermission)
   const [submitted, setSubmitted] = useState<VerificationResolution | 'opening' | 'checking' | null>(null)
   const [browserStatus, setBrowserStatus] = useState<string | null>(null)
+  const [dismissedRequestId, setDismissedRequestId] = useState<string | null>(null)
   const context = useMemo(() => verificationContext(request), [request])
   const site = context ? siteName(context) : ''
-  const action = context ? requiredAction(context) : ''
-
-  useEffect(() => {
-    if (!request || !context) return
-
-    void notifyDesktop({
-      dedupeKey: `expert-human-verification:${sessionId}:${request.requestId}`,
-      title: `${site} \u9700\u8981\u4eba\u5de5\u9a8c\u8bc1`,
-      body: action,
-      requestAttention: true,
-      target: { type: 'session', sessionId },
-    })
-  }, [action, context, request, sessionId, site])
+  const controlsNotObserved = context?.detail?.includes('VERIFICATION_CONTROLS_NOT_OBSERVED') === true
 
   if (!request || !context) return null
+
+  if (dismissedRequestId === request.requestId) {
+    return (
+      <div className="fixed bottom-6 right-6 z-40" role="status">
+        <Button variant="secondary" onClick={() => setDismissedRequestId(null)}>
+          调研已暂停：{site} {controlsNotObserved ? '访问需要处理' : '等待验证'}，查看提示
+        </Button>
+      </div>
+    )
+  }
 
   const chooseFallback = () => {
     if (submitted) return
@@ -120,7 +118,9 @@ export function ExpertHumanVerificationModal({
     void expertsApi.requestResearchBrowserVisibility(sessionId)
       .then(({ presentationConfirmed }) => {
         if (presentationConfirmed === true) {
-          setBrowserStatus('验证浏览器已打开。请在该窗口完成验证；软件之后不会再自动收回它。')
+          setBrowserStatus(controlsNotObserved
+            ? '浏览器已打开。请查看原页面；当前快照未观察到可见验证控件，软件之后不会再自动收回它。'
+            : '验证浏览器已打开。请在该窗口完成验证；软件之后不会再自动收回它。')
         } else if (presentationConfirmed === false) {
           setBrowserStatus('未能自动恢复验证浏览器。请从任务栏打开 Chromium；如果仍看不到，请告诉我这个提示。')
         } else {
@@ -142,8 +142,8 @@ export function ExpertHumanVerificationModal({
   return (
     <Modal
       open
-      onClose={chooseFallback}
-      title={`${site} 需要验证`}
+      onClose={() => setDismissedRequestId(request.requestId)}
+      title={`${site} ${controlsNotObserved ? '访问需要处理' : '需要验证'}`}
       width={400}
       footer={
         <div className="flex flex-wrap justify-end gap-2">
@@ -172,10 +172,12 @@ export function ExpertHumanVerificationModal({
       }
     >
       <div className="space-y-2 text-sm">
-        <p className="font-medium text-[var(--color-text-primary)]">请完成：{requiredAction(context)}</p>
+        <p className="font-medium text-[var(--color-text-primary)]">{controlsNotObserved ? '当前快照未观察到可见的验证控件' : '请完成：' + requiredAction(context)}</p>
         <p className="text-[var(--color-text-secondary)]">
-          {'已为你保留 ' + site + ' 的验证页面。完成网页验证后，软件会自动检测并继续当前检索。点击“打开验证浏览器”才会按你的这次操作恢复该托管 Chromium；之后软件不会再自动移动、最小化或收回它。'}
-          {' '}关闭此提示会改查其他公开入口。
+          {controlsNotObserved
+            ? '已为你保留 ' + site + ' 的原页面。页面可能仍在加载，或当前访问受到限制；未观察到控件不代表验证通过，也不能确定之后不会出现。点击“打开验证浏览器”可查看同一页面；之后软件不会再自动移动、最小化或收回它。'
+            : '已为你保留 ' + site + ' 的验证页面。完成网页验证后，软件会自动检测并继续当前检索。点击“打开验证浏览器”才会按你的这次操作恢复该托管 Chromium；之后软件不会再自动移动、最小化或收回它。'}
+          {' '}关闭提示只会暂时收起，调研仍保持暂停。软件每 3 秒检查一次；如需跳过，请明确点击“改查其他入口”。
         </p>
         {browserStatus ? (
           <p role="status" className="text-xs text-[var(--color-text-secondary)]">{browserStatus}</p>

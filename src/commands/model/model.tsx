@@ -15,7 +15,12 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1
 import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
-function ModelPickerWrapper(t0) {
+function ModelPickerWrapper(t0: {
+  onDone: (
+    result?: string,
+    options?: { display?: CommandResultDisplay },
+  ) => void
+}): React.ReactNode {
   const $ = _c(17);
   const {
     onDone
@@ -59,7 +64,7 @@ function ModelPickerWrapper(t0) {
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }
-      let wasFastModeToggledOn = undefined;
+      let wasFastModeToggledOn: boolean | undefined;
       if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(model) && isFastMode) {
@@ -202,7 +207,7 @@ function SetModelAndClose({
         mainLoopModelForSession: null
       }));
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
-      let wasFastModeToggledOn = undefined;
+      let wasFastModeToggledOn: boolean | undefined;
       if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(modelValue) && isFastMode) {
@@ -243,7 +248,9 @@ function isSonnet1mUnavailable(model: string): boolean {
   // a different access criteria.
   return !checkSonnet1mAccess() && (m.includes('sonnet[1m]') || m.includes('sonnet-4-6[1m]'));
 }
-function ShowModelAndClose(t0) {
+function ShowModelAndClose(t0: {
+  onDone: (result?: string) => void
+}): React.ReactNode {
   const {
     onDone
   } = t0;

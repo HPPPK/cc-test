@@ -1,7 +1,11 @@
+import { requireFixtureRecord } from './fixtureAssertions.js'
+import { migrateWorkflowScopeApproval } from '../services/workflowScopeAmendment.js'
+import type { WorkflowSessionState } from '../services/workflowTypes.js'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import * as fs from 'fs/promises'
 import * as os from 'os'
 import * as path from 'path'
+import { ExpertRuntimeSessionStore, getExpertRuntimeSessionStorageDir } from '../services/expertRuntimeSessionStore.js'
 import { ProviderService } from '../services/providerService.js'
 import {
   CURRENT_PROVIDER_INDEX_SCHEMA_VERSION,
@@ -10,6 +14,19 @@ import {
 } from '../services/persistentStorageMigrations.js'
 
 let tempDir: string
+
+test('workflow scope approval forward migration preserves old pending routes and rejects unsupported approval versions', async () => {
+  const state = JSON.parse(await fs.readFile(path.join(import.meta.dir, '../services/__fixtures__/workflow-sessions/pending-ready-state.json'), 'utf8')) as WorkflowSessionState
+  state.pendingRoute = { routeId: 'legacy-route', phaseId: 'requirements-clarification', fromPhaseId: 'requirements-clarification', targetPhaseId: 'requirements-clarification', intent: 'rework_current_phase', rationale: 'Legacy rework', evidence: [], createdAt: '2026-01-01', requiresConfirmation: true, approvedTargetPhaseId: 'requirements-clarification', status: 'pending' }
+  expect(migrateWorkflowScopeApproval(state)).toBe(state)
+  const before = structuredClone(state.runtimeContract)
+  state.pendingRoute.scopeAmendment = { schemaVersion: 999, batchId: 'B3', addWriteScopes: ['config/settings.py'] } as never
+  const upgraded = migrateWorkflowScopeApproval(state)
+  expect(upgraded.pendingRoute?.status).toBe('rejected')
+  expect(upgraded.pendingRoute?.scopeAmendment).toBeUndefined()
+  expect(upgraded.runStatus).toBe('blocked')
+  expect(upgraded.runtimeContract).toEqual(before)
+})
 
 async function listFiles(dir: string) {
   try {
@@ -356,4 +373,52 @@ describe('persistent storage upgrade migrations', () => {
     const backups = (await listFiles(ccJiangxiaDir)).filter((file) => file.startsWith('settings.json.bak-before-migration-'))
     expect(backups.length).toBe(1)
   })
+})
+
+// Additive field checkpoints require no destructive rewrite of a legacy v1
+// record. Loading and saving is the forward upgrade; absent fields stay absent.
+test('upgrades legacy expert delivery capability without inventing fields or dropping unknown metadata', async () => {
+  const config = await fs.mkdtemp(path.join(os.tmpdir(), 'expert-fields-upgrade-'))
+  const previous = process.env.CLAUDE_CONFIG_DIR
+  process.env.CLAUDE_CONFIG_DIR = config
+  try {
+    const id = '11111111-2222-3333-4444-555555555555'
+    const expert = { mode: 'expert', status: 'active', expertId: 'legacy', futureField: { keep: true },
+      runtimeBinding: { active: true }, templateFillDelivery: { templateId: 'legacy-v1', finalizedAt: '2026-01-01T00:00:00Z', futureDelivery: true } }
+    await fs.mkdir(getExpertRuntimeSessionStorageDir(), { recursive: true })
+    const file = path.join(getExpertRuntimeSessionStorageDir(), id + '.json')
+    await fs.writeFile(file, JSON.stringify({ schemaVersion: 1, sessionId: id, expert, updatedAt: '2026-01-01T00:00:00Z' }))
+    const store = new ExpertRuntimeSessionStore()
+    const loaded = await store.get(id)
+    expect(requireFixtureRecord(loaded)).toEqual(expert)
+    expect(loaded?.templateFillDelivery).not.toHaveProperty('fieldSnapshot')
+    await store.save(id, loaded!)
+    expect(requireFixtureRecord(await new ExpertRuntimeSessionStore().get(id))).toEqual(expert)
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = previous
+    await fs.rm(config, { recursive: true, force: true })
+  }
+})
+
+test('upgrades a legacy WebSearch choice additively without changing keys or unknown user settings', async () => {
+  const { SettingsService } = await import('../services/settingsService.js')
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'web-search-upgrade-'))
+  const previous = process.env.CLAUDE_CONFIG_DIR
+  process.env.CLAUDE_CONFIG_DIR = root
+  try {
+    await fs.writeFile(path.join(root, 'settings.json'), JSON.stringify({ futureRoot: { keep: true }, webSearch: { mode: 'brave', braveApiKey: 'fixture-key', futureOption: { keep: true } } }))
+    await new SettingsService().updateUserSettings({ webSearch: { mode: 'tavily-keyless' } })
+    const saved = JSON.parse(await fs.readFile(path.join(root, 'settings.json'), 'utf8'))
+    expect(saved.webSearch.mode).toBe('tavily-keyless')
+    expect(saved.webSearch.braveApiKey).toBe('fixture-key')
+    expect(saved.webSearch.futureOption).toEqual({ keep: true })
+    expect(saved.futureRoot).toEqual({ keep: true })
+    expect(saved.schemaVersion).toBeUndefined()
+  } finally {
+    if (previous === undefined) delete process.env.CLAUDE_CONFIG_DIR
+    else process.env.CLAUDE_CONFIG_DIR = previous
+    resetPersistentStorageMigrationsForTests()
+    await fs.rm(root, { recursive: true, force: true })
+  }
 })

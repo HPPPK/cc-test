@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "requiredHostTools": [
+    {
+      "name": "Agent",
+      "supported": true
+    },
+    {
+      "name": "AskUserQuestion",
+      "supported": true
+    },
+    {
+      "name": "Bash",
+      "supported": true
+    },
+    {
+      "name": "Edit",
+      "supported": true
+    },
+    {
+      "name": "Glob",
+      "supported": true
+    },
+    {
+      "name": "Grep",
+      "supported": true
+    },
+    {
+      "name": "LS",
+      "supported": true
+    },
+    {
+      "name": "MultiEdit",
+      "supported": true
+    },
+    {
+      "name": "PowerShell",
+      "supported": true
+    },
+    {
+      "name": "Read",
+      "supported": true
+    },
+    {
+      "name": "Write",
+      "supported": true
+    },
+    {
+      "name": "request_workflow_route",
+      "supported": true
+    },
+    {
+      "name": "submit_phase_completion",
+      "supported": true
+    },
+    {
+      "name": "workflow_artifact_write",
+      "supported": true
+    },
+    {
+      "name": "workflow_template_authoring",
+      "supported": true
+    }
+  ]
+}

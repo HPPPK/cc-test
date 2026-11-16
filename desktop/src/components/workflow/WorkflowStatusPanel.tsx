@@ -143,6 +143,7 @@ export type WorkflowStatusPanelSummary = {
     requiresConfirmation: boolean
     approvedTargetPhaseId: string | null
     status: 'pending' | 'approved' | 'rejected'
+    scopeAmendment?: { batchId: string; addWriteScopes: string[] }
   } | null
   pendingTargetPhaseId?: string | null
   pendingTargetPhaseIndex?: number
@@ -153,7 +154,8 @@ export type WorkflowStatusPanelSummary = {
   autoRecovery?: {
     phaseId: string
     startedAt: string
-    expiresAt: string
+    credentialId?: string
+    expiresAt?: string
     attempt: number
     source: 'phase-completion-blocked' | 'phase-completion-unable'
   }

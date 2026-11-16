@@ -215,14 +215,15 @@ export function FuzzyPicker<T>({
       </Box>
     </Pane>;
 }
-type ListProps<T> = Pick<Props<T>, 'visibleCount' | 'direction' | 'getKey' | 'renderItem'> & {
+type ListProps<T> = Pick<Props<T>, 'direction' | 'getKey' | 'renderItem'> & {
+  visibleCount: number;
   visible: readonly T[];
   windowStart: number;
   total: number;
   focusedIndex: number;
   emptyText: string;
 };
-function List(t0) {
+function List<T>(t0: ListProps<T>): React.ReactNode {
   const $ = _c(27);
   const {
     visible,

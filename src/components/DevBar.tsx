@@ -6,11 +6,15 @@ import { Text, useInterval } from '../ink.js';
 
 // Show DevBar for dev builds or all ants
 function shouldShowDevBar(): boolean {
-  return "production" === 'development' || "external" === 'ant';
+  return false || false;
 }
-export function DevBar() {
+export function DevBar(): React.ReactNode {
   const $ = _c(5);
-  const [slowOps, setSlowOps] = useState(getSlowOperations);
+  const [slowOps, setSlowOps] = useState<ReadonlyArray<{
+        operation: string
+        durationMs: number
+        timestamp: number
+      }>>(getSlowOperations);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t0 = () => {

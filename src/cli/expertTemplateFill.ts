@@ -7,6 +7,7 @@ type RecordValue = Record<string, unknown>
 
 export type ExpertTemplateFillCliOptions = {
   schema?: true
+  recoverFields?: true
   commitReceipt?: string
   dataPath?: string
   dataFromStdin?: true
@@ -33,7 +34,7 @@ export type ExpertTemplateFillCliDependencies = {
   fetch: typeof fetch
 }
 
-const usage = 'Usage: cc-jiangxia expert-template-fill (--schema | --commit-receipt <receipt> | --data <report-fields.json> | --data-stdin) --output <final-report.html> [--server-url <url>] [--session-id <id>]'
+const usage = 'Usage: cc-jiangxia expert-template-fill (--schema | --recover-fields | --commit-receipt <receipt> --output <final-report.html> | (--data <report-fields.json> | --data-stdin) --output <final-report.html>) [--server-url <url>] [--session-id <id>]. Use --recover-fields to recover stored JSON fields for repair; save or pipe the JSON instead of parsing report HTML.'
 
 function isRecord(value: unknown): value is RecordValue {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -54,6 +55,11 @@ export function parseExpertTemplateFillCliArgs(args: string[]): ExpertTemplateFi
       if (options.commitReceipt) throw new Error('--commit-receipt may only be provided once.')
       options.commitReceipt = optionValue(args, index, arg)
       index += 1
+      continue
+    }
+    if (arg === '--recover-fields') {
+      if (options.recoverFields) throw new Error('--recover-fields may only be provided once.')
+      options.recoverFields = true
       continue
     }
     if (arg === '--schema') {
@@ -92,6 +98,10 @@ export function parseExpertTemplateFillCliArgs(args: string[]): ExpertTemplateFi
     }
     throw new Error(`Unknown option: ${arg}. ${usage}`)
   }
+  if (options.recoverFields) {
+    if (options.schema || options.dataPath || options.dataFromStdin || options.outputPath || options.commitReceipt) throw new Error('--recover-fields cannot be combined with schema, data, output, or commit options.')
+    return options
+  }
   if (options.schema) {
     if (options.dataPath || options.dataFromStdin || options.outputPath || options.commitReceipt) throw new Error('--schema cannot be combined with data or output options.')
     return options
@@ -108,8 +118,19 @@ function parseFieldsDocument(content: string): ExpertTemplateFillPayload {
   let document: unknown
   try {
     document = JSON.parse(content)
-  } catch (error) {
-    throw new Error(`Could not parse --data JSON: ${error instanceof Error ? error.message : String(error)}`)
+  } catch {
+    let syntaxHint = '请检查多余括号、引号或逗号。'
+    const trimmed = content.trim()
+    if (trimmed.endsWith('}')) {
+      try {
+        // Diagnose the exact failure without accepting or changing the input.
+        if (isRecord(JSON.parse(trimmed.slice(0, -1)))) syntaxHint = '末尾多了一个右花括号 }；前面的 JSON 对象已完整结束。'
+      } catch { /* Other syntax errors keep the generic diagnostic. */ }
+    }
+    throw new ExpertTemplateFillCliError(
+      'Could not parse --data JSON. ' + syntaxHint + '只修正语法并保留字段内容后重试同一 CLI。尚未请求模板服务、未修改报告；这不是研究身份、预算或网络错误，不要重做调研或从 HTML 重建字段。',
+      'EXPERT_TEMPLATE_FILL_INVALID_JSON', 'repair-fields', false,
+    )
   }
   if (!isRecord(document)) throw new Error('--data must be a JSON object with templateId and fields.')
   const allowedKeys = new Set(['format', 'templateId', 'fields', 'mode', 'evidenceAbsorption'])
@@ -252,7 +273,7 @@ export async function commitExpertTemplateFillCli(
   options: ExpertTemplateFillCliOptions,
   dependencies: Pick<ExpertTemplateFillCliDependencies, 'env' | 'fetch'> = { env: process.env, fetch: globalThis.fetch },
 ): Promise<{ committed: true; outputPath: string }> {
-  if (!options.commitReceipt?.trim() || !options.outputPath || options.schema || options.dataPath || options.dataFromStdin) {
+  if (!options.commitReceipt?.trim() || !options.outputPath || options.schema || options.recoverFields || options.dataPath || options.dataFromStdin) {
     throw new Error('Receipt recovery requires --commit-receipt and --output only, without data or schema options.')
   }
   const serverUrl = resolveServerUrl(options.serverUrl ?? dependencies.env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? dependencies.env.DESKTOP_SERVER_URL)
@@ -263,23 +284,54 @@ export async function commitExpertTemplateFillCli(
   return { committed: true, outputPath }
 }
 
+async function queryExpertTemplateFillJson(
+  options: ExpertTemplateFillCliOptions,
+  dependencies: Pick<ExpertTemplateFillCliDependencies, 'env' | 'fetch'>,
+  endpoint: 'template-fill-schema' | 'template-fill-fields',
+): Promise<RecordValue> {
+  const recovering = endpoint === 'template-fill-fields'
+  const description = recovering ? 'recovered template fields' : 'template schema'
+  const serverUrl = resolveServerUrl(options.serverUrl ?? dependencies.env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? dependencies.env.DESKTOP_SERVER_URL)
+  const sessionId = (options.sessionId ?? dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID)?.trim()
+  if (!sessionId) throw new Error('Missing Expert session ID. Run this command from the active Expert session, or pass --session-id.')
+  for (let attempt = 0; ; attempt += 1) {
+    let response: Response
+    try {
+      response = await dependencies.fetch(`${serverUrl}/api/sessions/${encodeURIComponent(sessionId)}/expert/${endpoint}`, { method: 'GET' })
+    } catch (error) {
+      if (attempt < 2) continue
+      throw new ExpertTemplateFillCliError(`Could not query the bound ${description}: ${error instanceof Error ? error.message : String(error)}`, recovering ? 'EXPERT_TEMPLATE_FILL_FIELDS_UNAVAILABLE' : 'EXPERT_TEMPLATE_FILL_RENDER_UNAVAILABLE', 'retry-render', true)
+    }
+    if (!response.ok) {
+      const error = await responseError(response)
+      if (error.retryable && attempt < 2) continue
+      throw error
+    }
+    let result: unknown
+    try { result = await response.json() } catch { /* An invalid GET result cannot prove schema or recovery. */ }
+    if (!isRecord(result)) throw new Error(`The Desktop Expert returned an invalid ${description}.`)
+    return result
+  }
+}
+
 export async function queryExpertTemplateFillSchema(
   options: ExpertTemplateFillCliOptions,
   dependencies: Pick<ExpertTemplateFillCliDependencies, 'env' | 'fetch'> = { env: process.env, fetch: globalThis.fetch },
 ): Promise<RecordValue> {
-  const serverUrl = resolveServerUrl(options.serverUrl ?? dependencies.env.CC_JIANGXIA_DESKTOP_SERVER_URL ?? dependencies.env.DESKTOP_SERVER_URL)
-  const sessionId = (options.sessionId ?? dependencies.env.CC_JIANGXIA_EXPERT_SESSION_ID ?? dependencies.env.EXPERT_SESSION_ID)?.trim()
-  if (!sessionId) throw new Error('Missing Expert session ID. Run this command from the active Expert session, or pass --session-id.')
-  let response: Response
-  try {
-    response = await dependencies.fetch(`${serverUrl}/api/sessions/${encodeURIComponent(sessionId)}/expert/template-fill-schema`, { method: 'GET' })
-  } catch (error) {
-    throw new ExpertTemplateFillCliError(`Could not query the bound template schema: ${error instanceof Error ? error.message : String(error)}`, 'EXPERT_TEMPLATE_FILL_RENDER_UNAVAILABLE', 'retry-render', true)
+  return queryExpertTemplateFillJson(options, dependencies, 'template-fill-schema')
+}
+
+export async function queryExpertTemplateFillFields(
+  options: ExpertTemplateFillCliOptions,
+  dependencies: Pick<ExpertTemplateFillCliDependencies, 'env' | 'fetch'> = { env: process.env, fetch: globalThis.fetch },
+): Promise<ExpertTemplateFillPayload> {
+  const result = await queryExpertTemplateFillJson(options, dependencies, 'template-fill-fields')
+  const allowedKeys = new Set(['format', 'templateId', 'fields', 'evidenceAbsorption'])
+  if (result.format !== EXPERT_TEMPLATE_FILL_FORMAT || typeof result.templateId !== 'string' || !result.templateId.trim()
+    || !isRecord(result.fields) || Object.keys(result).some(key => !allowedKeys.has(key))) {
+    throw new Error('The Desktop Expert returned invalid recovered template fields. Use --recover-fields with the active session; do not parse report HTML.')
   }
-  if (!response.ok) throw await responseError(response)
-  const result: unknown = await response.json()
-  if (!isRecord(result)) throw new Error('The Desktop Expert returned an invalid template schema.')
-  return result
+  return result as ExpertTemplateFillPayload
 }
 
 export async function runExpertTemplateFillCli(
@@ -293,7 +345,7 @@ export async function runExpertTemplateFillCli(
     fetch: globalThis.fetch,
   },
 ): Promise<ExpertTemplateFillCliResult> {
-  if (!options.outputPath || options.schema || options.commitReceipt) throw new Error(`Template delivery requires --output and a data source. ${usage}`)
+  if (!options.outputPath || options.schema || options.recoverFields || options.commitReceipt) throw new Error(`Template delivery requires --output and a data source. ${usage}`)
   if ((options.dataPath ? 1 : 0) + (options.dataFromStdin ? 1 : 0) !== 1) {
     throw new Error(`Provide exactly one of --data or --data-stdin. ${usage}`)
   }
@@ -357,6 +409,10 @@ export async function expertTemplateFillMain(args: string[]): Promise<void> {
   }
   try {
     const options = parseExpertTemplateFillCliArgs(args)
+    if (options.recoverFields) {
+      console.log(JSON.stringify(await queryExpertTemplateFillFields(options)))
+      return
+    }
     if (options.commitReceipt) {
       console.log(JSON.stringify({ ok: true, ...await commitExpertTemplateFillCli(options) }))
       return
@@ -369,7 +425,7 @@ export async function expertTemplateFillMain(args: string[]): Promise<void> {
     console.log(JSON.stringify({ ok: true, ...result }))
   } catch (error) {
     if (error instanceof ExpertTemplateFillCliError) {
-      console.error(JSON.stringify({ ok: false, message: error.message, code: error.code, action: error.action, retryable: error.retryable, outputPath: error.outputPath, receipt: error.receipt }))
+        console.error(JSON.stringify({ ok: false, message: error.message, code: error.code, action: error.action, retryable: error.retryable, outputPath: error.outputPath, receipt: error.receipt, ...(error.code !== 'EXPERT_TEMPLATE_FILL_INVALID_JSON' && ['repair-fields', 'rerender-same-fields'].includes(error.action) ? { recoveryCommand: 'cc-jiangxia expert-template-fill --recover-fields' } : {}) }))
     } else {
       console.error(`expert-template-fill: ${error instanceof Error ? error.message : String(error)}`)
     }

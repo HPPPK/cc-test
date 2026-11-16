@@ -1,3 +1,4 @@
+import { useTerminalSize } from '../../../hooks/useTerminalSize.js'
 import React, { type ReactNode, useState } from 'react'
 import { Box, Text } from '../../../ink.js'
 import { useKeybinding } from '../../../hooks/useKeybinding.js'
@@ -21,6 +22,8 @@ export function ScheduleStep(): ReactNode {
   )
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [time, setTime] = useState(wizardData.scheduledTime ?? '09:00')
+  const [cursorOffset, setCursorOffset] = useState(time.length)
+  const { columns } = useTerminalSize()
 
   useKeybinding('confirm:no', goBack, { context: 'Settings' })
 
@@ -67,6 +70,9 @@ export function ScheduleStep(): ReactNode {
             </Text>
           </Box>
           <TextInput
+            columns={columns}
+            cursorOffset={Math.min(cursorOffset, time.length)}
+            onChangeCursorOffset={setCursorOffset}
             value={time}
             onChange={setTime}
             onSubmit={handleTimeSubmit}

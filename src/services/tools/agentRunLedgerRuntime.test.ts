@@ -1,3 +1,4 @@
+import { withFetchPreconnect } from "../../server/__tests__/fixtureAssertions.js"
 import { describe, expect, test } from 'bun:test'
 import { extractAgentRunArtifacts, getAgentRunLedgerRuntimeConfig, recordAgentRunEvent, resolveAgentRunId } from './agentRunLedgerRuntime.js'
 
@@ -28,14 +29,14 @@ describe('agent run ledger runtime', () => {
     const requests: Array<{ url: string; body: Record<string, unknown> }> = []
     const success = await recordAgentRunEvent({ runId: 'run-1', eventType: 'tool_started', toolUseId: 'tool-1', toolName: 'Read' }, {
       environment: { CC_JIANGXIA_AGENT_RUN_LEDGER_ENABLED: '1', CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456', CC_JIANGXIA_SESSION_ID: 'session-1' },
-      fetchImpl: async (url, init) => {
+      fetchImpl: withFetchPreconnect(async (url, init) => {
         requests.push({ url: String(url), body: JSON.parse(String(init?.body)) as Record<string, unknown> })
         return new Response('{}', { status: 200 })
-      },
+      }),
     })
     const unavailable = await recordAgentRunEvent({ runId: 'run-1', eventType: 'tool_started' }, {
       environment: { CC_JIANGXIA_AGENT_RUN_LEDGER_ENABLED: '1', CC_JIANGXIA_DESKTOP_SERVER_URL: 'http://127.0.0.1:3456', CC_JIANGXIA_SESSION_ID: 'session-1' },
-      fetchImpl: async () => { throw new Error('offline') },
+      fetchImpl: withFetchPreconnect(async () => { throw new Error('offline') }),
     })
 
     expect(success).toBe(true)

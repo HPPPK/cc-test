@@ -1,3 +1,4 @@
+import { messageKindMetadata, resolveMessageKind } from '../utils/messageKind.js'
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
@@ -48,8 +49,16 @@ import {
   peek,
   subscribeToCommandQueue,
   getCommandsByMaxPriority,
+  acknowledgeTaskNotifications,
+  pruneObsoleteTaskNotifications,
+  takeTaskNotificationBatch,
+  taskNotificationReady,
+  taskNotificationsWaitingForUser,
+  restoreTaskNotificationBatch,
 } from 'src/utils/messageQueueManager.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
+import { readTaskNotificationBoundary } from 'src/utils/taskNotificationBoundary.js'
+import type { NotificationState } from 'src/utils/messageQueueManager.js'
 import {
   getSessionState,
   notifySessionStateChanged,
@@ -127,7 +136,8 @@ import type {
   SDKControlMcpSetServersResponse,
   SDKControlReloadPluginsResponse,
 } from 'src/entrypoints/sdk/controlTypes.js'
-import type { PermissionMode } from '@anthropic-ai/claude-agent-sdk'
+import type { PermissionMode } from 'src/entrypoints/sdk/coreTypes.js'
+import { normalizeSDKMessageUuid } from 'src/entrypoints/sdk/messageIdentity.js'
 import type { PermissionMode as InternalPermissionMode } from 'src/types/permissions.js'
 import { cwd } from 'process'
 import { getCwd } from 'src/utils/cwd.js'
@@ -437,9 +447,8 @@ export function joinPromptValues(values: PromptValue[]): PromptValue {
 /**
  * Whether `next` can be batched into the same ask() call as `head`. Only
  * prompt-mode commands batch, and only when the workload tag matches (so the
- * combined turn is attributed correctly) and the isMeta flag matches (so a
- * proactive tick can't merge into a user prompt and lose its hidden-in-
- * transcript marking when the head is spread over the merged command).
+ * combined turn is attributed correctly). Provenance and each legacy flag
+ * must also match so merging cannot discard identity metadata.
  */
 export function canBatchWith(
   head: QueuedCommand,
@@ -449,7 +458,11 @@ export function canBatchWith(
     next !== undefined &&
     next.mode === 'prompt' &&
     next.workload === head.workload &&
-    next.isMeta === head.isMeta
+    resolveMessageKind({ type: 'user', ...next }) === resolveMessageKind({ type: 'user', ...head }) &&
+    next.isMeta === head.isMeta &&
+    next.isCompactSummary === head.isCompactSummary &&
+    next.isVisibleInTranscriptOnly === head.isVisibleInTranscriptOnly &&
+    next.isSynthetic === head.isSynthetic
   )
 }
 
@@ -633,6 +646,7 @@ export async function runHeadless(
           case 'started':
             return {
               type: 'system' as const,
+              messageKind: 'system_event',
               subtype: 'hook_started' as const,
               hook_id: event.hookId,
               hook_name: event.hookName,
@@ -643,6 +657,7 @@ export async function runHeadless(
           case 'progress':
             return {
               type: 'system' as const,
+              messageKind: 'system_event',
               subtype: 'hook_progress' as const,
               hook_id: event.hookId,
               hook_name: event.hookName,
@@ -656,6 +671,7 @@ export async function runHeadless(
           case 'response':
             return {
               type: 'system' as const,
+              messageKind: 'system_event',
               subtype: 'hook_response' as const,
               hook_id: event.hookId,
               hook_name: event.hookName,
@@ -1009,6 +1025,7 @@ function runHeadlessStreaming(
   turnInterruptionState?: TurnInterruptionState,
 ): AsyncIterable<StdoutMessage> {
   let running = false
+  let notificationRetryRequested = false
   let runPhase:
     | 'draining_commands'
     | 'waiting_for_agents'
@@ -1070,6 +1087,7 @@ function runHeadlessStreaming(
     ) {
       output.enqueue({
         type: 'system',
+        messageKind: 'system_event',
         subtype: 'status',
         status: null,
         permissionMode: newMode as PermissionMode,
@@ -1115,6 +1133,7 @@ function runHeadlessStreaming(
     unsubscribeAuthStatus = authStatusManager.subscribe(status => {
       output.enqueue({
         type: 'auth_status',
+        messageKind: 'system_event',
         isAuthenticating: status.isAuthenticating,
         output: status.output,
         error: status.error,
@@ -1236,6 +1255,7 @@ function runHeadlessStreaming(
       ) {
         output.enqueue({
           type: 'user',
+          ...messageKindMetadata(crumb),
           message: crumb.message,
           session_id: getSessionId(),
           parent_tool_use_id: null,
@@ -1370,6 +1390,7 @@ function runHeadlessStreaming(
             })
             output.enqueue({
               type: 'system',
+              messageKind: 'system_event',
               subtype: 'elicitation_complete',
               mcp_server_name: serverName,
               elicitation_id: elicitationId,
@@ -1849,6 +1870,7 @@ function runHeadlessStreaming(
               value: tickContent,
               uuid: randomUUID(),
               priority: 'later',
+              messageKind: 'internal_notification',
               isMeta: true,
             })
             void run()
@@ -1922,7 +1944,30 @@ function runHeadlessStreaming(
     // notifications are drained by the subagent's mid-turn gate in query.ts.
     // Defined outside the try block so it's accessible in the post-finally
     // queue re-checks at the bottom of run().
+    let notificationProcessingFailed = false
+    let notificationState: NotificationState = getAppState()
+    let lastBackgroundNotificationRead = 0
+    const refreshNotificationState = async () => {
+      const local = getAppState()
+      const queued = getCommandsByMaxPriority('later')
+      const hasMachineNotice = queued.some(cmd => cmd.mode === 'task-notification' && cmd.messageKind !== 'user_input')
+      // Idle background waiting is only a delivery hint. Actual queued results always refresh authority.
+      if (!hasMachineNotice && Date.now() - lastBackgroundNotificationRead < 1000) return
+      notificationState = (hasMachineNotice
+        || getRunningTasks(local).some(task => isBackgroundTask(task) && task.type !== 'in_process_teammate'))
+        ? await readTaskNotificationBoundary(local, {
+          skipDesktopRefresh: queued.some(cmd => cmd.mode !== 'task-notification' || cmd.messageKind === 'user_input'),
+          interruptOnHumanInput: true,
+          wakeOnUnavailable: () => {
+            if (running) notificationRetryRequested = true
+            else void run()
+          },
+        }) : local
+      lastBackgroundNotificationRead = Date.now()
+    }
     const isMainThread = (cmd: QueuedCommand) => cmd.agentId === undefined
+      && !(notificationProcessingFailed && cmd.mode === 'task-notification') && taskNotificationReady(cmd, notificationState)
+    let activeNotificationBatch: QueuedCommand[] = []
 
     try {
       let command: QueuedCommand | undefined
@@ -1933,6 +1978,8 @@ function runHeadlessStreaming(
       // ask() call so messages that queued up during a long turn coalesce
       // into a single follow-up turn instead of N separate turns.
       const drainCommandQueue = async () => {
+        await refreshNotificationState()
+        pruneObsoleteTaskNotifications(notificationState)
         while ((command = dequeue(isMainThread))) {
           if (
             command.mode !== 'prompt' &&
@@ -1944,10 +1991,10 @@ function runHeadlessStreaming(
             )
           }
 
-          // Non-prompt commands (task-notification, orphaned-permission) carry
-          // side effects or orphanedPermission state, so they process singly.
+          // Task results share one model turn; permission commands stay single.
           // Prompt commands greedily collect followers with matching workload.
-          const batch: QueuedCommand[] = [command]
+          const batch: QueuedCommand[] = takeTaskNotificationBatch(command, notificationState)
+          if (command.mode === 'task-notification') activeNotificationBatch = batch
           if (command.mode === 'prompt') {
             while (canBatchWith(command, peek(isMainThread))) {
               batch.push(dequeue(isMainThread)!)
@@ -1960,6 +2007,9 @@ function runHeadlessStreaming(
               }
             }
           }
+          if (command.mode === 'task-notification' && batch.length > 1) {
+            command = { ...command, value: joinPromptValues(batch.map(item => item.value)) }
+          }
           const batchUuids = batch.map(c => c.uuid).filter(u => u !== undefined)
 
           // QueryEngine will emit a replay for command.uuid (the last uuid in
@@ -1967,11 +2017,12 @@ function runHeadlessStreaming(
           // rest so consumers that track per-uuid delivery (clank's
           // asyncMessages footer, CCR) see an ack for every message they sent,
           // not just the one that survived the merge.
-          if (options.replayUserMessages && batch.length > 1) {
+          if (options.replayUserMessages && command.mode === 'prompt' && batch.length > 1) {
             for (const c of batch) {
               if (c.uuid && c.uuid !== command.uuid) {
                 output.enqueue({
                   type: 'user',
+                  ...messageKindMetadata({ type: 'user', ...c }),
                   message: { role: 'user', content: c.value },
                   session_id: getSessionId(),
                   parent_tool_use_id: null,
@@ -2014,8 +2065,9 @@ function runHeadlessStreaming(
           // This matches TUI behavior where useQueueProcessor always feeds
           // notifications to the model regardless of coordinator mode.
           if (command.mode === 'task-notification') {
+            for (const notification of batch) {
             const notificationText =
-              typeof command.value === 'string' ? command.value : ''
+              typeof notification.value === 'string' ? notification.value : ''
             // Parse the XML-formatted notification
             const taskIdMatch = notificationText.match(
               /<task-id>([^<]+)<\/task-id>/,
@@ -2084,6 +2136,7 @@ function runHeadlessStreaming(
             if (statusMatch) {
               output.enqueue({
                 type: 'system',
+                messageKind: 'system_event',
                 subtype: 'task_notification',
                 task_id: taskIdMatch?.[1] ?? '',
                 tool_use_id: toolUseIdMatch?.[1],
@@ -2108,6 +2161,7 @@ function runHeadlessStreaming(
               })
             }
             // No continue -- fall through to ask() so the model processes the result
+            }
           }
 
           const input = command.value
@@ -2168,7 +2222,7 @@ function runHeadlessStreaming(
               ),
               prompt: input,
               promptUuid: cmd.uuid,
-              isMeta: cmd.isMeta,
+              ...messageKindMetadata({ type: 'user', ...cmd }),
               cwd: cwd(),
               tools: allTools,
               verbose: options.verbose,
@@ -2218,6 +2272,7 @@ function runHeadlessStreaming(
               setSDKStatus: status => {
                 output.enqueue({
                   type: 'system',
+                  messageKind: 'system_event',
                   subtype: 'status',
                   status,
                   session_id: getSessionId(),
@@ -2277,6 +2332,7 @@ function runHeadlessStreaming(
               result => {
                 output.enqueue({
                   type: 'system' as const,
+                  messageKind: 'system_event',
                   subtype: 'files_persisted' as const,
                   files: result.files,
                   failed: result.failed,
@@ -2375,6 +2431,8 @@ function runHeadlessStreaming(
             }
           }
 
+          acknowledgeTaskNotifications(batch)
+          activeNotificationBatch = []
           // Log headless profiler metrics for this turn and start next turn
           logHeadlessProfilerTurn()
           logQueryProfileReport()
@@ -2405,8 +2463,9 @@ function runHeadlessStreaming(
         // doesn't hit this.
         waitingForAgents = false
         {
+          await refreshNotificationState()
           const state = getAppState()
-          const hasRunningBg = getRunningTasks(state).some(
+          const hasRunningBg = !taskNotificationsWaitingForUser(notificationState) && getRunningTasks(state).some(
             t => isBackgroundTask(t) && t.type !== 'in_process_teammate',
           )
           const hasMainThreadQueued = peek(isMainThread) !== undefined
@@ -2439,11 +2498,16 @@ function runHeadlessStreaming(
         }
       }
     } catch (error) {
+      // Preserve unread terminal results if model processing throws.
+      notificationProcessingFailed = activeNotificationBatch.length > 0
+      restoreTaskNotificationBatch(activeNotificationBatch)
+      activeNotificationBatch = []
       // Emit error result message before shutting down
       // Write directly to structuredIO to ensure immediate delivery
       try {
         await structuredIO.write({
           type: 'result',
+          messageKind: 'system_event',
           subtype: 'error_during_execution',
           duration_ms: 0,
           duration_api_ms: 0,
@@ -2501,6 +2565,11 @@ function runHeadlessStreaming(
       }
     }
 
+    if (notificationRetryRequested) {
+      notificationRetryRequested = false
+      void run()
+      return
+    }
     // Re-check the queue after releasing the mutex. A message may have
     // arrived (and called run()) between the last dequeue() returning
     // undefined and `running = false` above. In that case the caller
@@ -2734,6 +2803,7 @@ function runHeadlessStreaming(
           // System-generated — matches useScheduledTasks.ts REPL equivalent.
           // Without this, messages.ts metaProp eval is {} → prompt leaks
           // into visible transcript when cron fires mid-turn in -p mode.
+          messageKind: 'internal_notification',
           isMeta: true,
           // Threaded to cc_workload= in the billing-header attribution block
           // so the API can serve cron requests at lower QoS. drainCommandQueue
@@ -3941,6 +4011,7 @@ function runHeadlessStreaming(
                     if (!fields) return
                     const { content, uuid } = fields
                     enqueue({
+                      ...messageKindMetadata(fields),
                       value: content,
                       mode: 'prompt' as const,
                       uuid,
@@ -3984,6 +4055,7 @@ function runHeadlessStreaming(
                     )
                     output.enqueue({
                       type: 'system' as StdoutMessage['type'],
+                      messageKind: 'system_event',
                       subtype: 'bridge_state' as string,
                       state,
                       detail,
@@ -4079,28 +4151,31 @@ function runHeadlessStreaming(
       // First prompt message implicitly initializes if not already done.
       initialized = true
 
+      const messageUuid = normalizeSDKMessageUuid(message.uuid)
+
       // Check for duplicate user message - skip if already processed
-      if (message.uuid) {
+      if (messageUuid) {
         const sessionId = getSessionId() as UUID
         const existsInSession = await doesMessageExistInSession(
           sessionId,
-          message.uuid,
+          messageUuid,
         )
 
         // Check both historical duplicates (from file) and runtime duplicates (this session)
-        if (existsInSession || receivedMessageUuids.has(message.uuid)) {
-          logForDebugging(`Skipping duplicate user message: ${message.uuid}`)
+        if (existsInSession || receivedMessageUuids.has(messageUuid)) {
+          logForDebugging(`Skipping duplicate user message: ${messageUuid}`)
           // Send acknowledgment for duplicate message if replay mode is enabled
           if (options.replayUserMessages) {
             logForDebugging(
-              `Sending acknowledgment for duplicate user message: ${message.uuid}`,
+              `Sending acknowledgment for duplicate user message: ${messageUuid}`,
             )
             output.enqueue({
               type: 'user',
+              ...messageKindMetadata(message),
               message: message.message,
               session_id: sessionId,
               parent_tool_use_id: null,
-              uuid: message.uuid,
+              uuid: messageUuid,
               timestamp: message.timestamp,
               isReplay: true,
             } as SDKUserMessageReplay)
@@ -4109,22 +4184,23 @@ function runHeadlessStreaming(
           // ran but its lifecycle was never closed (interrupted before ack).
           // Runtime dups don't need this — the original enqueue path closes them.
           if (existsInSession) {
-            notifyCommandLifecycle(message.uuid, 'completed')
+            notifyCommandLifecycle(messageUuid, 'completed')
           }
           // Don't enqueue duplicate messages for execution
           continue
         }
 
         // Track this UUID to prevent runtime duplicates
-        trackReceivedMessageUuid(message.uuid)
+        trackReceivedMessageUuid(messageUuid)
       }
 
       enqueue({
         mode: 'prompt' as const,
+        ...messageKindMetadata(message),
         // file_attachments rides the protobuf catchall from the web composer.
         // Same-ref no-op when absent (no 'file_attachments' key).
         value: await resolveAndPrepend(message, message.message.content),
-        uuid: message.uuid,
+        uuid: messageUuid,
         priority: message.priority,
       })
       // Increment prompt count for attribution tracking and save snapshot
@@ -4527,6 +4603,7 @@ async function handleInitializeRequest(
     if (status) {
       output.enqueue({
         type: 'auth_status',
+        messageKind: 'system_event',
         isAuthenticating: status.isAuthenticating,
         output: status.output,
         error: status.error,
@@ -4770,6 +4847,7 @@ function handleChannelEnable(
         mode: 'prompt',
         value: wrapChannelMessage(serverName, content, meta),
         priority: 'next',
+        messageKind: 'internal_notification',
         isMeta: true,
         origin: { kind: 'channel', server: serverName },
         skipSlashCommands: true,
@@ -4846,6 +4924,7 @@ function reregisterChannelHandlerAfterReconnect(
         mode: 'prompt',
         value: wrapChannelMessage(connection.name, content, meta),
         priority: 'next',
+        messageKind: 'internal_notification',
         isMeta: true,
         origin: { kind: 'channel', server: connection.name },
         skipSlashCommands: true,
@@ -4865,6 +4944,7 @@ function emitLoadError(
   if (outputFormat === 'stream-json') {
     const errorResult = {
       type: 'result',
+      messageKind: 'system_event',
       subtype: 'error_during_execution',
       duration_ms: 0,
       duration_api_ms: 0,
@@ -5230,6 +5310,7 @@ function getStructuredIO(
       inputStream = fromArray([
         jsonStringify({
           type: 'user',
+          messageKind: 'user_input',
           session_id: '',
           message: {
             role: 'user',

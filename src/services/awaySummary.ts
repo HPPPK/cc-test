@@ -3,7 +3,7 @@ import { getEmptyToolPermissionContext } from '../Tool.js'
 import type { Message } from '../types/message.js'
 import { logForDebugging } from '../utils/debug.js'
 import {
-  createUserMessage,
+  createRuntimeUserMessage,
   getAssistantMessageText,
 } from '../utils/messages.js'
 import { getSmallFastModel } from '../utils/model/model.js'
@@ -37,7 +37,7 @@ export async function generateAwaySummary(
   try {
     const memory = await getSessionMemoryContent()
     const recent = messages.slice(-RECENT_MESSAGE_WINDOW)
-    recent.push(createUserMessage({ content: buildAwaySummaryPrompt(memory) }))
+    recent.push(createRuntimeUserMessage({ content: buildAwaySummaryPrompt(memory) }))
     const response = await queryModelWithoutStreaming({
       messages: recent,
       systemPrompt: asSystemPrompt([]),

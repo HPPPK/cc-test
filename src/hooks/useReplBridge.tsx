@@ -1,3 +1,4 @@
+import { messageKindMetadata } from '../utils/messageKind.js'
 import { feature } from 'bun:bundle';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { setMainLoopModelOverride, setReplBridgeActive } from '../bootstrap/state.js';
@@ -202,6 +203,7 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
               const preview = typeof content === 'string' ? content.slice(0, 80) : `[${content.length} content blocks]`;
               logForDebugging(`[bridge:repl] Injecting inbound user message: ${preview}${uuid ? ` uuid=${uuid}` : ''}`);
               enqueue({
+                ...messageKindMetadata(fields),
                 value: content,
                 mode: 'prompt' as const,
                 uuid,

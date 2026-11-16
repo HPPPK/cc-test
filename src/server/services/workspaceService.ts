@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import type { Stats } from 'node:fs'
 import { execFile as execFileCallback } from 'node:child_process'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
@@ -152,7 +153,7 @@ type WorkspacePathResolution = {
 type WorkspaceStatResult =
   | {
       kind: 'ok'
-      stat: Awaited<ReturnType<typeof fs.stat>>
+      stat: Stats
     }
   | {
       kind: 'missing'
@@ -1594,6 +1595,8 @@ export class WorkspaceService {
         stdout?: string | Buffer
         stderr?: string | Buffer
         code?: number | string
+        signal?: string
+        killed?: boolean
       }
 
       return {

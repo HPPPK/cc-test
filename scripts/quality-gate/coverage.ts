@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, sep } from 'node:path'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync } from 'node:fs'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import ts from 'typescript'
 import { loadQuarantineManifest, quarantinedPathSet } from './quarantine'
 
 type CoverageMetric = {
@@ -221,7 +222,7 @@ function matchesScope(file: string, scope: CoverageScope) {
   return true
 }
 
-function walkTestFiles(path: string, files: string[], excluded: Set<string>, rootDir = ROOT_DIR) {
+function walkTestFiles(path: string, files: string[], excluded: ReadonlySet<string>, rootDir = ROOT_DIR) {
   const stat = statSync(path)
   if (stat.isDirectory()) {
     for (const entry of readdirSync(path)) {
@@ -232,17 +233,19 @@ function walkTestFiles(path: string, files: string[], excluded: Set<string>, roo
   if (!stat.isFile()) return
 
   const normalized = normalize(path, rootDir)
-  if (normalized.endsWith('.test.ts') && !excluded.has(normalized)) {
+  if (/\.test\.tsx?$/.test(normalized) && !excluded.has(normalized)) {
     files.push(normalized)
   }
 }
 
-function collectServerTestFiles(rootDir = ROOT_DIR) {
-  const excluded = quarantinedPathSet(loadQuarantineManifest(undefined, { enforceReviewDate: true }))
+export function collectServerTestFiles(
+  rootDir = ROOT_DIR,
+  excluded: ReadonlySet<string> = quarantinedPathSet(loadQuarantineManifest(undefined, { enforceReviewDate: true })),
+) {
   const files: string[] = []
-  for (const root of ['src/server', 'src/tools', 'src/utils']) {
-    walkTestFiles(join(rootDir, root), files, excluded, rootDir)
-  }
+  // Coverage must observe the same core/UI contract suites as the verification
+  // runners; limiting this to server/tools/utils silently drops their evidence.
+  walkTestFiles(join(rootDir, 'src'), files, excluded, rootDir)
   return files.sort()
 }
 
@@ -382,19 +385,18 @@ function parseVitestSummary(path: string): CoverageSummary {
 
 async function runCommand(command: string[], cwd: string, logPath: string) {
   const started = Date.now()
-  const proc = Bun.spawn(command, {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
   mkdirSync(dirname(logPath), { recursive: true })
-  writeFileSync(logPath, `$ ${command.join(' ')}\n${stdout}${stderr}`)
-  return { exitCode, durationMs: Date.now() - started }
+  const logFd = openSync(logPath, 'w')
+  try {
+    writeSync(logFd, `$ ${command.join(' ')}\n`)
+    // Bun's synchronous coverage text reporter must not write to nonblocking
+    // pipes. Share a regular log file for both streams without buffering them.
+    const proc = Bun.spawn(command, { cwd, stdout: logFd, stderr: logFd })
+    const exitCode = await proc.exited
+    return { exitCode, durationMs: Date.now() - started }
+  } finally {
+    closeSync(logFd)
+  }
 }
 
 async function runSuite(
@@ -503,55 +505,35 @@ export function mergeLcovFiles(paths: string[], rootDir: string) {
 }
 
 /**
- * These suites exercise process-wide environment or real subprocess behavior.
- * Keep them under coverage, but execute them in their own Bun process so the
- * main aggregate coverage process cannot leak state into them.
- */
-/**
  * Some Windows filesystem/Git worktree tests legitimately exceed Bun's default
  * 20-second limit under coverage instrumentation. Keep the gate finite, but do
  * not convert a healthy slow test into a missing-coverage failure.
  */
 export const ROOT_COVERAGE_TIMEOUT_MS = 60_000
 
-export const ROOT_COVERAGE_SEPARATE_FILES = new Set([
-  'src/server/__tests__/h5-access-auth.test.ts',
-  'src/server/__tests__/filesystem.test.ts',
-  'src/server/__tests__/filesystem-config-fallback.test.ts',
-  'src/server/__tests__/websocket-handler.test.ts',
-  'src/server/services/workflowToolPolicy.test.ts',
-  'src/tools/AgentTool/loadAgentsDir.cache.test.ts',
-])
-
-async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: string) {
+/**
+ * Match check:server's process-per-file isolation. Bun --isolate resets module
+ * scopes, but native process state such as cwd can still leak between files.
+ */
+export async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: string) {
   const started = Date.now()
   const rootDirPath = join(outputDir, 'root-server')
   const perFileDir = join(rootDirPath, 'per-file')
   const logPath = join(rootDirPath, 'coverage.log')
   mkdirSync(perFileDir, { recursive: true })
 
-  const mainFiles = testFiles.filter((file) => !ROOT_COVERAGE_SEPARATE_FILES.has(file))
-  const separateFiles = testFiles.filter((file) => ROOT_COVERAGE_SEPARATE_FILES.has(file))
   const lcovPaths: string[] = []
   const logParts: string[] = []
   let exitCode = 0
+  const commandPrefix = ['bun', 'test', `--timeout=${ROOT_COVERAGE_TIMEOUT_MS}`, '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text']
 
-  const mainCommand = ['bun', 'test', '--isolate', '--max-concurrency=1', `--timeout=${ROOT_COVERAGE_TIMEOUT_MS}`, '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', join(rootDirPath, 'main'), ...mainFiles]
-  const mainLogPath = join(rootDirPath, 'main', 'coverage.log')
-  const mainResult = await runCommand(mainCommand, rootDir, mainLogPath)
-  logParts.push(existsSync(mainLogPath) ? readFileSync(mainLogPath, 'utf8') : `$ ${mainCommand.join(' ')}\n`)
-  lcovPaths.push(join(rootDirPath, 'main', 'lcov.info'))
-  if (mainResult.exitCode !== 0) {
-    exitCode = mainResult.exitCode
-  }
-
-  for (const [index, testFile] of separateFiles.entries()) {
+  for (const [index, testFile] of testFiles.entries()) {
     const fileCoverageDir = join(perFileDir, String(index).padStart(3, '0'))
-    const command = ['bun', 'test', `--timeout=${ROOT_COVERAGE_TIMEOUT_MS}`, '--coverage', '--coverage-reporter=lcov', '--coverage-reporter=text', '--coverage-dir', fileCoverageDir, testFile]
+    const command = [...commandPrefix, '--coverage-dir', fileCoverageDir, resolve(rootDir, testFile)]
     const fileLogPath = join(fileCoverageDir, 'coverage.log')
     const result = await runCommand(command, rootDir, fileLogPath)
     lcovPaths.push(join(fileCoverageDir, 'lcov.info'))
-    const log = existsSync(fileLogPath) ? readFileSync(fileLogPath, 'utf8') : ''
+    const log = readFileSync(fileLogPath, 'utf8')
     logParts.push(`\n# ${testFile}\n${log}`)
     if (result.exitCode !== 0) {
       exitCode = result.exitCode
@@ -564,7 +546,9 @@ async function runRootCoverage(testFiles: string[], rootDir: string, outputDir: 
     writeFileSync(lcovPath, mergeLcovFiles(lcovPaths, rootDir))
   }
 
-  const command = [...mainCommand, ...separateFiles.map((file) => `<separate:${file}>`)]
+  // The exact executed commands are in each file's log; preserve an explicit
+  // per-file description in the existing report command field.
+  const command = [...commandPrefix, ...testFiles.map((file) => `<separate:${file}>`)]
   return { exitCode, durationMs: Date.now() - started, logPath, lcovPath, command }
 }
 
@@ -662,11 +646,72 @@ function collectChangedLines(rootDir: string, baseRef?: string) {
   return new Map<string, Set<number>>()
 }
 
+/**
+ * LCOV can assign DA counters to erased types and comment-only lines. Use the
+ * parsed source tokens to rule those out, without discarding runtime tokens
+ * that share their line with a comment or type annotation.
+ */
+export function runtimeSourceLines(source: string, file: string): Set<number> | null {
+  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true,
+    file.endsWith('.tsx') ? ts.ScriptKind.TSX : file.endsWith('.jsx') ? ts.ScriptKind.JSX : ts.ScriptKind.TS)
+  // Failed parsing must not make changed runtime code disappear from the gate.
+  if ((ast as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics.length > 0) return null
+  const lines = new Set<number>()
+  if (ast.isDeclarationFile) return lines
+
+  function visit(node: ts.Node): void {
+    if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isIndexSignatureDeclaration(node)) return
+    if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some(modifier => modifier.kind === ts.SyntaxKind.DeclareKeyword)) return
+    if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)) && !node.body) return
+    if (ts.isImportEqualsDeclaration(node) && node.isTypeOnly) return
+    if (ts.isImportDeclaration(node)) {
+      const clause = node.importClause
+      const bindings = clause?.namedBindings
+      if (clause?.isTypeOnly || (clause && !clause.name && bindings && ts.isNamedImports(bindings) && bindings.elements.length > 0 && bindings.elements.every(item => item.isTypeOnly))) return
+    }
+    if (ts.isExportDeclaration(node)) {
+      const clause = node.exportClause
+      if (node.isTypeOnly || (clause && ts.isNamedExports(clause) && clause.elements.length > 0 && clause.elements.every(item => item.isTypeOnly))) return
+    }
+    if ((ts.isImportSpecifier(node) || ts.isExportSpecifier(node)) && node.isTypeOnly) return
+    if (node.kind === ts.SyntaxKind.CommaToken && (ts.isNamedImports(node.parent) || ts.isNamedExports(node.parent))) return
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return
+    if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isTypeAssertionExpression(node) || ts.isNonNullExpression(node)) {
+      visit(node.expression)
+      return
+    }
+    // extends Base executes at runtime; its generic arguments and implements
+    // clauses are erased, even though both use ExpressionWithTypeArguments.
+    if (ts.isExpressionWithTypeArguments(node)) {
+      if (ts.isHeritageClause(node.parent) && node.parent.token === ts.SyntaxKind.ExtendsKeyword) visit(node.expression)
+      return
+    }
+    if (ts.isTypeNode(node)) return
+    const children = node.getChildren(ast)
+    if (children.length > 0) {
+      for (const child of children) visit(child)
+      return
+    }
+    const start = node.getStart(ast)
+    const end = node.getEnd()
+    if (start >= end || node.kind === ts.SyntaxKind.EndOfFileToken) return
+    const firstLine = ast.getLineAndCharacterOfPosition(start).line
+    const lastLine = ast.getLineAndCharacterOfPosition(end - 1).line
+    // Multiline template/string tokens are runtime content, including lines
+    // whose text happens to resemble a comment.
+    for (let line = firstLine; line <= lastLine; line += 1) lines.add(line + 1)
+  }
+
+  visit(ast)
+  return lines
+}
+
 export function evaluateChangedLineCoverage(
   changedLines: Map<string, Set<number>>,
   coverageByFile: Map<string, FileLineCoverage>,
   scopes: CoverageScope[],
   minimumPercent: number,
+  options: { rootDir?: string; readSource?: (file: string) => string | null } = {},
 ): ChangedLineCoverage {
   const files: ChangedLineCoverage['files'] = []
   let total = 0
@@ -676,9 +721,20 @@ export function evaluateChangedLineCoverage(
     const scope = scopes.find((candidate) => matchesScope(file, candidate))
     if (!scope) continue
 
+    let source: string | null = null
+    try {
+      source = options.readSource
+        ? options.readSource(file)
+        : readFileSync(join(options.rootDir ?? ROOT_DIR, file), 'utf8')
+    } catch {
+      // Missing source is not grounds to waive its coverage requirement.
+    }
+    const runtimeLines = source === null ? null : runtimeSourceLines(source, file)
+    const candidateLines = [...lines].filter(line => runtimeLines === null || runtimeLines.has(line))
+    if (candidateLines.length === 0) continue
     const fileCoverage = coverageByFile.get(file)
     if (!fileCoverage) {
-      const lineCount = lines.size
+      const lineCount = candidateLines.length
       total += lineCount
       files.push({
         file,
@@ -691,7 +747,7 @@ export function evaluateChangedLineCoverage(
       continue
     }
 
-    const executableChangedLines = [...lines].filter((line) => fileCoverage.executableLines.has(line))
+    const executableChangedLines = candidateLines.filter((line) => fileCoverage.executableLines.has(line))
     if (executableChangedLines.length === 0) continue
     const fileCovered = executableChangedLines.filter((line) => fileCoverage.coveredLines.has(line)).length
     total += executableChangedLines.length
@@ -952,6 +1008,7 @@ export async function runCoverageGate(options: {
       coverageByFile,
       CHANGED_LINE_SCOPES,
       changedLineMinimum,
+      { rootDir },
     )
     : undefined
   if (changedLines) {

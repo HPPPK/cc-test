@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import * as React from 'react';
 import { Text } from '../ink.js';
-export function InterruptedByUser() {
+export function InterruptedByUser(): React.ReactNode {
   const $ = _c(1);
   let t0;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {

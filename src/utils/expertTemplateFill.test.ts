@@ -299,3 +299,17 @@ test('reports all invalid template fields together without discarding valid fiel
   } catch (error) { message = (error as Error).message }
   for (const part of ['EXTRA_NOTE', 'REPORT_DATE', 'SOURCE_ROWS', 'NOTES', '第 1 行', '第 2 行']) expect(message).toContain(part)
 })
+
+
+test('allows an empty source table only with an explicit server render option and keeps URL checks strict', () => {
+  const payload = { format: EXPERT_TEMPLATE_FILL_FORMAT, templateId: 'demo-v1', fields: { REPORT_TITLE: '证据缺口', REPORT_DATE: '2026-10-25', SOURCE_ROWS: [], NOTES: ['未取得可引用网页来源，不作外部事实判断。'] } }
+  expect(() => renderExpertTemplateFill(template, payload)).toThrow('至少需要一行')
+  const rendered = renderExpertTemplateFill(template, payload, { allowEmptySourceRows: true })
+  expect(rendered.content).toContain('<tr class="template-empty-state"><td colspan="2">本轮未取得可核验公开来源；相关结论已降级为证据缺口。</td></tr>')
+  expect(rendered.content).not.toContain('href=')
+  expect(rendered.content).toContain('body{color:#111}')
+  expect(rendered.schema).toEqual(deriveExpertTemplateFillSchema(template))
+  expect(() => renderExpertTemplateFill(template, { ...payload, fields: { ...payload.fields, SOURCE_ROWS: [['gap', '未取得']] } }, { allowEmptySourceRows: true })).toThrow('URL 必须是 http 或 https')
+  const otherTable = template.replaceAll('SOURCE_ROWS', 'COMPETITOR_ROWS')
+  expect(() => renderExpertTemplateFill(otherTable, { ...payload, fields: { REPORT_TITLE: 'Gap', REPORT_DATE: '2026-10-25', COMPETITOR_ROWS: [], NOTES: ['未取得'] } }, { allowEmptySourceRows: true })).toThrow('至少需要一行')
+})

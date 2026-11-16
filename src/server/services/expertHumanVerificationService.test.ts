@@ -357,30 +357,110 @@ test('delivers a verification reminder immediately without requesting browser fo
 
 })
 
-test('defers an unanswered verification once and releases owner and followers within a bounded wait', async () => {
+test('keeps owner and followers pending until explicit resolution even after the old wait deadline', async () => {
   const delivered: any[] = []
   const service = new ExpertHumanVerificationService((_session, message) => { delivered.push(message); return true }, 15)
-  const verification = { url: 'https://s.weibo.com/weibo?q=Quicker', title: 'Login', detail: 'login required' }
   const owner = service.requestVerification({ sessionId: 'bounded-session', verificationGateId: 'same-gate', verification })
   const sibling = service.waitForActiveVerification('bounded-session', { verificationGateId: 'same-gate' })
-  const first = await Promise.race([owner, new Promise(resolve => setTimeout(() => resolve({ resolution: 'still_waiting' }), 80))])
-  expect(first).toMatchObject({ resolution: 'verification_deferred', verificationGateId: 'same-gate' })
-  expect(await sibling).toMatchObject({ resolution: 'verification_deferred' })
-  expect(await service.waitForActiveVerification('bounded-session', { verificationGateId: 'same-gate' })).toMatchObject({ resolution: 'verification_deferred' })
-  expect(delivered.filter(x => x.type === 'permission_request')).toHaveLength(1)
-  expect(delivered.filter(x => x.type === 'permission_response_ack')).toHaveLength(1)
+  let settled = false
+  void Promise.all([owner, sibling]).then(() => { settled = true })
+  await new Promise(resolve => setTimeout(resolve, 60))
+  expect(settled).toBe(false)
+  expect(service.getPendingRequest('bounded-session')).not.toBeNull()
+  expect(delivered.filter(x => x.type === 'permission_response_ack')).toHaveLength(0)
+  expect(service.resolveVerification(delivered[0].requestId, true, { verificationResolution: 'switch_public_entry' })).toBe(true)
+  await expect(owner).resolves.toMatchObject({ resolution: 'switch_public_entry' })
+  await expect(sibling).resolves.toMatchObject({ resolution: 'switch_public_entry' })
 })
 
+test('rejects generic permission approval without an explicit verification resolution', async () => {
+  const service = new ExpertHumanVerificationService(() => true)
+  const pending = service.requestVerification({ sessionId: 'explicit-choice', verification })
+  const requestId = service.getPendingRequest('explicit-choice')!.requestId
+  expect(service.resolveVerification(requestId, true)).toBe(false)
+  expect(service.resolveVerification(requestId, true, { verificationResolution: 'unknown' })).toBe(false)
+  expect(service.getPendingRequest('explicit-choice')?.requestId).toBe(requestId)
+  service.resolveVerification(requestId, true, { verificationResolution: 'record_evidence_gap' })
+  await expect(pending).resolves.toMatchObject({ resolution: 'record_evidence_gap' })
+})
 
-test('bounds orphan followers when the owning verification never arrives', async () => {
+test('orphan followers remain pending until their owner arrives or the session is cancelled', async () => {
   const service = new ExpertHumanVerificationService(() => true, 15)
   const exact = service.waitForActiveVerification('orphan', { verificationGateId: 'lost-gate' })
   const session = service.waitForActiveVerification('orphan')
-  const outcomes = await Promise.allSettled([exact, session])
-  for (const outcome of outcomes) {
-    expect(outcome.status).toBe('rejected')
-    if (outcome.status === 'rejected') expect(outcome.reason.message).toContain('owner did not arrive')
-  }
-  expect(service.getPendingRequest('orphan')).toBeNull()
+  let settled = false
+  const outcomes = Promise.allSettled([exact, session]).then(results => { settled = true; return results })
+  await new Promise(resolve => setTimeout(resolve, 60))
+  expect(settled).toBe(false)
   service.cancelSession('orphan')
+  for (const outcome of await outcomes) expect(outcome.status).toBe('rejected')
+})
+
+
+test('counts the union of queued verification waits, clipped to the active research interval', async () => {
+  const originalNow = Date.now
+  let now = 100
+  Date.now = () => now
+  try {
+    const service = new ExpertHumanVerificationService(() => true)
+    const first = service.requestVerification({ sessionId: 'timed', verificationGateId: 'a', verification })
+    now = 150
+    const second = service.requestVerification({ sessionId: 'timed', verificationGateId: 'b', verification })
+    now = 200
+    expect(service.getVerificationWaitMs('timed', 0, now)).toBe(100)
+    expect(service.getVerificationWaitMs('timed', 175, now)).toBe(25)
+    service.resolveVerification(service.getPendingRequest('timed')!.requestId, true, { verificationResolution: 'verification_completed' })
+    await first
+    await Promise.resolve()
+    now = 250
+    expect(service.getVerificationWaitMs('timed', 0, now)).toBe(150)
+    service.resolveVerification(service.getPendingRequest('timed')!.requestId, true, { verificationResolution: 'record_evidence_gap' })
+    await second
+    now = 400
+    expect(service.getVerificationWaitMs('timed', 0, now)).toBe(150)
+    const third = service.requestVerification({ sessionId: 'timed', verificationGateId: 'c', verification })
+    now = 450
+    service.resolveVerification(service.getPendingRequest('timed')!.requestId, true, { verificationResolution: 'switch_public_entry' })
+    await third
+    expect(service.getVerificationWaitMs('timed', 0, 500)).toBe(200)
+    expect(service.getVerificationWaitMs('timed', 225, 425)).toBe(50)
+    expect(service.getVerificationWaitMs('other', 0, 500)).toBe(0)
+    service.cancelSession('timed')
+    expect(service.getVerificationWaitMs('timed', 0, 500)).toBe(0)
+  } finally { Date.now = originalNow }
+})
+
+test('replays the active verification with its original identity without new delivery or wait reset', async () => {
+  const deliveries: any[] = []
+  const service = new ExpertHumanVerificationService((_session, message) => { deliveries.push(message); return true })
+  const first = service.requestVerification({ sessionId: 'replay-owner', verificationGateId: 'first', toolUseId: 'tool-original', verification })
+  const second = service.requestVerification({ sessionId: 'replay-owner', verificationGateId: 'second', verification })
+  const requestId = service.getPendingRequest('replay-owner')!.requestId
+  const beforeWait = service.getVerificationWaitMs('replay-owner', 0)
+  expect(service.getReplayRequest('replay-owner')).toMatchObject({
+    type: 'permission_request', requestId, toolName: 'Playwright', toolUseId: 'tool-original',
+    input: { kind: 'expert-playwright-verification', verification, queue: { remaining: 1 } },
+  })
+  expect(service.getReplayRequest('other-session')).toBeNull()
+  expect(deliveries).toHaveLength(1)
+  expect(service.getVerificationWaitMs('replay-owner', 0)).toBeGreaterThanOrEqual(beforeWait)
+  const cancelled = Promise.allSettled([first, second])
+  service.cancelSession('replay-owner')
+  await cancelled
+  expect(service.getReplayRequest('replay-owner')).toBeNull()
+})
+
+test('an orphaned join fails without pretending a user decision; a real verification never expires on this admission timer', async () => {
+  const messages: Array<{ requestId: string }> = []
+  const service = new ExpertHumanVerificationService((_session, message) => { messages.push(message); return true }, undefined, 10)
+  const orphan = service.waitForActiveVerification('orphan', { verificationGateId: 'missing-owner' })
+  await expect(orphan).rejects.toThrow('EXPERT_HUMAN_VERIFICATION_OWNER_UNAVAILABLE')
+  const real = service.requestVerification({ sessionId: 'orphan', verificationGateId: 'missing-owner', verification })
+  let settled = false
+  void real.then(() => { settled = true })
+  await new Promise(resolve => setTimeout(resolve, 25))
+  expect(settled).toBe(false)
+  expect(messages).toHaveLength(1)
+  expect(service.resolveVerification(messages[0]!.requestId, true, { verificationResolution: 'record_evidence_gap' })).toBe(true)
+  await expect(real).resolves.toMatchObject({ resolution: 'record_evidence_gap' })
 })

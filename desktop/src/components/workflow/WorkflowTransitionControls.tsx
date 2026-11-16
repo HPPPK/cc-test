@@ -3,7 +3,6 @@ import { createWorkflowTransitionId } from '../../api/websocket'
 import { useTranslation } from '../../i18n'
 import type { WorkflowStatusPanelSummary } from './WorkflowStatusPanel'
 import { formatWorkflowPhaseSummary } from './workflowPhaseDisplay'
-import { notifyDesktop } from '../../lib/desktopNotifications'
 
 export type WorkflowTransitionCommand = {
   phaseId: string
@@ -32,6 +31,7 @@ type WorkflowTransitionControlsProps = {
   transitionErrorScope?: { phaseId: string; stateVersion?: number; confirmationId?: string } | null
   transitionResetKey?: number
   transitionSyncing?: boolean
+  agentActive?: boolean
   embedded?: boolean
   sessionId?: string
   onConfirm: (command: WorkflowTransitionCommand) => void
@@ -47,15 +47,14 @@ export function WorkflowTransitionControls({
   transitionErrorScope = null,
   transitionResetKey = 0,
   transitionSyncing = false,
+  agentActive = false,
   embedded = false,
-  sessionId,
   onConfirm,
   onReject,
   onRetry,
 }: WorkflowTransitionControlsProps) {
   const t = useTranslation()
   const [localPending, setLocalPending] = useState(false)
-  const [clockNow, setClockNow] = useState(() => Date.now())
   const submissionLockRef = useRef(false)
   const lastWorkflowStateRef = useRef<string | null>(null)
   const lastResetKeyRef = useRef(transitionResetKey)
@@ -71,6 +70,9 @@ export function WorkflowTransitionControls({
   const blocked = Boolean(
     workflow
     && !pending
+    // A running workflow can retain historical diagnostics after an answered
+    // question. Its active recovery does not require another retry.
+    && !(workflow.status === 'running' && workflow.runStatus === 'active')
     && (
       workflow.status === 'failed'
       || workflow.runStatus === 'blocked'
@@ -78,27 +80,15 @@ export function WorkflowTransitionControls({
       || Boolean(workflow.blockedReason)
     ),
   )
-  const automaticRecoveryExpiresAt = workflow?.autoRecovery?.expiresAt
-  // Recovery state belongs to the server's workflow snapshot. Do not surface a
-  // manual-action card while that snapshot says the automatic recovery window is
-  // still active, even if a stale phase id briefly reaches the UI first.
+  // Keep manual Retry unavailable while the active agent owns the one-shot
+  // recovery credential. Once the turn is idle, the user can still choose Retry
+  // if the model ended without consuming the credential.
   const automaticRecoveryIsActive = Boolean(
     workflow?.autoRecovery
-    && typeof automaticRecoveryExpiresAt === 'string'
-    && !Number.isNaN(Date.parse(automaticRecoveryExpiresAt))
-    && Date.parse(automaticRecoveryExpiresAt) > clockNow,
+    && agentActive,
   )
   const confirmationId = workflow?.pendingConfirmationId
   const workflowStateKey = `${phaseId ?? 'missing'}:${typeof stateVersion === 'number' ? stateVersion : 'unknown'}:${confirmationId ?? 'missing'}`
-  const pendingRouteId = workflow?.pendingRoute?.status === 'pending'
-    ? workflow.pendingRoute.routeId
-    : null
-  const pendingWorkflowActionId = pendingRouteId
-    ? `route:${pendingRouteId}`
-    : workflow?.pendingConfirmation && confirmationId
-      ? `confirmation:${confirmationId}`
-      : null
-
   useEffect(() => {
     const workflowStateChanged = lastWorkflowStateRef.current !== null && lastWorkflowStateRef.current !== workflowStateKey
     const resetRequested = lastResetKeyRef.current !== transitionResetKey
@@ -110,30 +100,12 @@ export function WorkflowTransitionControls({
     lastResetKeyRef.current = transitionResetKey
   }, [transitionResetKey, workflowStateKey])
 
-  useEffect(() => {
-    if (!pendingWorkflowActionId) return
-
-    void notifyDesktop({
-      dedupeKey: `workflow-user-action:${sessionId ?? 'current'}:${pendingWorkflowActionId}`,
-      title: t('workflows.transition.confirmTitle'),
-      body: t('workflows.transition.confirmDescription'),
-      requestAttention: true,
-      ...(sessionId ? { target: { type: 'session' as const, sessionId } } : {}),
-    })
-  }, [pendingWorkflowActionId, sessionId, t])
-
-  useEffect(() => {
-    if (!automaticRecoveryExpiresAt) return undefined
-    const expiresAt = Date.parse(automaticRecoveryExpiresAt)
-    if (Number.isNaN(expiresAt)) return undefined
-    const timeout = window.setTimeout(() => setClockNow(Date.now()), Math.max(0, expiresAt - Date.now()))
-    return () => window.clearTimeout(timeout)
-  }, [automaticRecoveryExpiresAt])
-
   if (!workflow || !phaseId || (!pending && !blocked) || automaticRecoveryIsActive) return null
 
   const routeTarget = workflowRouteTarget(workflow, t)
   const isJumpRoute = isNonLinearRouteTarget(workflow) && Boolean(routeTarget)
+  const isReworkRoute = workflow.pendingRoute?.intent === 'rework_current_phase'
+  const scopeAmendment = isReworkRoute ? workflow.pendingRoute?.scopeAmendment : undefined
 
   const pendingTransitionMatchesCurrentConfirmation = Boolean(
     pendingTransition
@@ -221,9 +193,9 @@ export function WorkflowTransitionControls({
       <div className="flex items-start gap-3">
         <Icon />
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.confirmTitle')}</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{scopeAmendment ? t('workflows.transition.scopeConfirmTitle', { batch: scopeAmendment.batchId }) : t(isReworkRoute ? 'workflows.transition.reworkConfirmTitle' : 'workflows.transition.confirmTitle')}</h2>
           <p className="mt-1 text-xs leading-5 text-[var(--color-text-secondary)]">
-            {t('workflows.transition.confirmDescription')}
+            {t(scopeAmendment ? 'workflows.transition.scopeConfirmDescription' : isReworkRoute ? 'workflows.transition.reworkConfirmDescription' : 'workflows.transition.confirmDescription')}
           </p>
         </div>
       </div>
@@ -236,16 +208,18 @@ export function WorkflowTransitionControls({
         <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('workflows.transition.summaryTitle')}</div>
         <ul className="mt-1.5 space-y-1 text-xs leading-5 text-[var(--color-text-secondary)]">
           <li>{t('workflows.transition.currentPhase', { phase: formatWorkflowPhaseSummary(workflow) })}</li>
-          <li>{t('workflows.transition.keyResult')}</li>
-          {routeTarget ? <li>{t('workflows.transition.nextStep', { step: routeTarget })}</li> : null}
+          <li>{t(scopeAmendment ? 'workflows.transition.scopeKeyResult' : isReworkRoute ? 'workflows.transition.reworkKeyResult' : 'workflows.transition.keyResult')}</li>
+          {scopeAmendment?.addWriteScopes.map(path => <li key={path}><code className="break-all">{path}</code></li>)}
+          {scopeAmendment ? <li>{workflow.pendingRoute?.rationale}</li> : null}
+          {routeTarget && !isReworkRoute ? <li>{t('workflows.transition.nextStep', { step: routeTarget })}</li> : null}
         </ul>
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         <OptionButton
-          icon="thumb_up"
-          title={t(isJumpRoute ? 'workflows.transition.returnTitle' : 'workflows.transition.continueTitle')}
-          description={routeTarget ?? ''}
+          icon={isReworkRoute ? 'refresh' : 'thumb_up'}
+          title={t(scopeAmendment ? 'workflows.transition.scopeApproveTitle' : isReworkRoute ? 'workflows.transition.retryTitle' : isJumpRoute ? 'workflows.transition.returnTitle' : 'workflows.transition.continueTitle')}
+          description={scopeAmendment ? t('workflows.transition.scopeApproveDescription') : isReworkRoute ? t('workflows.transition.retryDescription') : routeTarget ?? ''}
           disabled={transitionPending}
           onClick={() => submitTransition(onConfirm, 'confirm')}
         />
