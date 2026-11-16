@@ -3,6 +3,9 @@ import { SendMessageTool } from './SendMessageTool.js'
 import * as swarms from '../../utils/agentSwarmsEnabled.js'
 import * as resume from '../AgentTool/resumeAgent.js'
 import { getToolsForDefaultPreset } from '../../tools.js'
+import { installNonLiveSubscriptionMetadataFixture } from '../__fixtures__/subscriptionMetadata.js'
+
+installNonLiveSubscriptionMetadataFixture()
 
 test('ordinary agent continuation remains available with teams disabled without enabling team protocols', async () => {
   const gate = spyOn(swarms, 'isAgentSwarmsEnabled').mockReturnValue(false)

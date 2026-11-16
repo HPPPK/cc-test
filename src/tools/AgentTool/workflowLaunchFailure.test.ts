@@ -11,6 +11,9 @@ import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
 import * as scheduling from './workflowTaskScheduling.js'
 import * as receipts from '../../services/tools/workflowRuntimeStateBridge.js'
 import * as queryModule from '../../query.js'
+import { installNonLiveSubscriptionMetadataFixture } from '../__fixtures__/subscriptionMetadata.js'
+
+installNonLiveSubscriptionMetadataFixture()
 
 test('a registered background agent becomes failed and notifies the parent when permit acquisition rejects', async () => {
   const keys = ['CC_JIANGXIA_DESKTOP_SERVER_URL', 'CC_JIANGXIA_WORKFLOW_SESSION_ID'] as const

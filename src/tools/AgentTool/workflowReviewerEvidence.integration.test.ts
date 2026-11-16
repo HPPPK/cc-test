@@ -19,6 +19,9 @@ import { resetWorkflowTaskSchedulers } from './workflowTaskScheduling.js'
 import { buildWorkflowReviewerEvidence } from './workflowReviewerEvidence.js'
 import { setShellIfWindows } from '../../utils/windowsPaths.js'
 import * as batchProgress from '../../server/services/workflowDevelopmentBatchAgentProgress.js'
+import { installNonLiveSubscriptionMetadataFixture } from '../__fixtures__/subscriptionMetadata.js'
+
+installNonLiveSubscriptionMetadataFixture()
 
 function fixture() {
   const now = new Date().toISOString()

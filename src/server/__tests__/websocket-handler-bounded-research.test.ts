@@ -1,5 +1,40 @@
-import { expect, test } from 'bun:test'
-import { buildInitialTemplateRenderAutoContinueInstruction, buildFinalizeDeliveryAutoContinueInstruction } from '../ws/handler.js'
+import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import * as hostTools from '../../tools.js'
+import { SettingsService } from '../services/settingsService.js'
+import { ProviderService } from '../services/providerService.js'
+import { __resetWebSocketHandlerStateForTests, buildInitialTemplateRenderAutoContinueInstruction, buildFinalizeDeliveryAutoContinueInstruction } from '../ws/handler.js'
+import { conversationService } from '../services/conversationService.js'
+
+let isolatedConfigDir = ''
+let previousConfigDir: string | undefined
+beforeEach(async () => {
+  previousConfigDir = process.env.CLAUDE_CONFIG_DIR
+  isolatedConfigDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bounded-research-fixture-'))
+  process.env.CLAUDE_CONFIG_DIR = isolatedConfigDir
+  // Readiness exercises a known host tool pool, never credential-backed isEnabled().
+  spyOn(hostTools, 'getToolsForDefaultPreset').mockReturnValue(['Agent', 'TaskOutput', 'Bash', 'Read', 'Write', 'AskUserQuestion'])
+  spyOn(SettingsService.prototype, 'getUserSettings').mockResolvedValue({ model: 'fixture-model' })
+  spyOn(ProviderService.prototype, 'listProviders').mockResolvedValue({ providers: [], activeId: null })
+  // Binding changes may restart the fixture transport; never spawn a real CLI.
+  spyOn(conversationService, 'startSession').mockResolvedValue()
+})
+afterEach(async () => {
+  __resetWebSocketHandlerStateForTests()
+  mock.restore()
+  if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR
+  else process.env.CLAUDE_CONFIG_DIR = previousConfigDir
+  const fixtureDir = isolatedConfigDir
+  isolatedConfigDir = ''
+  if (!fixtureDir) return
+  if (path.dirname(path.resolve(fixtureDir)) !== path.resolve(os.tmpdir())
+    || !path.basename(fixtureDir).startsWith('bounded-research-fixture-')) {
+    throw new Error('Refusing to remove a directory outside the temporary fixture boundary')
+  }
+  await fs.rm(fixtureDir, { recursive: true, force: true })
+})
 
 test('failed F resumes its original transcript instead of starting a replacement review', async () => {
   const { buildOutputReviewAutoContinueInstruction } = await import('../ws/handler.js')
@@ -79,9 +114,12 @@ test.each(['continue-initial-render', 'continue-finalize-delivery', 'recover-end
       skills: [], hostTools: [], tools: [], permissions: [], activatedAt: new Date().toISOString(),
     },
   } as any
-  const sessionId = `imported-canonical-cli-${kind}-${crypto.randomUUID()}`
+  const workDir = path.join(isolatedConfigDir, 'workspace')
+  await fs.mkdir(workDir)
+  const { sessionId } = await sessionService.createSession(workDir)
+  await sessionService.appendSessionMetadata(sessionId, { workDir, expert })
   const session = {
-    proc: { kill() {}, exited: Promise.resolve(0) }, outputCallbacks: [], workDir: process.cwd(),
+    proc: { kill() {}, exited: Promise.resolve(0) }, outputCallbacks: [], workDir,
     permissionMode: 'default', sdkToken: 'test-token', sdkSocket: null, pendingOutbound: [],
     startupPending: false, startupExitCode: null, stdoutLines: [], stderrLines: [], outputDrain: Promise.resolve(),
     sdkMessages: [], initMessage: null, pendingPermissionRequests: new Map(), expertRuntimeBindingKey: getExpertProcessBindingKey(expert),
@@ -93,11 +131,10 @@ test.each(['continue-initial-render', 'continue-finalize-delivery', 'recover-end
   } as any
   ;(conversationService as any).sessions.set(sessionId, session)
   const send = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
-  const getSession = spyOn(sessionService, 'getSession').mockResolvedValue({ id: sessionId, workDir: process.cwd(), expert } as any)
-  const title = spyOn(sessionService, 'getCustomTitle').mockResolvedValue(null)
   const { commercializationResearchBudgetService } = await import('../services/commercializationResearchBudgetService.js')
   const saveOnly = spyOn(commercializationResearchBudgetService, 'markSaveOnlyRecovery')
   try {
+    expect(await sessionService.getSessionTaskNotifications(sessionId)).toEqual([])
     handleWebSocket.open(socket)
     const plan = kind === 'initial-render-stalled' ? { kind, errorCode: 'EXPERT_RESEARCH_BUDGET_REJECTED' } : kind === 'recover-ended-researchers' ? { kind, recoveries: [{ artifactPath: '02.md', endedAgentId: 'ended-A', reason: 'ended-without-saved-handoff' as const }], preservedResearcherPaths: ['03.md', '04.md'] } : {
       kind, briefPath: '01.md', absorptionPath: '07.md', completionReviewPath: '08.md', reportPath: 'report.html',
@@ -121,8 +158,6 @@ test.each(['continue-initial-render', 'continue-finalize-delivery', 'recover-end
     handleWebSocket.close(socket, 1000, 'test complete')
     conversationService.stopSession(sessionId)
     send.mockRestore()
-    getSession.mockRestore()
-    title.mockRestore()
     saveOnly.mockRestore()
   }
 })

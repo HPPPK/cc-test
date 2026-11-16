@@ -31,7 +31,9 @@ import { sessionService } from '../../server/services/sessionService.js'
 import { ExpertSessionService } from '../../server/services/expertSessionService.js'
 import { ExpertPackRegistryService, resetExpertPackRegistryForTests } from '../../server/services/expertPackRegistryService.js'
 import { ZipPackAdapter } from '../../server/services/zipPackAdapter.js'
+import { installNonLiveSubscriptionMetadataFixture } from '../../tools/__fixtures__/subscriptionMetadata.js'
 
+installNonLiveSubscriptionMetadataFixture()
 
 const templateFillAdapter = new ZipPackAdapter()
 

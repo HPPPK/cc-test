@@ -18,6 +18,9 @@ import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentT
 import type { Message } from '../../types/message.js'
 import { recordDevelopmentBatchAgentProgress } from '../../server/services/workflowDevelopmentBatchAgentProgress.js'
 import { FORK_AGENT } from './forkSubagent.js'
+import { installNonLiveSubscriptionMetadataFixture } from '../__fixtures__/subscriptionMetadata.js'
+
+installNonLiveSubscriptionMetadataFixture()
 
 async function fixture() {
   const now = new Date().toISOString()
