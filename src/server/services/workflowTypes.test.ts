@@ -39,7 +39,7 @@ import type {
 } from './workflowTypes'
 
 describe('workflow domain types', () => {
-  test.each(WORKFLOW_COMPLETION_SUBMISSION_STATUSES)('classifies %s consistently for server evidence verification', status => {
+  test.each(WORKFLOW_COMPLETION_SUBMISSION_STATUSES.map(status => [status] as const))('classifies %s consistently for server evidence verification', status => {
     expect(isWorkflowReadyCompletionStatus(status)).toBe(['ready', 'needs_user', 'completed'].includes(status))
   })
 

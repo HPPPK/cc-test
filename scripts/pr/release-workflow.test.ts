@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
+test('release and PR checks use the Bun version exercised by the frozen first edition', () => {
+  for (const filename of ['.github/workflows/pr-quality.yml', '.github/workflows/release-desktop.yml']) {
+    const workflow = readFileSync(filename, 'utf8')
+    const versions = [...workflow.matchAll(/bun-version:\s*([^\r\n]+)/g)].map(match => match[1]!.trim())
+    expect(versions.length).toBeGreaterThan(0)
+    expect(versions.every(version => version === '1.3.14')).toBe(true)
+  }
+})
+
 describe('release desktop workflow', () => {
   test('attaches only the two explicitly selected importable packs after the remote Tauri release succeeds', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
