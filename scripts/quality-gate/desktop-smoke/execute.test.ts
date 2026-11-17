@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { runInNewContext } from 'node:vm'
 import { join } from 'node:path'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection, verifyDesktopSmokeChangedFiles, desktopSmokeProjectReadyExpression, verifyDesktopSmokeSessionWorkspace } from './execute'
 
 describe('desktop smoke runtime selection', () => {
@@ -53,15 +55,57 @@ describe('desktop smoke Vite launcher', () => {
 
 
 describe('desktop smoke browser launcher', () => {
-  test('uses a direct native executable on Windows when the installed agent-browser package provides one', () => {
-    const command = agentBrowserCommand('open', 'http://127.0.0.1')
-    if (process.platform === 'win32') {
-      expect(command.at(-2)).toBe('open')
-      expect(command.at(-1)).toBe('http://127.0.0.1')
-      expect(command[0]).toMatch(/agent-browser-win32-x64\.exe$/i)
-      return
+  function withLauncherFixture(platform: NodeJS.Platform, check: (root: string) => void) {
+    const root = mkdtempSync(join(tmpdir(), 'desktop-launcher-fixture-'))
+    const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!
+    const names = ['APPDATA', 'AGENT_BROWSER_BINARY', 'AGENT_BROWSER_EXECUTABLE_PATH', 'SystemRoot'] as const
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]))
+    try {
+      Object.defineProperty(process, 'platform', { ...descriptor, value: platform })
+      process.env.APPDATA = root
+      process.env.AGENT_BROWSER_BINARY = join(root, 'missing.exe')
+      process.env.AGENT_BROWSER_EXECUTABLE_PATH = "C:\\Browser's Path\\browser.exe"
+      process.env.SystemRoot = 'C:\\Windows'
+      check(root)
+    } finally {
+      Object.defineProperty(process, 'platform', descriptor)
+      for (const name of names) {
+        if (previous[name] === undefined) delete process.env[name]
+        else process.env[name] = previous[name]
+      }
+      rmSync(root, { recursive: true, force: true })
     }
-    expect(command).toEqual(['agent-browser', 'open', 'http://127.0.0.1'])
+  }
+
+  test('uses a direct native executable on Windows when the installed agent-browser package provides one', () => {
+    withLauncherFixture('win32', root => {
+      const native = join(root, 'npm', 'node_modules', 'agent-browser', 'bin', 'agent-browser-win32-x64.exe')
+      mkdirSync(join(root, 'npm', 'node_modules', 'agent-browser', 'bin'), { recursive: true })
+      writeFileSync(native, '')
+      expect(agentBrowserCommand('open', 'http://127.0.0.1')).toEqual([
+        native, '--executable-path', "C:\\Browser's Path\\browser.exe", 'open', 'http://127.0.0.1',
+      ])
+    })
+  })
+
+  test('uses the quoted PowerShell shim when no Windows native package executable exists', () => {
+    withLauncherFixture('win32', () => {
+      expect(agentBrowserCommand('open', 'http://127.0.0.1')).toEqual([
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', '-NoProfile', '-Command',
+        "& agent-browser.cmd '--executable-path' 'C:\\Browser''s Path\\browser.exe' 'open' 'http://127.0.0.1'",
+      ])
+    })
+  })
+
+  test('keeps the non-Windows executable and arguments independent of Windows package installation', () => {
+    withLauncherFixture('linux', root => {
+      const configured = join(root, 'configured.exe')
+      writeFileSync(configured, '')
+      process.env.AGENT_BROWSER_BINARY = configured
+      expect(agentBrowserCommand('open', 'http://127.0.0.1')).toEqual([
+        'agent-browser', '--executable-path', "C:\\Browser's Path\\browser.exe", 'open', 'http://127.0.0.1',
+      ])
+    })
   })
 })
 
