@@ -28,6 +28,9 @@ jobs:
     runs-on: windows-latest
     name: Release quality preflight
     steps:
+      - name: Preserve Git blob line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -48,6 +51,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: Install ripgrep
+        shell: pwsh
+        run: |
+          if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
+            choco install ripgrep --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          rg --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install root dependencies
         run: bun install
@@ -91,6 +104,9 @@ jobs:
     name: Build (${{ matrix.label }})
 
     steps:
+      - name: Preserve Git blob line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout
         uses: actions/checkout@v4
 

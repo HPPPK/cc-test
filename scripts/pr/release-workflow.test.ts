@@ -11,6 +11,34 @@ test('release and PR checks use the Bun version exercised by the frozen first ed
 })
 
 describe('release desktop workflow', () => {
+  test('provisions and verifies ripgrep before Windows release preflight tests', () => {
+    const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
+    const preflight = workflow.split('  quality-preflight:\n')[1]!.split('\n  build:')[0]!
+    const step = preflight.match(/      - name: Install ripgrep\n[\s\S]*?(?=\n      - name:|$)/)?.[0]
+    expect(step).toBeDefined()
+    expect(preflight.indexOf('name: Install ripgrep')).toBeLessThan(preflight.indexOf('name: Run non-live release preflight'))
+    expect(step).toContain('shell: pwsh')
+    expect(step).toContain('if (-not (Get-Command rg -ErrorAction SilentlyContinue))')
+    expect(step).toContain('choco install ripgrep --yes --no-progress')
+    expect(step).toContain('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }')
+    expect(step).toContain('rg --version')
+    expect(step!.indexOf('choco install')).toBeLessThan(step!.indexOf('rg --version'))
+  })
+
+  test('preserves Git blob line endings before checkout in both release jobs', () => {
+    const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
+    const jobs = [
+      workflow.split('  quality-preflight:\n')[1]!.split('\n  build:')[0]!,
+      workflow.split('\n  build:\n')[1]!,
+    ]
+    for (const job of jobs) {
+      const configure = job.indexOf('run: git config --global core.autocrlf false')
+      const checkout = job.indexOf('uses: actions/checkout@v4')
+      expect(configure).toBeGreaterThan(-1)
+      expect(checkout).toBeGreaterThan(configure)
+    }
+  })
+
   test('attaches only the two explicitly selected importable packs after the remote Tauri release succeeds', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
     const step = workflow.match(/      - name: Upload selected importable packs\n[\s\S]*?(?=\n      - name:|$)/)?.[0]
