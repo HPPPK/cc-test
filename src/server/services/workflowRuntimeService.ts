@@ -1,4 +1,6 @@
 import { usesDevelopmentQuestionBatches } from './workflowDevelopmentQuestionPolicy.js'
+import { DEVELOPMENT_BATCH_COMPLETION_ORDER } from './developmentToolExecutionPolicy.js'
+import { assessDependencyRisk, dependencyRiskDecisionOptions } from './workflowDependencyRiskPolicy.js'
 import { applyScopeAmendment, prepareScopeAmendment } from './workflowScopeAmendment.js'
 import { isWorkflowReadyCompletionStatus as isReadyCompletionStatus } from './workflowTypes.js'
 import { createHash } from 'node:crypto'
@@ -63,6 +65,7 @@ import {
 } from './workflowBrainstormingFallback.js'
 import {
   DEVELOPMENT_WORKFLOW_TEMPLATE_ID,
+  DEVELOPMENT_IMPLEMENT_PHASE_ID,
   developmentBatchAgentBlockerReasons,
   isDevelopmentBatchTaskSnapshot,
   developmentBatchHandoffPrompt,
@@ -235,6 +238,56 @@ function phaseSkillSnapshots(state: WorkflowSessionState): WorkflowPhaseSkillSna
 function activePhaseSkillSnapshot(state: WorkflowSessionState): WorkflowPhaseSkillSnapshot | null {
   if (!state.activePhaseId) return null
   return phaseSkillSnapshots(state).find((snapshot) => snapshot.phaseId === state.activePhaseId) ?? null
+}
+
+function developmentBatchNextActions(state: WorkflowSessionState, tasks: WorkflowTaskSnapshot[]): string {
+  tasks = tasks.filter(task => task.sessionId === state.sessionId && task.phaseId === state.activePhaseId
+    && (!task.runId || task.runId === state.activeWorkflowRunId))
+  const batchIds = [...new Set(tasks.map(task => task.batchId).filter((id): id is string => Boolean(id)))]
+  const directives = batchIds.flatMap(batchId => {
+    const coder = tasks.find(task => task.batchId === batchId && task.workflowRole === 'coder')
+    const reviewer = tasks.find(task => task.batchId === batchId && task.workflowRole === 'reviewer')
+    const waiting = [coder, reviewer].find(task => task?.status === 'waiting_user')
+    if (waiting) {
+      return [`${batchId}: ${waiting.workflowRole === 'coder' ? 'Coder' : 'Reviewer'} waiting for user; resolve the existing permission/question, then continue the same attempt. Do not create a duplicate question or wait for completion before handling that pending decision.`]
+    }
+    const inFlight = [coder, reviewer].find(task => task?.status === 'running')
+    if (inFlight) {
+      const agent = inFlight.agentRunId ?? inFlight.agentId
+      return [`${batchId}: ${inFlight.workflowRole === 'coder' ? 'Coder' : 'Reviewer'} running${agent ? ` (agent ${agent.slice(0, 80)})` : ''}; wait for the current attempt via TaskOutput or SendMessage. Do not launch a duplicate or declare a scheduler contradiction while it is active.`]
+    }
+    if (reviewer?.status === 'needs_fix' || reviewer?.reviewStatus === 'needs-fix') {
+      const fixes = reviewer.requiredFixes ?? []
+      const risks = fixes.map(finding => assessDependencyRisk(finding))
+      if (fixes.length && risks.every(risk => risk !== null)) {
+        const classification = risks.some(risk => risk.classification === 'blocking') ? 'blocking'
+          : risks.some(risk => risk.classification === 'decision-required') ? 'decision-required' : 'nonblocking-warning'
+        return [`${batchId}: dependency risk ${classification}; ${classification === 'nonblocking-warning'
+          ? 'a warning was recorded as a mandatory fix; request a coherent Reviewer receipt, preserving findings and existing work.'
+          : 'resolve the recorded exposure/policy decision before selecting a scoped repair; preserve completed Coder work and accepted hard gates.'} ${dependencyRiskDecisionOptions(classification === 'nonblocking-warning')}`]
+      }
+      return [`${batchId}: Reviewer needs-fix; send the recorded required fixes/checks to same Batch Coder repair within existing scopes, then Reviewer after the new Coder is ready. Preserve other accepted batches.`]
+    }
+    if (coder && ['cancelled', 'stale', 'interrupted'].includes(coder.status)) {
+      return [`${batchId}: Coder ${coder.status}; preserve existing work and resolve cancellation or stale ownership through current runtime controls; do not auto-restart. Continue only after the current user decision and phase authority permit it.`]
+    }
+    if (coder && ['blocked', 'failed'].includes(coder.status)) {
+      return [`${batchId}: Coder unfinished (${coder.status}); complete remaining authorized work/checks before Reviewer. Reuse completed files and command evidence; do not make Reviewer approval a prerequisite for unfinished Coder validation.`]
+    }
+    if (coder?.status === 'succeeded' && reviewer?.status !== 'succeeded') {
+      return [`${batchId}: Coder ready; dispatch Reviewer with the accepted Coder result and command evidence. Correct a failed review receipt without repeating Coder work unless the review identifies real required fixes.`]
+    }
+    return []
+  })
+  return [
+    'Same-Batch next actions (derived from current authoritative receipts)',
+    DEVELOPMENT_BATCH_COMPLETION_ORDER,
+    state.pendingConfirmation || state.pendingRoute?.status === 'pending' || state.runStatus && state.runStatus !== 'active'
+      ? `Execution remains ${state.runStatus ?? 'pending-confirmation'}; resolve the existing pending decision or recorded blocker through its current controls before dispatch. This guidance does not resume execution or authorize an action.` : '',
+    'Do not request approvals already recorded. Ask through existing permission controls only for a concrete action not covered by the accepted authorization.',
+    ...directives.slice(0, 6),
+    directives.length > 6 ? 'Additional Batch guidance omitted; inspect current task receipts before dispatching those batches.' : '',
+  ].filter(Boolean).join('\n')
 }
 
 function shouldUseBrainstormingSkill(state: WorkflowSessionState): boolean {
@@ -1646,6 +1699,7 @@ export class WorkflowRuntimeService {
       'Workflow mode',
       `Active phase: ${phase.id}`,
       compactDevelopmentPrompt ? currentTaskReceipts : '',
+      compactDevelopmentPrompt && phase.id === DEVELOPMENT_IMPLEMENT_PHASE_ID ? developmentBatchNextActions(input.state, taskReceipts) : '',
       compactDevelopmentPrompt ? outstandingQuestion : '',
       compactDevelopmentPrompt
         ? 'Context lookup: the current phase contract below and authoritative task receipts define the allowed work. Artifact names are on-demand pointers, not a checklist to reread. Do not load the complete template.snapshot.json, all stages, old reports or full chat history as routine intake. Read a specific accepted artifact only when needed for the current decision; use bounded sections when diagnosing a genuine contract conflict. Preserve permission, approval and completion gates.'

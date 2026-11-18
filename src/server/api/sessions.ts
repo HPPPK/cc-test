@@ -1,4 +1,5 @@
 import { toWorkflowTemplate } from '../services/workflowRuntimeTemplateService.js'
+import { getWorkflowTimeline } from './workflowTimeline.js'
 import { scopeAmendmentStorageTransaction } from '../services/workflowScopeAmendment.js'
 import { isWorkflowReadyCompletionStatus } from '../services/workflowTypes.js'
 /**
@@ -705,6 +706,9 @@ async function handleWorkflowSessionRoute(
   workflowAction?: string,
 ): Promise<Response> {
   switch (workflowResource) {
+    case 'timeline':
+      if (req.method !== 'GET') return methodNotAllowed(req.method)
+      return await getWorkflowTimeline(req, sessionId)
     case undefined:
       if (req.method !== 'GET') return methodNotAllowed(req.method)
       return await getWorkflowState(sessionId)

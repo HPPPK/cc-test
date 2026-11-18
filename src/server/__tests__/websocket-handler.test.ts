@@ -4321,6 +4321,205 @@ describe('WebSocket handler session isolation', () => {
     }
   })
 
+  describe('protocol input origin regression', () => {
+    const missingPrompt = 'InputValidationError: Agent failed due to the following issue:\nThe required parameter `prompt` is missing'
+    async function fixture(running = false) {
+      const id = `workflow-protocol-origin-${crypto.randomUUID()}`
+      const ws = makeClientSocket(id)
+      const session = {
+        proc: { kill() {}, exited: Promise.resolve(0) }, outputCallbacks: [] as Array<(message: any) => void>,
+        workDir: isolatedConfigDir, permissionMode: 'default', sdkToken: 'fixture', sdkSocket: null,
+        pendingOutbound: [], startupPending: false, startupExitCode: null, stdoutLines: [], stderrLines: [],
+        outputDrain: Promise.resolve(), sdkMessages: [], initMessage: null, pendingPermissionRequests: new Map(),
+      }
+      ;(conversationService as any).sessions.set(id, session)
+      const send = spyOn(conversationService, 'sendMessage').mockReturnValue(true)
+      const internal = spyOn(conversationService, 'sendInternalMessage').mockReturnValue(true)
+      const state = makeFollowUpWorkflowStageOneState(id, { templateId: 'efficient-constrained-dev-debug-workflow-v5', phaseId: 'delegate-implement' })
+      state.activeWorkflowRunId = 'fixture-run'
+      if (running) state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots.push({
+        taskId: 'B1::coder', runId: 'fixture-run', sessionId: id, phaseId: 'delegate-implement', stateVersion: 1,
+        status: 'running', updatedAt: new Date().toISOString(), batchId: 'B1', workflowRole: 'coder',
+        agentId: 'worker-b1', agentRunId: 'worker-b1', toolUseId: 'valid-b1', attempt: 1,
+      })
+      await new WorkflowSessionStateService().writeState(id, state)
+      handleWebSocket.open(ws)
+      await flushAsyncHandlers()
+      const callback = session.outputCallbacks[0]!
+      const call = (toolUseId: string, batch: string, valid = false, name = 'Agent') => callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id: toolUseId, name, input: { description: `Batch ${batch}`, ...(valid ? { prompt: `Implement ${batch}` } : {}),
+          workflow_role: 'coder', workflow_parallel_plan: { task_id: batch } },
+      }] } })
+      const result = (toolUseId: string, error = false, content: unknown = 'Async agent launched successfully.\nagentId: worker-b1') => callback({
+        type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: toolUseId, is_error: error, content }] },
+      })
+      const terminal = (error = true) => callback({ type: 'result', is_error: error, result: error ? missingPrompt : '', usage: {} })
+      const recoveryCount = () => send.mock.calls.filter(call => String(call[1]).includes('<workflow-protocol-input-recovery>')).length
+      return { id, ws, state, send, internal, callback, call, result, terminal, recoveryCount }
+    }
+
+    it('acknowledges the corrected successful Agent launch before terminal recovery and ignores a late original error', async () => {
+      const f = await fixture(true)
+      f.call('invalid-b1', 'B1'); f.result('invalid-b1', true, missingPrompt)
+      f.call('valid-b1', 'B1', true); f.result('valid-b1')
+      f.result('invalid-b1', true, missingPrompt) // Delayed replay cannot re-arm an acknowledged origin.
+      f.terminal(false)
+      await Bun.sleep(150)
+      expect(f.recoveryCount()).toBe(0)
+      expect(f.internal).not.toHaveBeenCalled() // The genuine worker is still running; wait normally.
+      expect(parseSentMessages(f.ws)).not.toContainEqual(expect.objectContaining({ code: 'WORKFLOW_PROTOCOL_INPUT_INVALID' }))
+    })
+
+    it('does not classify replayed internal recovery or human quoted diagnostics as fresh tool failures', async () => {
+      const f = await fixture(true)
+      const quoted = `<workflow-protocol-input-recovery>\n${missingPrompt}\n</workflow-protocol-input-recovery>`
+      for (const kind of ['internal_notification', 'user_input']) f.callback({ type: 'user', messageKind: kind, message: { role: 'user', content: [{ type: 'text', text: quoted }] } })
+      f.terminal(false)
+      await Bun.sleep(150)
+      expect(f.recoveryCount()).toBe(0)
+      expect(f.internal).not.toHaveBeenCalled()
+    })
+
+    it.each(['description', 'prompt'] as const)('preserves exact ACK identity for large non-DAG %s fallback text', async field => {
+      const f = await fixture(true)
+      const text = 'large worker assignment '.repeat(8192)
+      const emit = (id: string, value: string) => f.callback({ type: 'assistant', message: { content: [{
+        type: 'tool_use', id, name: 'Agent', input: { [field]: value },
+      }] } })
+      const error = `InputValidationError: Agent failed due to:\nThe required parameter \`${field === 'description' ? 'prompt' : 'description'}\` is missing`
+      emit('large-invalid', text); f.result('large-invalid', true, error)
+      emit('large-unrelated', `${text}different`); f.result('large-unrelated')
+      f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 1)
+      emit('large-corrected', text); f.result('large-corrected')
+      f.terminal(false)
+      await Bun.sleep(100)
+      emit('large-fresh-invalid', text); f.result('large-fresh-invalid', true, error)
+      f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 2)
+      expect(String(f.send.mock.calls.at(-1)?.[1])).toContain('Recovery attempt 1.')
+    })
+
+    it('ignores the first delayed error delivery from an older call already superseded by a related successful launch', async () => {
+      const f = await fixture(true)
+      f.call('late-original', 'B2')
+      f.call('accepted-successor', 'B2', true); f.result('accepted-successor')
+      f.result('late-original', true, missingPrompt)
+      f.terminal(false)
+      await Bun.sleep(150)
+      expect(f.recoveryCount()).toBe(0)
+      expect(f.internal).not.toHaveBeenCalled()
+    })
+
+    it('preserves a real provider failure instead of masking it with an older input-validation failure', async () => {
+      const f = await fixture(true)
+      f.call('invalid-b2', 'B2'); f.result('invalid-b2', true, missingPrompt)
+      f.callback({ type: 'result', is_error: true, result: 'API Error: 429 provider quota exhausted', usage: {} })
+      await Bun.sleep(100)
+      expect(f.recoveryCount()).toBe(0)
+      expect(parseSentMessages(f.ws)).toContainEqual(expect.objectContaining({ type: 'error', code: 'CLI_ERROR', message: 'API Error: 429 provider quota exhausted' }))
+    })
+
+    it('retains a genuine pending failure when an unrelated Agent target or Bash call succeeds', async () => {
+      const f = await fixture(true)
+      f.call('invalid-b2', 'B2'); f.result('invalid-b2', true, missingPrompt)
+      f.call('valid-b1', 'B1', true); f.result('valid-b1')
+      f.call('read-success', 'B2', true, 'Bash'); f.result('read-success', false, 'ok')
+      f.terminal()
+      await waitForCondition(() => f.recoveryCount() > 0)
+      expect(f.recoveryCount()).toBe(1)
+      expect(f.send.mock.calls.at(-1)?.[1]).toContain('required parameter `prompt`')
+    })
+
+    it('does not embed its own replayed recovery prompt in the next genuine validation error', async () => {
+      const f = await fixture(true)
+      f.call('invalid-b2', 'B2'); f.result('invalid-b2', true, missingPrompt); f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 1)
+      const recovery = String(f.send.mock.calls.at(-1)?.[1])
+      f.callback({ type: 'user', messageKind: 'user_input', message: { role: 'user', content: [{ type: 'text', text: recovery }] } })
+      const fresh = 'InputValidationError: Agent failed due to:\nThe required parameter `description` is missing'
+      f.call('invalid-b3', 'B3'); f.result('invalid-b3', true, fresh); f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 2)
+      const next = String(f.send.mock.calls.at(-1)?.[1])
+      expect(next.match(/<workflow-protocol-input-recovery>/g)).toHaveLength(1)
+      expect(next).toContain('required parameter `description`')
+      expect(next).not.toContain('messageKind')
+    })
+
+    it('bounds the same managed Agent field error and never falls through to business recovery on later results', async () => {
+      const f = await fixture(true)
+      f.call('invalid-first', 'B2'); f.result('invalid-first', true, missingPrompt); f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 1)
+      f.call('invalid-second', 'B2'); f.result('invalid-second', true, missingPrompt.replace('failed due to the following issue:', 'failed due to:')); f.terminal()
+      await Bun.sleep(150)
+      for (let index = 0; index < 3; index++) {
+        f.callback({ type: 'assistant', message: { content: [{ type: 'text', text: 'Waiting on the unresolved tool error.' }] } })
+        f.terminal(false)
+        await Bun.sleep(30)
+      }
+      expect(f.recoveryCount()).toBe(1)
+      expect(f.internal).not.toHaveBeenCalled()
+      expect(parseSentMessages(f.ws).some(message => message.code === 'WORKFLOW_PROTOCOL_INPUT_INVALID')).toBe(true)
+      expect((await new WorkflowSessionStateService().readState(f.id)).state?.workflowStatus).toBe('running')
+    })
+
+    it('permits a fresh failure after the matching corrected success resets the prior recovery budget', async () => {
+      const f = await fixture(true)
+      f.call('invalid-first', 'B2'); f.result('invalid-first', true, missingPrompt); f.terminal()
+      await waitForCondition(() => f.recoveryCount() === 1)
+      f.call('valid-correction', 'B2', true); f.result('valid-correction'); f.terminal(false)
+      await Bun.sleep(100)
+      f.call('invalid-new', 'B2'); f.result('invalid-new', true, missingPrompt); f.terminal()
+      await waitForCondition(() => f.recoveryCount() >= 2)
+      expect(f.recoveryCount()).toBe(2)
+      expect(String(f.send.mock.calls.at(-1)?.[1])).toContain('Recovery attempt 1.')
+    })
+
+    it('keeps one error budget when the same missing fields are reordered or duplicated', async () => {
+      const f = await fixture(true)
+      const diagnostics = ['The required parameter `description` is missing', 'The required parameter `prompt` is missing']
+      for (let i = 0; i < 2; i++) {
+        f.call(`reordered-${i}`, 'B2')
+        f.result(`reordered-${i}`, true, `InputValidationError: Agent failed due to:\n${(i ? [diagnostics[1], diagnostics[0], diagnostics[1]] : diagnostics).join('\n')}`)
+        f.terminal()
+        await Bun.sleep(100)
+      }
+      expect(f.recoveryCount()).toBe(1)
+      expect(parseSentMessages(f.ws).some(message => message.code === 'WORKFLOW_PROTOCOL_INPUT_INVALID')).toBe(true)
+    })
+
+    it.each(['failed', 'waiting_dependency', 'ownerless', 'stale-phase', 'stale-run', 'blocked-queued'] as const)('does not hide terminal recovery behind a %s worker', async kind => {
+      const f = await fixture(true)
+      const task = f.state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots[0]!
+      if (kind === 'failed' || kind === 'waiting_dependency') task.status = kind
+      if (kind === 'ownerless') { task.agentId = undefined; task.agentRunId = undefined }
+      if (kind === 'stale-phase') task.phaseId = 'old-phase'
+      if (kind === 'stale-run') task.runId = 'old-run'
+      if (kind === 'blocked-queued') { task.status = 'pending'; task.dependsOn = ['missing-prerequisite'] }
+      await new WorkflowSessionStateService().writeState(f.id, f.state)
+      f.terminal(false)
+      await waitForCondition(() => f.internal.mock.calls.length > 0)
+      expect(f.internal).toHaveBeenCalledTimes(1)
+      expect(String(f.internal.mock.calls[0]?.[1])).toContain('<workflow-terminal-recovery>')
+      expect(f.recoveryCount()).toBe(0)
+    })
+
+    it('waits for an owned registered queued launch only when its explicit dependency can progress', async () => {
+      const f = await fixture(true)
+      const tasks = f.state.runtimeContract!.phaseStates['delegate-implement']!.taskSnapshots
+      const task = tasks[0]!
+      task.status = 'pending'
+      task.dependsOn = ['B0::reviewer']
+      tasks.push({ ...task, taskId: 'B0::reviewer', batchId: 'B0', workflowRole: 'reviewer', status: 'succeeded',
+        agentRunId: 'accepted-reviewer', agentId: 'accepted-reviewer', dependsOn: [] })
+      await new WorkflowSessionStateService().writeState(f.id, f.state)
+      f.terminal(false)
+      await Bun.sleep(150)
+      expect(f.internal).not.toHaveBeenCalled()
+      expect(f.recoveryCount()).toBe(0)
+    })
+  })
+
   it('returns missing Agent launch fields to the active workflow for one corrected retry without restarting the CLI', async () => {
     const sessionId = `workflow-agent-input-recovery-${crypto.randomUUID()}`
     const ws = makeClientSocket(sessionId)

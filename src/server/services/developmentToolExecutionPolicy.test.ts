@@ -23,6 +23,38 @@ function worker(overrides: Partial<DevelopmentWorkerContract> = {}): Development
 }
 
 describe('default development execution contract', () => {
+  test('canonical bound Coder and Reviewer receive evidence-based dependency risk guidance without changing other workflows', () => {
+    const current = state({ activeWorkflowRunId: 'current-run' })
+    for (const role of ['coder', 'reviewer'] as const) {
+      const assigned = worker({ runId: 'current-run', role })
+      const prompt = developmentWorkerContractPrompt(assigned, current)
+      expect(prompt).toContain('Dependency advisories:')
+      expect(prompt).toContain('dependencyScope')
+      expect(prompt).toContain('workflowReview.dependencyRisks')
+      expect(prompt).toContain('limited development')
+      expect(prompt).toContain('hard gates')
+      expect(prompt).toContain('"disposition":"decision-required"')
+      expect(prompt).toContain('"shipped":"unknown"')
+      expect(prompt).toContain('partial remediation')
+      expect(prompt).toContain('policyEvidence (accepted contract reference)')
+      expect(prompt).toContain('not independently verified')
+      expect(developmentWorkerContractPrompt(assigned, state({ activeWorkflowRunId: 'current-run', templateIdentity: { id: 'custom' } }))).not.toContain('Dependency advisories:')
+      expect(developmentWorkerContractPrompt({ ...assigned, runId: 'old-run' }, current)).not.toContain('Dependency advisories:')
+    }
+  })
+  test('uses a single exact JSON Coder receipt only for a current canonical worker binding', () => {
+    const current = state({ activeWorkflowRunId: 'current-run' })
+    const assigned = worker({ runId: 'current-run' })
+    const prompt = developmentWorkerContractPrompt(assigned, current)
+    expect(prompt).toContain('one final JSON receipt')
+    expect(prompt).toContain('exact boolean key {"readyForReview":true}')
+    expect(prompt).not.toContain('or a standalone readyForReview')
+    for (const mismatch of [worker({ runId: 'old-run' }), worker({ runId: 'current-run', sessionId: 'other' }),
+      worker({ runId: 'current-run', phaseId: 'old-phase' }), worker({ runId: 'current-run', role: 'qa' })]) {
+      expect(developmentWorkerContractPrompt(mismatch, current)).not.toContain('Reviewer pass is not permission')
+    }
+    expect(developmentWorkerContractPrompt(assigned, state({ activeWorkflowRunId: 'current-run', templateIdentity: { id: 'custom' } }))).not.toContain('one final JSON receipt')
+  })
   test('binds the actual workspace and snapshots Batch scopes only for the default development workflow', () => {
     const scopes = ['src/**']
     const contract = createDevelopmentWorkerContract(state(), 'coder', '/isolated/worktree', 'B1', scopes)

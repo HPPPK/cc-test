@@ -2,11 +2,14 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import picomatch from 'picomatch'
 import type { WorkflowSessionState } from './workflowTypes.js'
+import { DEPENDENCY_RISK_FINDING_EXAMPLE, DEPENDENCY_RISK_REVIEW_GUIDANCE } from './workflowDependencyRiskPolicy.js'
 
 const DEVELOPMENT_MANAGED_TEMPLATE_IDS = new Set([
   'efficient-constrained-dev-debug-workflow-v5',
   'stradn-managed-development-workflow-v1',
 ])
+export const DEVELOPMENT_BATCH_COMPLETION_ORDER = 'Complete authorized Coder implementation/checks before Reviewer. Coder readyForReview=false means unfinished work; Reviewer needs-fix means same-Batch Coder repair, then Reviewer again. Reviewer pass is not permission for Coder work. Preserve existing approvals, scopes and evidence; return only a concrete uncovered action or blocker to the Leader.'
+export const DEVELOPMENT_CODER_RECEIPT_GUIDANCE = 'Coder: return one final JSON receipt, preferably a json code block, with the exact boolean key {"readyForReview":true} or {"readyForReview":false}, alongside changedFiles, checks, blockers and risks. Keep the key inside that JSON object; do not replace it with a Markdown heading, bold bullet or readyForReview=true prose line. True requires completed scoped work and promised checks; otherwise use false and the concrete remaining blocker. No extra handoff file is required.'
 export const DEVELOPMENT_REVIEWER_RESULT_GUIDANCE = 'Every Reviewer final answer must include a machine-readable JSON object: {"workflowReview":{"reviewStatus":"pass","requiredFixes":[],"readyForNextBatch":true}}. requiredFixes accepts non-empty strings or finding objects with a concrete issue, fix, requiredChange, requiredAction, suggestedFix, description, detail, or message; include file/location and evidence when relevant. For example: {"workflowReview":{"reviewStatus":"needs-fix","requiredFixes":[{"file":"app/module.py","issue":"Observed incorrect behavior","requiredChange":"Concrete scoped repair or missing validation to perform"}],"readyForNextBatch":false}}. pass requires no fixes and true; needs-fix requires at least one concrete fix or required validation and false. Include evidence, userScenarioChecked, and remainingRisks alongside the result. Do not claim unperformed checks passed. Identify whether each required item is a code defect or missing validation, and distinguish Coder-provided evidence from checks you independently performed. The canonical readiness field is readyForNextBatch.'
 export type DevelopmentWorkerContract = {
   sessionId: string
@@ -63,16 +66,24 @@ export function developmentWorkerToolAllowed(toolName: string, role: Development
   return role === 'coder' || !FILE_MUTATIONS.has(toolName)
 }
 
-export function developmentWorkerContractPrompt(worker: DevelopmentWorkerContract): string {
+export function developmentWorkerContractPrompt(worker: DevelopmentWorkerContract, state?: WorkflowSessionState): string {
+  const canonicalImplementation = isDefaultDevelopmentImplementationWorker(state, worker.role)
+    && worker.phaseId === state?.activePhaseId
+    && worker.sessionId === state?.sessionId && Boolean(worker.runId) && worker.runId === state?.activeWorkflowRunId
+    && PHASE_ROLES[worker.phaseId]?.includes(worker.role)
   return [
     'Default development worker execution contract (runtime enforced)',
     JSON.stringify(worker),
+    ...(canonicalImplementation
+      && (worker.role === 'coder' || worker.role === 'reviewer') ? [DEVELOPMENT_BATCH_COMPLETION_ORDER, DEPENDENCY_RISK_REVIEW_GUIDANCE, `Dependency finding shape (replace example values with verified facts): ${DEPENDENCY_RISK_FINDING_EXAMPLE}`] : []),
     'Only the Leader can ask the user, delegate, submit phase completion, or route a phase. Return blockers to the Leader.',
     'This is an assigned evidence/implementation lane, not a new independent workflow. Follow the already supplied role and method references within this assignment. Do not start an independent workflow that requires its own user confirmation, session, handoff files, or delegation. If a reference describes those Leader duties, keep them with the Leader and continue the permitted investigation or implementation directly.',
     worker.role === 'reviewer'
       ? `Review files and recorded evidence only. Shell tools are unavailable. Use Coder-provided commands, results and recorded evidence together with source and test reads; identify their source and check they cover this batch. Do not treat unavailable shell access itself as a code defect or require repeating already evidenced checks. If a promised check lacks sufficient evidence, identify the exact missing validation and return it to the Leader for an authorized runner; do not invent a source-code repair or pass unverified behavior.\n${DEVELOPMENT_REVIEWER_RESULT_GUIDANCE}`
       : worker.role === 'coder'
-        ? 'Direct file mutations must stay within writeScopes. Shell commands still use the existing execution permissions and sandbox; do not use them to bypass scope or disable the sandbox. Default development Stage 4 Coder completion requires an explicit boolean readyForReview in the final JSON object or a standalone readyForReview: true/false line. Return true only when the scoped work and promised checks are ready for review; return false with the concrete remaining blocker or unperformed check otherwise. Keep the existing files and report; no additional handoff document is required.'
+        ? canonicalImplementation
+          ? `Direct file mutations must stay within writeScopes. Shell commands still use the existing execution permissions and sandbox; do not use them to bypass scope or disable the sandbox. ${DEVELOPMENT_CODER_RECEIPT_GUIDANCE}`
+          : 'Direct file mutations must stay within writeScopes. Shell commands still use the existing execution permissions and sandbox; do not use them to bypass scope or disable the sandbox. Default development Stage 4 Coder completion requires an explicit boolean readyForReview in the final JSON object or a standalone readyForReview: true/false line. Return true only when the scoped work and promised checks are ready for review; return false with the concrete remaining blocker or unperformed check otherwise. Keep the existing files and report; no additional handoff document is required.'
         : 'Validate or investigate only; do not edit files. Return required changes to the Leader for Coder repair.',
     'A tool error is not success. Correct only the identified fields or target and retry; if the contract blocks the task, return the blocker rather than bypassing it.',
   ].join('\n')

@@ -71,6 +71,8 @@ async function startTestServer(): Promise<void> {
   const { handleApiRequest } = await import('../router.js')
 
   server = Bun.serve({
+    // Match the production server while cold Windows pack/skill catalogs load.
+    idleTimeout: 60,
     port: 0,
     hostname: '127.0.0.1',
     async fetch(req) {

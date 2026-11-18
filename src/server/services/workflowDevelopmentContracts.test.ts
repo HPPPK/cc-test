@@ -62,9 +62,10 @@ describe('canonical development workflow execution contracts', () => {
       expect(text).toContain('retries only the Reviewer with accepted Coder evidence')
       expect(text).toContain('Directly dispatch the same Batch Coder, then its Reviewer')
       expect(text).toContain('that route requires confirmation')
-      expect(text).toContain('readyForReview: true')
-      expect(text).toContain('readyForReview: false')
-      expect(text).toContain('Ending a reply does not complete a Batch')
+      expect(text).toContain('{"readyForReview":true}')
+      expect(text).toContain('{"readyForReview":false}')
+      expect(text).toContain('must be reviewed again before that batch succeeds')
+      expect(text).toContain('never permission to start a dependent Batch')
       expect(text).toContain('subagent_type=general-purpose')
       expect(text).toContain('they do not invoke nested workflows')
     }

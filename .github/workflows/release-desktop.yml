@@ -247,15 +247,20 @@ jobs:
           assetNamePattern: ${{ matrix.asset_name_pattern }}
           args: ${{ matrix.tauri_args }} --ci --config src-tauri/tauri.release-ci.json
 
-      - name: Upload selected importable packs
+      - name: Upload all importable packs
         if: matrix.platform == 'windows-latest'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          shopt -s nullglob
+          packs=(src/server/packs/*.zip src/server/packs/experts/*.zip release-packs/experts/*.zip)
+          if [ "${#packs[@]}" -eq 0 ]; then
+            echo "::error::No importable packs found"
+            exit 1
+          fi
           gh release upload "v${{ steps.version.outputs.value }}" \
-            src/server/packs/experts/commercialization-research-report.zip \
-            src/server/packs/efficient-constrained-dev-debug-workflow-v5.zip \
+            "${packs[@]}" \
             --clobber
 
       - name: Upload workflow pack audits

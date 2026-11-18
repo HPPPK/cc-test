@@ -10,6 +10,7 @@ import { WorkflowSessionStateService } from './workflowSessionStateService.js'
 import { ZipPackAdapter } from './zipPackAdapter.js'
 import { resetWorkflowTemplateRegistryForTests } from './workflowTemplateRegistryService.js'
 import { recordWorkflowAgentTaskProgress } from './workflowAgentTaskStateService.js'
+import { DEPENDENCY_RISK_REVIEW_GUIDANCE } from './workflowDependencyRiskPolicy.js'
 import {
   getWorkflowPhaseDisallowedTools,
   hasWorkflowArtifactWriteCapability,
@@ -642,9 +643,14 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const development = await loadTemplate('efficient-constrained-dev-debug-workflow-v5.zip')
     const developmentIntake = development.phases.find((phase) => phase.id === 'route-context')
     const developmentPhase = (id: string) => development.phases.find((phase) => phase.id === id)?.instructions ?? ''
-    expect(development.version).toBe('32')
+    expect(development.version).toBe('35')
     expect(developmentPhase('delegate-implement')).toContain('run_in_background=true')
     expect(developmentPhase('delegate-implement')).toContain('Reviewer uses file reads and recorded evidence only')
+    expect(developmentPhase('delegate-implement')).toContain('Unfinished Coder work is not a Reviewer rejection')
+    expect(developmentPhase('delegate-implement')).toContain('Reviewer approval must never be a prerequisite for those authorized Coder checks')
+    expect(developmentPhase('delegate-implement')).toContain('one final JSON receipt')
+    expect(developmentPhase('delegate-implement')).toContain('do not substitute an equals-style prose')
+    expect(developmentPhase('delegate-implement')).toContain(DEPENDENCY_RISK_REVIEW_GUIDANCE)
     expect(developmentPhase('scenario-review')).toContain('workflow_role=qa')
     expect(developmentIntake?.runtimeContract?.questionPolicy).toEqual(expect.objectContaining({
       requireAnswerProcessingBeforeNextQuestion: false,
@@ -669,6 +675,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const featureIntake = feature.phases.find((phase) => phase.id === 'feature-memory-plan')
     const featurePhase = (id: string) => feature.phases.find((phase) => phase.id === id)?.instructions ?? ''
     expect(feature.version).toBe('22')
+    expect(feature.phases.every(phase => !phase.instructions?.includes('Dependency advisories:'))).toBe(true)
     expect(featureIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
     expect(featureIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
     expect(featureIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
@@ -695,6 +702,7 @@ describe('shipped workflow packs deterministic end-to-end protocol coverage', ()
     const debugIntake = debug.phases.find((phase) => phase.id === 'debug-memory-intake')
     const debugPhase = (id: string) => debug.phases.find((phase) => phase.id === id)?.instructions ?? ''
     expect(debug.version).toBe('23')
+    expect(debug.phases.every(phase => !phase.instructions?.includes('Dependency advisories:'))).toBe(true)
     expect(debugIntake?.executionRules).toContain('Read-only discovery (Glob, Grep, and Read; use LS when the host exposes it), artifact, and structured question actions only. Do not use Bash or PowerShell.')
     expect(debugIntake?.toolPolicy?.allowedTools).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))
     expect(debugIntake?.runtimeContract?.toolAccess?.allowed).toEqual(expect.arrayContaining(['Read', 'Glob', 'Grep', 'LS']))

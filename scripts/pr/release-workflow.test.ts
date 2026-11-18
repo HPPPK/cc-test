@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 
 test('release and PR checks use the Bun version exercised by the frozen first edition', () => {
   for (const filename of ['.github/workflows/pr-quality.yml', '.github/workflows/release-desktop.yml']) {
@@ -39,19 +39,24 @@ describe('release desktop workflow', () => {
     }
   })
 
-  test('attaches only the two explicitly selected importable packs after the remote Tauri release succeeds', () => {
+  test('attaches all bundled and custom importable packs after the remote Tauri release succeeds', () => {
     const workflow = readFileSync('.github/workflows/release-desktop.yml', 'utf8')
-    const step = workflow.match(/      - name: Upload selected importable packs\n[\s\S]*?(?=\n      - name:|$)/)?.[0]
+    const step = workflow.match(/      - name: Upload all importable packs\n[\s\S]*?(?=\n      - name:|$)/)?.[0]
     expect(step).toBeDefined()
-    expect(workflow.indexOf('uses: tauri-apps/tauri-action@v0')).toBeLessThan(workflow.indexOf('name: Upload selected importable packs'))
+    expect(workflow.indexOf('uses: tauri-apps/tauri-action@v0')).toBeLessThan(workflow.indexOf('name: Upload all importable packs'))
     expect(step).toContain("if: matrix.platform == 'windows-latest'")
     expect(step).toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}')
     expect(step).toContain('gh release upload "v${{ steps.version.outputs.value }}"')
-    expect(step?.match(/src\/server\/packs\/[\w/-]+\.zip/g)).toEqual([
-      'src/server/packs/experts/commercialization-research-report.zip',
-      'src/server/packs/efficient-constrained-dev-debug-workflow-v5.zip',
-    ])
-    expect(step).not.toContain('*.zip')
+    expect(step).toContain('shopt -s nullglob')
+    expect(step).toContain('packs=(src/server/packs/*.zip src/server/packs/experts/*.zip release-packs/experts/*.zip)')
+    expect(step).toContain('"${packs[@]}"')
+    expect(step).toContain('No importable packs found')
+    const names = ['src/server/packs', 'src/server/packs/experts', 'release-packs/experts']
+      .flatMap(directory => readdirSync(directory).filter(name => name.endsWith('.zip')))
+    expect(names.length).toBe(10)
+    expect(new Set(names).size).toBe(names.length)
+    expect(names).toContain('uiux-design-system-expert.zip')
+    expect(names).toContain('website-reference.zip')
     expect(step).toContain('--clobber')
   })
 

@@ -1,5 +1,6 @@
 import { toolNameFixture } from '../toolFixtures.test.js'
 import { AgentTool } from './AgentTool.js'
+import { validateCoderFinalMessage } from './coderResultValidation.js'
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, rm } from 'fs/promises'
 import { getTaskOutputPath, initTaskOutputAsSymlink } from '../../utils/task/diskOutput.js'
@@ -1181,7 +1182,7 @@ describe('runAsyncAgentLifecycle', () => {
     resetCommandQueue()
   })
 
-  test.each(['api-error', 'recovered-api', 'blocked'] as const)('preserves runtime error authority and normal business blocking: %s', async scenario => {
+  test.each(['api-error', 'recovered-api', 'blocked', 'terminal-json-blocked', 'markdown-ready'] as const)('preserves runtime error authority and normal business blocking: %s', async scenario => {
     const taskId = `agent-terminal-${scenario}-${crypto.randomUUID()}`
     const task: LocalAgentTaskState = {
       ...createTaskStateBase(taskId, 'local_agent', 'Scoped work'), type: 'local_agent', status: 'running',
@@ -1198,17 +1199,26 @@ describe('runAsyncAgentLifecycle', () => {
     }
     let validationCalls = 0
     const receipts: string[] = []
-    const report = 'Scoped work is saved.\n`readyForReview: false`，HTTP check remains unverified.'
+    const report = scenario === 'markdown-ready' ? '已完成实际修改和检查。\n- **readyForReview=true**' : scenario === 'terminal-json-blocked'
+      ? '已完成 B1 范围内的最小实现，但安装与测试检查均未完成。\n{"readyForReview":false,"blocker":"npm install 命令被 UI 拒绝；安装与测试检查均未完成。"}'
+      : 'Scoped work is saved.\n`readyForReview: false`，HTTP check remains unverified.'
     const outcome = await runAsyncAgentLifecycle({
       taskId, abortController: context.abortController,
       makeStream: async function* () {
-        if (scenario !== 'blocked') yield createAssistantAPIErrorMessage({ content: 'Path contains null bytes' })
+        if (scenario !== 'blocked' && scenario !== 'terminal-json-blocked' && scenario !== 'markdown-ready') yield createAssistantAPIErrorMessage({ content: 'Path contains null bytes' })
         if (scenario !== 'api-error') yield createAssistantMessage({ content: report })
       },
       metadata: { prompt: 'Scoped work', resolvedAgentModel: 'test', isBuiltInAgent: true, startTime: Date.now(), agentType: 'general-purpose', isAsync: true },
       description: 'Scoped work', toolUseContext: context, rootSetAppState: context.setAppState,
       agentIdForCleanup: taskId, enableSummarization: false, getWorktreeResult: async () => ({}),
-      validateFinalMessage: () => { validationCalls++; return scenario === 'recovered-api' ? null : { status: 'blocked', reason: 'The promised HTTP check remains unverified.' } },
+      validateFinalMessage: finalMessage => {
+        validationCalls++
+        if (scenario === 'terminal-json-blocked' || scenario === 'markdown-ready') {
+          const result = validateCoderFinalMessage(finalMessage)
+          return result.status === 'not-ready' ? { status: 'blocked', reason: 'The promised HTTP check remains unverified.' } : result.error
+        }
+        return scenario === 'recovered-api' ? null : { status: 'blocked', reason: 'The promised HTTP check remains unverified.' }
+      },
       beforeTerminal: async result => { receipts.push(result.status) },
     })
     if (scenario === 'api-error') {
@@ -1216,12 +1226,12 @@ describe('runAsyncAgentLifecycle', () => {
       expect(validationCalls).toBe(0)
       expect(receipts).toEqual(['failed'])
       expect(JSON.stringify(getCommandQueue())).not.toContain('readyForReview is missing')
-    } else if (scenario === 'blocked') {
+    } else if (scenario === 'blocked' || scenario === 'terminal-json-blocked') {
       expect(outcome).toEqual({ status: 'blocked', reason: 'The promised HTTP check remains unverified.' })
       expect(receipts).toEqual(['blocked'])
       expect(app.tasks[taskId]!.status).toBe('completed')
-      expect(JSON.stringify(getCommandQueue())).toContain('HTTP check remains unverified')
-      expect(JSON.stringify(getCommandQueue())).toContain('readyForReview: false')
+      expect(JSON.stringify(getCommandQueue())).toContain(scenario === 'terminal-json-blocked' ? 'npm install 命令被 UI 拒绝' : 'HTTP check remains unverified')
+      expect(JSON.stringify(getCommandQueue())).toContain(scenario === 'terminal-json-blocked' ? 'readyForReview\\":false' : 'readyForReview: false')
       expect(JSON.stringify(getCommandQueue())).not.toContain('<status>failed</status>')
     } else {
       expect(outcome).toEqual({ status: 'succeeded' })

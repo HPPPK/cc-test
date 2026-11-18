@@ -12,11 +12,11 @@
     },
     {
       "packId": "efficient-constrained-dev-debug-workflow-v5",
-      "packVersion": "32",
-      "workflowVersion": "32",
-      "sha256": "9bf83ebecbaca02b342611007e96c4edf830a928532ecaa8304d341446d5adb5",
+      "packVersion": "35",
+      "workflowVersion": "35",
+      "sha256": "9a582f6183f69eae8f78ba9ffacd1ac9ce6838907a0b150344ed805f1b08fd34",
       "entrypoint": "workflows/efficient-constrained-dev-debug-workflow-v5.workflow.json",
-      "sourceRevision": "sha256-1ed324e734d8b9852d6dbe01169cdbfac8f263d45702bbfea5073507f44daa32",
+      "sourceRevision": "sha256-976f18801697d48cbba04b420908b705fea53af799a85e90bd39798ec352af46",
       "filename": "efficient-constrained-dev-debug-workflow-v5.zip"
     },
     {

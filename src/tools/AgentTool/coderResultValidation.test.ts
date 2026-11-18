@@ -1,6 +1,60 @@
 import { expect, test } from 'bun:test'
 import { validateCoderFinalMessage } from './coderResultValidation.js'
 
+test('accepts the observed standalone bold Coder readiness receipt and bounded Markdown variants', () => {
+  for (const line of ['- **readyForReview=true**', '**readyForReview: true**', '* __readyForReview=true__', '  - **readyForReview** = true  ', '\t_readyForReview: true_\t', 'readyForReview=true']) {
+    expect(validateCoderFinalMessage(`实现和实际检查完成。\n${line}`)).toEqual({ status: 'ready', readyForReview: true, error: null })
+  }
+  for (const line of ['- **readyForReview=false**', '**readyForReview: false**', '  * __readyForReview__ = false  ']) {
+    expect(validateCoderFinalMessage(`实际检查仍未完成。\n${line}`).status).toBe('not-ready')
+  }
+})
+
+test('does not promote quoted or prose Markdown readiness examples, malformed booleans or conflicting receipts', () => {
+  for (const report of [
+    '> - **readyForReview=true**',
+    '"- **readyForReview=true**"',
+    '`- **readyForReview=true**`',
+    '格式示例：- **readyForReview=true**',
+    'Example:\n- **readyForReview=true**',
+    '示例：\n**readyForReview: true**',
+    '- **readyForReview=true**，仅说明字段格式。',
+    '- **readyForReview="true"**',
+    '- **readyForReview=1**',
+    '- **readyForReview=true**\n- **readyForReview=false**',
+    '**readyForReview=true**\n```json\n{"readyForReview":false}\n```',
+    '**readyForReview=true**\n```json\n{"blockers":["真实检查尚未执行"]}\n```',
+  ]) {
+    const result = validateCoderFinalMessage(report)
+    expect(result.status).toBe('invalid')
+    expect(result.readyForReview).toBe(false)
+  }
+})
+
+test('keeps the observed narrative plus terminal negative JSON receipt unfinished instead of missing', () => {
+  const report = '已完成 B1 范围内的最小实现。获准的 npm install 执行请求返回 User denied via UI，安装与测试尚未完成。\n\n{"readyForReview":false,"blocker":"npm install 命令被 UI 拒绝；安装与测试检查均未完成。"}'
+  const result = validateCoderFinalMessage(report)
+  expect(result.status).toBe('not-ready')
+  expect(result.readyForReview).toBe(false)
+  expect(result.error).toContain('readyForReview=false')
+  expect(result.error).not.toContain('is missing')
+})
+
+test('terminal JSON cannot grant new positive readiness or override conflicting and malformed values', () => {
+  for (const report of [
+    'Work returned.\n{"readyForReview":true}',
+    'readyForReview: true\n{"readyForReview":false}',
+    'readyForReview: false\n{"readyForReview":true}',
+    'Work returned.\n{"readyForReview":"false"}',
+    'readyForReview: true\n{"readyForReview":0}',
+    'readyForReview: true\n{"readyForReview":true,"blockers":["Unperformed check"]}',
+  ]) {
+    const result = validateCoderFinalMessage(report)
+    expect(result.status).toBe('invalid')
+    expect(result.readyForReview).toBe(false)
+  }
+})
+
 test('treats explicit unresolved blockers as unfinished business without requiring a positive readiness declaration', () => {
   for (const blockers of [['Verification not run'], { issue: 'Missing scope approval' }, 'Waiting for investigation']) {
     const result = validateCoderFinalMessage(JSON.stringify({ blockers, summary: 'Partial work retained' }))
