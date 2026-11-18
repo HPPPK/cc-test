@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import { workflowTimelineService } from './workflowTimelineService.js'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -292,6 +293,9 @@ export class WorkflowSessionStateService {
         }
         throw error
       }
+      await workflowTimelineService.recordState(state).catch(error => {
+        console.warn('[Workflow timeline] Failed to record workflow state:', error)
+      })
       return {
         state,
         pointer: statePointer(state),
@@ -335,6 +339,9 @@ export class WorkflowSessionStateService {
 
       await syncProjectWorkflowArtifacts(state)
       await atomicWriteJson(this.statePath(sessionId), state)
+      await workflowTimelineService.recordState(state).catch(error => {
+        console.warn('[Workflow timeline] Failed to record workflow state:', error)
+      })
       return {
         state,
         pointer: statePointer(state),

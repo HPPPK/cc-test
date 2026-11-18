@@ -58,6 +58,7 @@ import {
 } from 'src/utils/messageQueueManager.js'
 import { notifyCommandLifecycle } from 'src/utils/commandLifecycle.js'
 import { readTaskNotificationBoundary } from 'src/utils/taskNotificationBoundary.js'
+import { subscribeIdleTaskNotificationWake } from './printNotificationWake.js'
 import type { NotificationState } from 'src/utils/messageQueueManager.js'
 import {
   getSessionState,
@@ -990,7 +991,7 @@ export async function runHeadless(
   )
 }
 
-function runHeadlessStreaming(
+export function runHeadlessStreaming(
   structuredIO: StructuredIO,
   mcpClients: MCPServerConnection[],
   commands: Command[],
@@ -2766,6 +2767,16 @@ function runHeadlessStreaming(
     }
   }
 
+  // Terminal notices can arrive after the last background task releases the
+  // run loop (the producer refreshes Desktop authority before enqueueing).
+  const unsubscribeNotificationWake = subscribeIdleTaskNotificationWake({
+    canWake: () => !running && !inputClosed && !isShuttingDown(),
+    getState: getAppState,
+    run: () => { void run() },
+    onError: error => logError(toError(error)),
+  })
+  registerCleanup(async () => { unsubscribeNotificationWake() })
+
   // Set up UDS inbox callback so the query loop is kicked off
   // when a message arrives via the UDS socket in headless mode.
   if (feature('UDS_INBOX')) {
@@ -4218,6 +4229,7 @@ function runHeadlessStreaming(
       void run()
     }
     inputClosed = true
+    unsubscribeNotificationWake()
     cronScheduler?.stop()
     if (!running) {
       // If a push-suggestion is in-flight, wait for it to emit before closing

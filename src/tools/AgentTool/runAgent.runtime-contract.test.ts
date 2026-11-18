@@ -22,6 +22,8 @@ import { FileWriteTool } from '../FileWriteTool/FileWriteTool.js'
 import { PlaywrightTool } from '../PlaywrightTool/PlaywrightTool.js'
 import { AgentTool } from './AgentTool.js'
 import type { AgentToolResult } from './agentToolUtils.js'
+import type { WorkflowSessionState } from '../../server/services/workflowTypes.js'
+import { DEPENDENCY_RISK_REVIEW_GUIDANCE } from '../../server/services/workflowDependencyRiskPolicy.js'
 
 const directory = mkdtempSync(path.join(tmpdir(), 'agent-runtime-contract-'))
 const previousConfig = process.env.CLAUDE_CONFIG_DIR
@@ -52,6 +54,62 @@ function options(agentType: string): Parameters<typeof runAgent>[0] {
 }
 afterEach(() => { for (const restore of restorers.splice(0)) restore() })
 afterAll(() => { if (previousConfig === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = previousConfig; rmSync(directory, { recursive: true, force: true }) })
+
+test.each(['efficient-constrained-dev-debug-workflow-v5', 'stradn-managed-development-workflow-v1'])('real worker prompt scopes same-Batch completion order to canonical development (%s)', async id => {
+  setup({ expertId: 'fixture', packId: 'fixture', packVersion: '1', skills: [], artifactPaths: paths })
+  const launch = options('general-purpose')
+  const phaseId = id === 'efficient-constrained-dev-debug-workflow-v5' ? 'delegate-implement' : 'stradn-delivery'
+  launch.toolUseContext.setAppState(previous => ({ ...previous, workflow: {
+    mode: 'workflow', sessionId: 'fixture', activeWorkflowRunId: 'fixture-run', templateIdentity: { id }, activePhaseId: phaseId,
+  } as WorkflowSessionState }))
+  launch.workflowWorkerContract = { sessionId: 'fixture', runId: 'fixture-run', phaseId, role: 'coder', batchId: 'B1', workspaceRoot: directory, writeScopes: ['src/**'] }
+  let reached = false
+  const start = spyOn(query, 'query').mockImplementation(async function* (params) {
+    reached = true
+    expect(JSON.stringify(params.messages).includes('Reviewer pass is not permission')).toBe(id === 'efficient-constrained-dev-debug-workflow-v5')
+    yield createAssistantMessage({ content: 'Worker prompt inspected.' })
+    return { reason: 'completed' as const }
+  })
+  restorers.push(() => start.mockRestore())
+  for await (const _ of runAgent(launch)) {}
+  expect(reached).toBe(true)
+})
+
+test('Desktop-bound worker receives canonical completion order without local workflow and rejects mismatched binding hints', async () => {
+  setup({ expertId: 'fixture', packId: 'fixture', packVersion: '1', skills: [], artifactPaths: paths })
+  const keys = ['CC_JIANGXIA_DESKTOP_SERVER_URL', 'CC_JIANGXIA_WORKFLOW_SESSION_ID'] as const
+  const previous = keys.map(key => process.env[key])
+  const state = { mode: 'workflow', sessionId: 'desktop-bound', activeWorkflowRunId: 'current-run',
+    activePhaseId: 'delegate-implement', templateIdentity: { id: 'efficient-constrained-dev-debug-workflow-v5' } } as WorkflowSessionState
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({ state }) })
+  process.env[keys[0]] = `http://127.0.0.1:${server.port}`
+  process.env[keys[1]] = state.sessionId
+  try {
+    for (const variant of ['matching', 'other-template', 'stale-run', 'other-session', 'stale-phase', 'wrong-role'] as const) {
+      const launch = options('general-purpose')
+      expect((launch.toolUseContext.getAppState() as { workflow?: unknown }).workflow).toBeUndefined()
+      launch.workflowWorkerContract = { sessionId: state.sessionId, phaseId: state.activePhaseId!, runId: state.activeWorkflowRunId,
+        role: variant === 'wrong-role' ? 'qa' : 'coder', batchId: 'B1', workspaceRoot: directory, writeScopes: ['src/**'] }
+      if (variant === 'stale-run') launch.workflowWorkerContract.runId = 'old-run'
+      if (variant === 'other-session') launch.workflowWorkerContract.sessionId = 'other-session'
+      if (variant === 'stale-phase') launch.workflowWorkerContract.phaseId = 'old-phase'
+      state.templateIdentity.id = variant === 'other-template' ? 'custom' : 'efficient-constrained-dev-debug-workflow-v5'
+      const start = spyOn(query, 'query').mockImplementation(async function* (params) {
+        const messages = JSON.stringify(params.messages)
+        expect(messages.includes('Reviewer pass is not permission')).toBe(variant === 'matching')
+        expect(messages.includes('Dependency advisories:')).toBe(variant === 'matching')
+        if (variant === 'matching') expect(messages).toContain(JSON.stringify(DEPENDENCY_RISK_REVIEW_GUIDANCE).slice(1, -1))
+        if (variant === 'matching') expect(messages).toContain('one final JSON receipt')
+        yield createAssistantMessage({ content: 'Prompt inspected without changing permissions.' })
+        return { reason: 'completed' as const }
+      })
+      try { for await (const _ of runAgent(launch)) {} } finally { start.mockRestore() }
+    }
+  } finally {
+    server.stop(true)
+    keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index] })
+  }
+})
 
 test('output reviewer requires a rendered draft before starting the query', async () => {
   setup({ expertId: 'fixture', packId: 'fixture', packVersion: '1', skills: [], artifactPaths: paths })

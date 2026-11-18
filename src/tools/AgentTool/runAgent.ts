@@ -19,6 +19,8 @@ import {
 import type { QuerySource } from '../../constants/querySource.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import { developmentWorkerContractPrompt } from '../../server/services/developmentToolExecutionPolicy.js'
+import type { WorkflowSessionState } from '../../server/services/workflowTypes.js'
+import { getDesktopWorkflowContext, resolveWorkflowRuntimeState } from '../../services/tools/workflowRuntimeStateBridge.js'
 import { resolveAgentToolPermissionContext } from './agentPermissionContext.js'
 import { hasDesktopWorkflowPermissionRelay } from './workflowWorkerPermissionRelay.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -735,7 +737,16 @@ export async function* runAgent({
   const initialMessages: Message[] = [...contextMessages, ...promptMessages]
   workflowWorkerContract ??= toolUseContext.workflowWorkerContract
   if (workflowWorkerContract) {
-    initialMessages.push(createRuntimeUserMessage({ content: developmentWorkerContractPrompt(workflowWorkerContract), isMeta: true }))
+    const localWorkflow = (toolUseContext.getAppState() as { workflow?: WorkflowSessionState }).workflow
+    const desktopBinding = getDesktopWorkflowContext()
+    let promptWorkflow = localWorkflow
+    if (desktopBinding) {
+      // Prompt identity only; tool permissions still use their existing fresh execution guards.
+      const resolved = await resolveWorkflowRuntimeState(localWorkflow, { signal: toolUseContext.abortController.signal })
+      promptWorkflow = resolved.source === 'desktop' && resolved.state.sessionId === desktopBinding.sessionId
+        ? resolved.state : undefined
+    }
+    initialMessages.push(createRuntimeUserMessage({ content: developmentWorkerContractPrompt(workflowWorkerContract, promptWorkflow), isMeta: true }))
   }
 
   const agentReadFileState =

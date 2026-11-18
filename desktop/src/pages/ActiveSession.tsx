@@ -38,6 +38,7 @@ import {
   type WorkflowStatusPanelSummary,
 } from '../components/workflow/WorkflowComponents'
 import { WorkflowTransitionControls } from '../components/workflow/WorkflowTransitionControls'
+import { WorkflowTimeline } from '../components/workflow/WorkflowTimeline'
 import { WorkflowCompletionStatusCard } from '../components/workflow/WorkflowCompletionStatusCard'
 import { formatWorkflowPhaseSummary } from '../components/workflow/workflowPhaseDisplay'
 import { ExpertInfoSidebar } from '../components/experts/ExpertInfoSidebar'
@@ -1410,6 +1411,14 @@ export function ActiveSession() {
                   workflow={workflowDisplay}
                   compact={isCompletedWorkflow}
                 />
+                <WorkflowTimeline
+                  key={activeTabId}
+                  sessionId={activeTabId!}
+                  workflowStatus={workflowDisplay.status}
+                  blockedReason={workflowDisplay.blockedReason}
+                  pendingConfirmation={workflowDisplay.pendingConfirmation}
+                  chatState={chatState}
+                />
                 {!isCompletedWorkflow && workflowReportState ? (
                   <div className="inline-flex max-w-full items-center gap-2 rounded-[7px] border border-[var(--color-border)] bg-[var(--color-surface-container)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-secondary)]">
                     <span className="material-symbols-outlined shrink-0 text-[15px] text-[var(--color-text-tertiary)]" aria-hidden="true">
@@ -1419,6 +1428,12 @@ export function ActiveSession() {
                   </div>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {!workflowDisplay && session?.workflow && activeTabId ? (
+            <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-2">
+              <WorkflowTimeline key={activeTabId} sessionId={activeTabId} workflowStatus={session.workflow.status} />
             </div>
           ) : null}
 

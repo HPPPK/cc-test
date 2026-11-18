@@ -13,6 +13,40 @@ afterEach(() => {
 })
 
 describe('notification queue provenance', () => {
+  test('a managed resume with the same agent and preserved start time delivers its new workflow attempt exactly once', () => {
+    const command = { mode: 'task-notification' as const, taskNotificationId: 'resumed-reviewer', value: 'first review' }
+    const state = { tasks: { 'resumed-reviewer': { startTime: 100 } }, workflow: { mode: 'workflow',
+      runtimeContract: { phaseStates: { implement: { taskSnapshots: [{ agentRunId: 'resumed-reviewer',
+        runId: 'run', phaseId: 'implement', batchId: 'B1', workflowRole: 'reviewer', attempt: 1 }] } } } } }
+    enqueuePendingNotification(command, taskNotificationOwner('resumed-reviewer', state))
+    const first = takeTaskNotificationBatch(dequeue()!, {})
+    acknowledgeTaskNotifications(first)
+    expect(getCommandQueue()).toHaveLength(0)
+    enqueuePendingNotification(command, taskNotificationOwner('resumed-reviewer', state))
+    expect(getCommandQueue()).toHaveLength(0)
+    state.workflow.runtimeContract.phaseStates.implement.taskSnapshots[0]!.attempt = 2
+    const resumed = { ...command, value: 'second review' }
+    enqueuePendingNotification(resumed, taskNotificationOwner('resumed-reviewer', state))
+    enqueuePendingNotification(resumed, taskNotificationOwner('resumed-reviewer', state))
+    expect(getCommandQueue().map(item => item.value)).toEqual(['second review'])
+    acknowledgeTaskNotifications(takeTaskNotificationBatch(dequeue()!, {}))
+    enqueuePendingNotification(resumed, taskNotificationOwner('resumed-reviewer', state))
+    expect(getCommandQueue()).toHaveLength(0)
+    expect(state.tasks['resumed-reviewer'].startTime).toBe(100)
+  })
+
+  test('managed attempt identity preserves independent run/phase ownership while legacy attempts still use start time', () => {
+    const command = { mode: 'task-notification' as const, taskNotificationId: 'worker', value: 'report' }
+    const owner = { attempt: 100, workflowAttempt: 1, runId: 'first-run', phaseId: 'implement', batchId: 'B1', role: 'reviewer' }
+    enqueuePendingNotification(command, owner)
+    acknowledgeTaskNotifications(takeTaskNotificationBatch(dequeue()!, {}))
+    enqueuePendingNotification(command, { ...owner, runId: 'second-run' })
+    enqueuePendingNotification(command, { ...owner, phaseId: 'other-phase' })
+    enqueuePendingNotification(command, { ...owner, sessionId: 'foreign-session' })
+    expect(getCommandQueue()).toHaveLength(3)
+    expect(getCommandQueue().filter(item => taskNotificationReady(item, {}))).toHaveLength(2)
+  })
+
   test('deduplicates one terminal attempt while allowing a later attempt of the same agent', () => {
     const command = { mode: 'task-notification' as const, taskNotificationId: 'same-agent', value: 'terminal report' }
     enqueuePendingNotification(command, { attempt: 100 })

@@ -75,7 +75,11 @@ type NotificationWorkflow = {
 const notificationOwners = new WeakMap<QueuedCommand, TaskNotificationOwner>()
 const consumedTaskNotifications = new Set<string>()
 function notificationKey(command: QueuedCommand, owner = notificationOwners.get(command)): string | undefined {
-  return command.mode === 'task-notification' && command.messageKind !== 'user_input' && command.taskNotificationId ? JSON.stringify([owner?.sessionId ?? getSessionId(), command.taskNotificationId, owner?.attempt ?? null, command.agentId ?? null]) : undefined
+  // Managed resumes retain the local task/startTime; the workflow receipt is
+  // the attempt authority. Keep the old startTime identity for generic tasks.
+  const attempt = owner?.workflowAttempt === undefined ? owner?.attempt ?? null
+    : ['workflow', owner.runId ?? null, owner.phaseId ?? null, owner.batchId ?? null, owner.role ?? null, owner.workflowAttempt]
+  return command.mode === 'task-notification' && command.messageKind !== 'user_input' && command.taskNotificationId ? JSON.stringify([owner?.sessionId ?? getSessionId(), command.taskNotificationId, attempt, command.agentId ?? null]) : undefined
 }
 function rememberConsumed(key: string): void {
   consumedTaskNotifications.add(key)

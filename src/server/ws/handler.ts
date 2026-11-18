@@ -15,6 +15,7 @@ import { PROTOTYPE_PREVIEW_TOOL, parsePrototypePreviewReceipt, imageMatchesPrevi
 import { validatePrototypePreviewFiles } from '../services/prototypePreviewEvidence.js'
 import type { ServerWebSocket } from 'bun'
 import type { ClientMessage, ServerMessage } from './events.js'
+import { workflowTimelineService } from '../services/workflowTimelineService.js'
 import { ClientOutbox } from './clientOutbox.js'
 import * as os from 'node:os'
 import { createHash } from 'node:crypto'
@@ -2779,6 +2780,8 @@ type SessionStreamState = {
   workflowProtocolInputValidationError?: WorkflowRecoverableInputToolName
   workflowProtocolInputValidationDetail?: string
   workflowProtocolInputRecoveryAttempts: number
+  workflowProtocolToolAttempts: Map<string, WorkflowProtocolToolAttempt>
+  workflowProtocolInputOrigin?: { toolUseId: string; turn: number; order: number; target?: string; signature: string; retries: number; recoverySent: boolean; exhaustedReported?: boolean }
   /** Tool blocks whose input JSON failed to parse in content_block_stop.
    *  The assistant message carries the complete input 鈥?defer to that. */
   pendingToolBlocks: Map<string, { toolName: string; toolUseId: string; parentToolUseId?: string }>
@@ -2869,6 +2872,7 @@ function getStreamState(sessionId: string): SessionStreamState {
       workflowProtocolInputValidationError: undefined,
       workflowProtocolInputValidationDetail: undefined,
       workflowProtocolInputRecoveryAttempts: 0,
+      workflowProtocolToolAttempts: new Map(),
       pendingToolBlocks: new Map(),
       toolParentUseIds: new Map(),
       lastApiError: undefined,
@@ -3346,7 +3350,13 @@ function recordAssistantToolUse(
       streamState.expertResearchDeliveryCardAttempted = true
     }
   }
-  if (WORKFLOW_PROTOCOL_TOOL_NAMES.has(toolName as WorkflowProtocolToolName)) streamState.workflowProtocolInputValidationError = undefined
+  if (isRecoverableWorkflowInputTool(toolName) && typeof toolUseId === 'string' && !streamState.workflowProtocolToolAttempts.has(toolUseId)) {
+    rememberWorkflowProtocolToolAttempt(streamState, toolUseId, {
+      name: toolName, turn: streamState.terminalTurnSequence,
+      order: (Array.from(streamState.workflowProtocolToolAttempts.values()).at(-1)?.order ?? 0) + 1,
+      target: workflowProtocolInputTarget(toolName, input),
+    })
+  }
 
   let inputText = ''
   try {
@@ -3753,6 +3763,39 @@ const WORKFLOW_PROTOCOL_TOOL_NAMES = new Set([
 type WorkflowProtocolToolName = typeof WORKFLOW_PROTOCOL_TOOL_NAMES extends Set<infer T> ? T : never
 const WORKFLOW_AGENT_TOOL_NAME = 'Agent' as const
 type WorkflowRecoverableInputToolName = WorkflowProtocolToolName | typeof WORKFLOW_AGENT_TOOL_NAME
+type WorkflowProtocolToolAttempt = { name: WorkflowRecoverableInputToolName; turn: number; order: number; target?: string; inputErrorSeen?: boolean; succeeded?: boolean }
+
+function rememberWorkflowProtocolToolAttempt(streamState: SessionStreamState, id: string, attempt: WorkflowProtocolToolAttempt): void {
+  // Bound both observed calls and genuine errors whose tool-use frame was unavailable.
+  streamState.workflowProtocolToolAttempts.set(id, attempt)
+  if (streamState.workflowProtocolToolAttempts.size > 500) streamState.workflowProtocolToolAttempts.delete(streamState.workflowProtocolToolAttempts.keys().next().value!)
+}
+
+function isRecoverableWorkflowInputTool(value: unknown): value is WorkflowRecoverableInputToolName {
+  return value === WORKFLOW_AGENT_TOOL_NAME || WORKFLOW_PROTOCOL_TOOL_NAMES.has(value as WorkflowProtocolToolName)
+}
+
+function workflowProtocolInputTarget(tool: WorkflowRecoverableInputToolName, input: unknown): string | undefined {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const fields = input as Record<string, unknown>
+  if (tool === WORKFLOW_AGENT_TOOL_NAME) {
+    const plan = fields.workflow_parallel_plan
+    const taskId = plan && typeof plan === 'object' ? (plan as Record<string, unknown>).task_id : fields.workflow_task_id
+    if (typeof taskId === 'string') return JSON.stringify([taskId, fields.workflow_role ?? null])
+    // Exact digest identity for non-DAG calls; do not retain arbitrarily large prose in the bounded registry.
+    if (typeof fields.description === 'string' && fields.description.trim()) return JSON.stringify(['description', createHash('sha256').update(fields.description).digest('hex')])
+    if (typeof fields.prompt === 'string' && fields.prompt.trim()) return JSON.stringify(['prompt', createHash('sha256').update(fields.prompt).digest('hex')])
+    return undefined
+  }
+  return typeof fields.phaseId === 'string' ? fields.phaseId : undefined
+}
+
+function clearWorkflowProtocolInputFailure(streamState: SessionStreamState): void {
+  streamState.workflowProtocolInputValidationError = undefined
+  streamState.workflowProtocolInputValidationDetail = undefined
+  streamState.workflowProtocolInputRecoveryAttempts = 0
+  streamState.workflowProtocolInputOrigin = undefined
+}
 
 function workflowProtocolToolNameFromError(value: unknown): WorkflowProtocolToolName | null {
   const text = typeof value === 'string' ? value : ''
@@ -3779,17 +3822,49 @@ function workflowProtocolInputValidationToolNameFromError(value: unknown): Workf
 
 function recordWorkflowProtocolToolRegistryError(
   streamState: SessionStreamState,
-  toolResult: { is_error?: unknown; content?: unknown },
+  toolResult: { is_error?: unknown; content?: unknown; tool_use_id?: unknown },
 ): void {
-  if (!toolResult.is_error) return
+  const id = typeof toolResult.tool_use_id === 'string' ? toolResult.tool_use_id : undefined
+  const attempt = id ? streamState.workflowProtocolToolAttempts.get(id) : undefined
+  const origin = streamState.workflowProtocolInputOrigin
+  if (!toolResult.is_error) {
+    if (attempt) {
+      attempt.succeeded = true
+      if (origin && attempt.name === streamState.workflowProtocolInputValidationError
+        && attempt.turn >= origin.turn && attempt.order > origin.order
+        && (origin.target !== undefined ? attempt.target === origin.target : origin.recoverySent || attempt.target === undefined)) {
+        clearWorkflowProtocolInputFailure(streamState)
+      }
+    }
+    return
+  }
   const toolName = workflowProtocolToolNameFromError(toolResult.content)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
   const validationToolName = workflowProtocolInputValidationToolNameFromError(toolResult.content)
-  if (validationToolName) {
+  // A real tool-result origin is required. User text and terminal summaries are not new failed calls.
+  if (validationToolName && id && !attempt?.inputErrorSeen && !attempt?.succeeded && (!attempt || attempt.name === validationToolName)) {
+    if (attempt?.target !== undefined && Array.from(streamState.workflowProtocolToolAttempts.values()).some(successor =>
+      successor.succeeded && successor.name === validationToolName && successor.target === attempt.target
+      && successor.turn >= attempt.turn && successor.order > attempt.order)) {
+      attempt.inputErrorSeen = true
+      return
+    }
+    const detail = typeof toolResult.content === 'string' ? toolResult.content.slice(0, 4_000) : ''
+    const lines = detail.replace(/<\/?tool_use_error>/g, '').split(/\r?\n/).map(line => line.trim().replace(/\s+/g, ' ').toLowerCase()).filter(Boolean)
+    const fields = lines.filter(line => !line.startsWith('inputvalidationerror:'))
+    const signature = JSON.stringify([validationToolName, attempt?.target ?? null, [...new Set(fields.length ? fields : lines)].sort()])
+    const sameFailure = origin?.signature === signature
+    const registered: WorkflowProtocolToolAttempt = attempt ?? { name: validationToolName, turn: streamState.terminalTurnSequence,
+      order: (Array.from(streamState.workflowProtocolToolAttempts.values()).at(-1)?.order ?? 0) + 1 }
+    registered.inputErrorSeen = true
+    rememberWorkflowProtocolToolAttempt(streamState, id, registered)
+    streamState.workflowProtocolInputOrigin = {
+      toolUseId: id, turn: registered.turn, order: registered.order, target: registered.target,
+      signature, retries: sameFailure ? origin.retries : 0, recoverySent: sameFailure ? origin.recoverySent : false,
+      exhaustedReported: sameFailure ? origin.exhaustedReported : false,
+    }
     streamState.workflowProtocolInputValidationError = validationToolName
-    streamState.workflowProtocolInputValidationDetail = typeof toolResult.content === 'string'
-      ? toolResult.content.slice(0, 4_000)
-      : undefined
+    streamState.workflowProtocolInputValidationDetail = detail
   }
 }
 
@@ -3797,19 +3872,20 @@ function recordWorkflowProtocolToolRegistryErrorFromMessage(
   streamState: SessionStreamState,
   message: unknown,
 ): void {
-  let text = ''
-  try {
-    text = typeof message === 'string' ? message : JSON.stringify(message)
-  } catch {
-    return
+  if (!message || typeof message !== 'object') return
+  const event = message as { type?: unknown; is_error?: unknown; result?: unknown; errors?: unknown; message?: { content?: unknown } }
+  if (event.type === 'user' && Array.isArray(event.message?.content)) {
+    for (const block of event.message.content) if (block?.type === 'tool_result') recordWorkflowProtocolToolRegistryError(streamState, block)
   }
+  if (event.type === 'assistant' && Array.isArray(event.message?.content)) {
+    for (const block of event.message.content) if (block?.type === 'tool_use_error') {
+      recordWorkflowProtocolToolRegistryError(streamState, { is_error: true, content: block.error, tool_use_id: block.tool_use_id })
+    }
+  }
+  // Explicit terminal binding errors still need runtime rebind. Never scan a serialized message/recovery echo.
+  const text = event.type === 'result' && event.is_error === true && typeof event.result === 'string' ? event.result : ''
   const toolName = workflowProtocolToolNameFromError(text)
   if (toolName) streamState.workflowProtocolToolRegistryError = toolName
-  const validationToolName = workflowProtocolInputValidationToolNameFromError(text)
-  if (validationToolName) {
-    streamState.workflowProtocolInputValidationError = validationToolName
-    streamState.workflowProtocolInputValidationDetail = text.slice(0, 4_000)
-  }
 }
 
 function workflowInteractionTurnForResult(sessionId: string): WorkflowInteractionTurn {
@@ -3913,9 +3989,7 @@ function finishWorkflowInteractionTurn(
   streamState.expertResearchDeliveryCardAttempted = false
   if (resetBindingRecoveryAttempts) streamState.workflowProtocolBindingRecoveryAttempts = 0
   if (resetInputValidationRecoveryAttempts) {
-    streamState.workflowProtocolInputValidationError = undefined
-    streamState.workflowProtocolInputValidationDetail = undefined
-    streamState.workflowProtocolInputRecoveryAttempts = 0
+    clearWorkflowProtocolInputFailure(streamState)
   }
 }
 
@@ -4624,6 +4698,18 @@ async function workflowTerminalRecoveryForResult(
   // AskUserQuestion call; reconciliation either restores its answer or marks
   // the failed request stale before the user retries the phase.
   if (hasPersistedOpenWorkflowQuestion(state)) return null
+  if (isManagedWorkflowAgentTaskState(state) && state.activeWorkflowRunId) {
+    const tasks = state.runtimeContract?.phaseStates[state.activePhaseId]?.taskSnapshots ?? []
+    const current = tasks.filter(task => task.sessionId === state.sessionId && task.phaseId === state.activePhaseId
+      && task.runId === state.activeWorkflowRunId)
+    const ownsWorker = (task: typeof current[number]) => Boolean(task.agentRunId?.trim() || task.agentId?.trim())
+    const canProgress = current.some(task => ownsWorker(task) && (task.status === 'running'
+      || (task.status === 'pending' && task.toolUseId && Array.isArray(task.dependsOn)
+        && task.dependsOn.every(dependency => current.some(prerequisite =>
+          (prerequisite.taskId === dependency || `${prerequisite.batchId}::${prerequisite.workflowRole}` === dependency)
+          && prerequisite.status === 'succeeded')))))
+    if (canProgress) return null
+  }
   return {
     state,
     kind: assistantTextRequestsUserDecision(turn.assistantText)
@@ -6166,7 +6252,7 @@ function sendWorkflowProtocolInputValidationError(
 ): void {
   const clients = activeSessions.get(sessionId)
   if (!clients) return
-  const message = 'Workflow phase tool parameters failed validation twice. The workflow was not advanced; retry the current phase.'
+  const message = 'Workflow tool parameters could not be corrected automatically. Correct the reported fields and retry the current phase. The phase has not advanced.'
 
   for (const ws of clients) {
     sendMessage(ws, {
@@ -6276,9 +6362,11 @@ async function recoverWorkflowProtocolInputValidation(
   const terminalSequence = streamState.terminalTurnSequence
   if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
   const toolName = streamState.workflowProtocolInputValidationError
-    ?? workflowProtocolInputValidationToolNameFromError(cliMsg?.result)
-    ?? workflowProtocolInputValidationToolNameFromError(Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : undefined)
   if (!toolName) return false
+  const terminalError = typeof cliMsg?.result === 'string' ? cliMsg.result
+    : Array.isArray(cliMsg?.errors) ? cliMsg.errors.join('\n') : ''
+  if (cliMsg?.is_error && terminalError.trim()
+    && workflowProtocolInputValidationToolNameFromError(terminalError) !== toolName) return false
 
   const state = await loadWorkflowStateForWebSocket(sessionId)
   if (supersededWorkflowTerminal(sessionId, terminalSequence, streamState)) return true
@@ -6292,9 +6380,13 @@ async function recoverWorkflowProtocolInputValidation(
     return false
   }
 
-  if (streamState.workflowProtocolInputRecoveryAttempts >= 1 && !isManagedWorkflowAgentTaskState(state)) {
-    sendWorkflowProtocolInputValidationError(sessionId, state)
-    finishWorkflowInteractionTurn(sessionId)
+  const origin = streamState.workflowProtocolInputOrigin
+  if (!origin) return false
+  if (origin.retries >= 1) {
+    if (!origin.exhaustedReported) sendWorkflowProtocolInputValidationError(sessionId, state)
+    origin.exhaustedReported = true
+    // Keep the unresolved origin: another terminal event must not fall into generic business recovery.
+    finishWorkflowInteractionTurn(sessionId, true, true, false)
     return true
   }
 
@@ -6305,6 +6397,8 @@ async function recoverWorkflowProtocolInputValidation(
   }
 
   streamState.workflowProtocolInputRecoveryAttempts += 1
+  origin.retries += 1
+  origin.recoverySent = true
   const recoveryAttempt = streamState.workflowProtocolInputRecoveryAttempts
   const validationDetail = streamState.workflowProtocolInputValidationDetail
   const clients = activeSessions.get(sessionId)
@@ -7380,6 +7474,9 @@ function isWorkflowSessionState(value: unknown): value is WorkflowSessionState {
  * Send a message to a specific session's WebSocket (for use by services)
  */
 export function sendToSession(sessionId: string, message: ServerMessage): boolean {
+  void workflowTimelineService.recordMessage(sessionId, message).catch(error => {
+    console.warn(`[Workflow timeline] Failed to record session ${sessionId}:`, error)
+  })
   // Runtime state must advance even without a UI socket, and only once per event.
   syncSessionChatStateFromMessage(sessionId, message)
   const clients = activeSessions.get(sessionId)

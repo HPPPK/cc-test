@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { getSessionId } from '../bootstrap/state.js'
 import { getDefaultAppState } from '../state/AppStateStore.js'
 import { resolveWorkflowRuntimeState } from '../services/tools/workflowRuntimeStateBridge.js'
-import { acknowledgeTaskNotification, enqueuePendingNotification, getCommandQueue, pruneObsoleteTaskNotifications, resetCommandQueue, taskNotificationOwner, taskNotificationReady } from './messageQueueManager.js'
+import { acknowledgeTaskNotification, acknowledgeTaskNotifications, dequeue, enqueuePendingNotification, getCommandQueue, pruneObsoleteTaskNotifications, resetCommandQueue, taskNotificationOwner, taskNotificationReady } from './messageQueueManager.js'
 import { enqueueTaskNotificationWithAuthority, readTaskNotificationBoundary, resetTaskNotificationBoundaryRetriesForTests } from './taskNotificationBoundary.js'
 
 const originalFetch = globalThis.fetch
@@ -48,6 +48,26 @@ test('Desktop notification producer binds real run phase role and attempt even w
   const boundary = await readTaskNotificationBoundary(local)
   expect(taskNotificationOwner('terminal-agent', boundary)).toMatchObject({ runId: 'run-2', phaseId: 'delegate-implement',
     batchId: 'B1', role: 'coder', workflowAttempt: 3 })
+})
+
+test('Desktop-enriched resumed Reviewer results deliver despite the same local startTime, while the same workflow attempt stays deduplicated', async () => {
+  const snapshot = { agentRunId: 'reviewer', runId: 'run', phaseId: 'delegate-implement', batchId: 'B1', workflowRole: 'reviewer', attempt: 1 }
+  desktopFixture({ activeWorkflowRunId: 'run', activePhaseId: 'delegate-implement', runtimeContract: {
+    phaseStates: { 'delegate-implement': { taskSnapshots: [snapshot] } },
+  } })
+  const local = { tasks: { reviewer: { startTime: 100 } } }
+  const command = { mode: 'task-notification' as const, taskNotificationId: 'reviewer', value: 'first review' }
+  await enqueueTaskNotificationWithAuthority(command, local, taskNotificationOwner('reviewer', local))
+  acknowledgeTaskNotifications([dequeue()!])
+  snapshot.attempt = 2
+  const resumed = { ...command, value: 'second review' }
+  await enqueueTaskNotificationWithAuthority(resumed, local, taskNotificationOwner('reviewer', local))
+  await enqueueTaskNotificationWithAuthority(resumed, local, taskNotificationOwner('reviewer', local))
+  expect(getCommandQueue().map(item => item.value)).toEqual(['second review'])
+  acknowledgeTaskNotifications([dequeue()!])
+  await enqueueTaskNotificationWithAuthority(resumed, local, taskNotificationOwner('reviewer', local))
+  expect(getCommandQueue()).toHaveLength(0)
+  expect(local.tasks.reviewer.startTime).toBe(100)
 })
 
 test('ordinary CLI without a Desktop workflow keeps synchronous notification enqueue and local delivery state', async () => {

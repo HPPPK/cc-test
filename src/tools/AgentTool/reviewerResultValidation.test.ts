@@ -1,6 +1,29 @@
 import { expect, test } from 'bun:test'
 import { validateReviewerFinalMessage } from './reviewerResultValidation.js'
 
+test('keeps an unresolved dependency decision typed in requiredFixes instead of losing it behind a Leader Ask action', () => {
+  const risk = { kind: 'dependency-risk', issue: 'Vite build advisory reachability remains unknown', severity: 'high',
+    dependencyScope: 'development-only', shipped: false, reachable: 'unknown', untrustedBuildInputs: false,
+    isolatedDevelopment: true, hardGate: 'none', policyEvidence: 'Accepted isolated development contract, no zero gate',
+    evidence: ['Production audit clean; Vite build ran, vulnerable branch reachability not established'], disposition: 'decision-required' }
+  const receipt = { workflowReview: { reviewStatus: 'needs-fix', readyForNextBatch: false,
+    requiredFixes: [{ issue: risk.issue, requiredAction: 'Leader AskUserQuestion; this is not a code defect or a request to repeat audit/build' }], dependencyRisks: [risk] } }
+  const rejected = validateReviewerFinalMessage(JSON.stringify(receipt))
+  expect(rejected.outcome).toBeUndefined()
+  expect(rejected.error).toContain('WORKFLOW_REVIEW_RESULT_INVALID')
+  expect(rejected.error).toContain('dependencyRisks[0]')
+  expect(rejected.error).toContain('requiredFixes')
+  expect(rejected.error).toContain('same Reviewer')
+  const corrected = validateReviewerFinalMessage(JSON.stringify({ workflowReview: { ...receipt.workflowReview, requiredFixes: [risk] } }))
+  expect(corrected.outcome?.reviewStatus).toBe('needs-fix')
+  expect(JSON.parse(corrected.outcome!.requiredFixes[0]!)).toEqual(risk)
+  const otherRisk = { ...risk, issue: 'Different advisory' }
+  expect(validateReviewerFinalMessage(JSON.stringify({ workflowReview: { ...receipt.workflowReview, requiredFixes: [otherRisk] } })).outcome).toBeUndefined()
+  const blocking = { ...risk, dependencyScope: 'runtime', shipped: true, disposition: 'blocking' }
+  expect(validateReviewerFinalMessage(JSON.stringify({ workflowReview: { ...receipt.workflowReview, dependencyRisks: [blocking] } })).outcome).toBeUndefined()
+  expect(validateReviewerFinalMessage(JSON.stringify({ workflowReview: { ...receipt.workflowReview, dependencyRisks: [blocking], requiredFixes: [blocking] } })).outcome?.reviewStatus).toBe('needs-fix')
+})
+
 test('accepts the recorded B3 object finding and preserves its concrete repair and evidence', () => {
   const report = JSON.stringify({ workflowReview: {
     reviewStatus: 'needs-fix', readyForNextBatch: false,

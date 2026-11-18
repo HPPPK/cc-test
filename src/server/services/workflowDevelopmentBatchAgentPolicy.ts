@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
+import { assessDependencyRisk, type DependencyRiskContext } from './workflowDependencyRiskPolicy.js'
 import { developmentArtifactWriteAllowed } from './developmentToolExecutionPolicy.js'
 import { readdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
@@ -613,12 +615,12 @@ function booleanValue(value: unknown): boolean | null {
   return null
 }
 
-function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: string[]): DevelopmentReviewerOutcome | null {
+function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: string[], riskContext: DependencyRiskContext): DevelopmentReviewerOutcome | null {
   const invalid = (message: string): null => { issues.push(message); return null }
   const nested = record.workflowReview
   if (nested !== undefined) {
     if (!nested || typeof nested !== 'object' || Array.isArray(nested)) return invalid('workflowReview must be an object.')
-    return reviewerOutcomeFromRecord(nested as Record<string, unknown>, issues)
+    return reviewerOutcomeFromRecord(nested as Record<string, unknown>, issues, riskContext)
   }
   const reviewStatus = normalizeReviewStatus(record.reviewStatus ?? record.approvalStatus)
   const canonicalReady = booleanValue(record.readyForNextBatch)
@@ -630,8 +632,20 @@ function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: stri
   const rawFixes = record.requiredFixes
   if (!Array.isArray(rawFixes) && typeof rawFixes !== 'string') return invalid('requiredFixes must be an array of concrete strings or finding objects.')
   const requiredFixes: string[] = []
+  const riskIssue = (value: unknown, mandatory: boolean): string | null => {
+    const risk = assessDependencyRisk(value, riskContext)
+    if (!risk) return null
+    if (mandatory && risk.classification === 'nonblocking-warning') return 'A dependency nonblocking warning cannot be a mandatory requiredFix; retain it in dependencyRisks and correct the review receipt without repeating Coder work.'
+    if (reviewStatus === 'pass' && risk.classification !== 'nonblocking-warning') return `A dependency risk remains ${risk.classification}; pass is not coherent. ${risk.reason}`
+    const finding = typeof value === 'string' ? JSON.parse(value) : value
+    const expectedDisposition = risk.classification === 'nonblocking-warning' ? 'warning' : risk.classification
+    if ((finding as Record<string, unknown>).disposition !== expectedDisposition) return `dependency risk disposition must be ${expectedDisposition}; ${risk.reason}`
+    return null
+  }
   if (Array.isArray(rawFixes)) {
     for (const [index, value] of rawFixes.entries()) {
+      const issue = riskIssue(value, true)
+      if (issue) return invalid(`requiredFixes[${index}]: ${issue}`)
       if (typeof value === 'string' && value.trim()) {
         requiredFixes.push(value.trim())
       } else if (value && typeof value === 'object' && !Array.isArray(value)
@@ -645,7 +659,26 @@ function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: stri
       }
     }
   } else if (rawFixes.trim() && !/^(none|no|无|没有|\[\])$/i.test(rawFixes.trim())) {
+    const issue = riskIssue(rawFixes, true)
+    if (issue) return invalid(issue)
     requiredFixes.push(rawFixes.trim())
+  }
+  if (record.dependencyRisks !== undefined && !Array.isArray(record.dependencyRisks)) return invalid('dependencyRisks must be an array of explicit dependency-risk finding objects.')
+  if (Array.isArray(record.dependencyRisks)) {
+    for (const [index, finding] of record.dependencyRisks.entries()) {
+      if (!finding || typeof finding !== 'object' || Array.isArray(finding) || !('kind' in finding) || finding.kind !== 'dependency-risk') {
+        return invalid(`dependencyRisks[${index}] must be an explicit dependency-risk finding object.`)
+      }
+      const issue = riskIssue(finding, false)
+      if (issue) return invalid(`dependencyRisks[${index}]: ${issue}`)
+      if (assessDependencyRisk(finding, riskContext)?.classification !== 'nonblocking-warning'
+        && !requiredFixes.some(value => {
+          if (!assessDependencyRisk(value, riskContext)) return false
+          return isDeepStrictEqual(JSON.parse(value), finding)
+        })) {
+        return invalid(`dependencyRisks[${index}]: unresolved or blocking dependency risk must also be retained as the same typed kind="dependency-risk" finding in requiredFixes. A plain Leader Ask action loses risk metadata and must not become a Coder repair. Have the same Reviewer correct this receipt, preserving its evidence and unresolved decision; do not repeat Coder work or claim pass.`)
+      }
+    }
   }
   if (!reviewStatus) return invalid('reviewStatus must be pass or needs-fix.')
   if (readyForNextBatch === null) return invalid('readyForNextBatch is required (boolean).')
@@ -654,16 +687,21 @@ function reviewerOutcomeFromRecord(record: Record<string, unknown>, issues: stri
   return { reviewStatus, requiredFixes, readyForNextBatch }
 }
 
-export function inspectDevelopmentReviewerOutcome(content: string): { outcome: DevelopmentReviewerOutcome | null, issue: string | null } {
+export function inspectDevelopmentReviewerOutcome(content: string, riskContext: DependencyRiskContext = {}): { outcome: DevelopmentReviewerOutcome | null, issue: string | null } {
   const candidates = [content]
   const issues: string[] = []
+  const outcomes: DevelopmentReviewerOutcome[] = []
   for (const match of content.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(match[1])
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate.trim())
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const outcome = reviewerOutcomeFromRecord(parsed as Record<string, unknown>, issues)
-        if (outcome) return { outcome, issue: null }
+        // Evidence JSON is not a review receipt. Validate every actual receipt
+        // before accepting one, so another fence cannot hide a risk or conflict.
+        if (!['workflowReview', 'reviewStatus', 'approvalStatus', 'requiredFixes', 'readyForNextBatch', 'allowNextBatch', 'dependencyRisks']
+          .some(key => key in parsed)) continue
+        const outcome = reviewerOutcomeFromRecord(parsed as Record<string, unknown>, issues, riskContext)
+        if (outcome) outcomes.push(outcome)
       }
     } catch {}
   }
@@ -671,13 +709,17 @@ export function inspectDevelopmentReviewerOutcome(content: string): { outcome: D
   // A parsed but invalid receipt must not be reinterpreted by the legacy
   // text parser, which cannot validate individual JSON finding entries.
   if (issues.length) return { outcome: null, issue: issues[0] }
+  if (outcomes.some(outcome => JSON.stringify(outcome) !== JSON.stringify(outcomes[0]))) {
+    return { outcome: null, issue: 'Multiple workflowReview receipts conflict; return one coherent review receipt.' }
+  }
+  if (outcomes.length) return { outcome: outcomes[0]!, issue: null }
 
   const outcome = parseLegacyDevelopmentReviewerOutcome(content)
   return { outcome, issue: outcome ? null : 'Return a JSON workflowReview object with reviewStatus, requiredFixes and readyForNextBatch; the report could not be parsed as a valid receipt.' }
 }
 
-export function parseDevelopmentReviewerOutcome(content: string): DevelopmentReviewerOutcome | null {
-  return inspectDevelopmentReviewerOutcome(content).outcome
+export function parseDevelopmentReviewerOutcome(content: string, riskContext: DependencyRiskContext = {}): DevelopmentReviewerOutcome | null {
+  return inspectDevelopmentReviewerOutcome(content, riskContext).outcome
 }
 
 function parseLegacyDevelopmentReviewerOutcome(content: string): DevelopmentReviewerOutcome | null {

@@ -990,6 +990,7 @@ describe('ActiveSession task polling', () => {
     expect(useChatStore.getState().sessions[sessionId]?.chatState).toBe('idle')
     expect(useTabStore.getState().tabs.find((tab) => tab.sessionId === sessionId)?.status).toBe('idle')
     expect(screen.getByTestId('message-list')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '执行时间线' })).toBeInTheDocument()
   })
 
   it('keeps completion management collapsed until the user explicitly opens stage status', () => {
@@ -1223,6 +1224,7 @@ describe('ActiveSession task polling', () => {
     expect(within(chatColumn).getByTestId('message-list')).toBeInTheDocument()
     expect(within(chatColumn).getByTestId('chat-input')).toBeInTheDocument()
     expect(chatColumn.children[0]).toContainElement(statusPanel)
+    expect(within(chatColumn).getByRole('button', { name: '执行时间线' })).toBeInTheDocument()
   })
 
   it('renders completed workflows as a single compact strip with report access', async () => {
