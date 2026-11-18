@@ -56,8 +56,17 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Get-Command rg -ErrorAction SilentlyContinue)) {
-            choco install ripgrep --yes --no-progress
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $archivePath = Join-Path $env:RUNNER_TEMP 'ripgrep-15.1.0.zip'
+            $installRoot = Join-Path $env:RUNNER_TEMP 'ripgrep-15.1.0'
+            Invoke-WebRequest -Uri 'https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-pc-windows-msvc.zip' -OutFile $archivePath
+            $expectedHash = '124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a'
+            if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedHash) {
+              throw "ripgrep archive SHA256 mismatch"
+            }
+            Expand-Archive -LiteralPath $archivePath -DestinationPath $installRoot -Force
+            $binDir = Join-Path $installRoot 'ripgrep-15.1.0-x86_64-pc-windows-msvc'
+            $env:PATH = "$binDir;$env:PATH"
+            $binDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
           rg --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
