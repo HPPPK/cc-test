@@ -3,7 +3,32 @@ import { runInNewContext } from 'node:vm'
 import { join } from 'node:path'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection, verifyDesktopSmokeChangedFiles, desktopSmokeProjectReadyExpression, verifyDesktopSmokeSessionWorkspace } from './execute'
+import { agentBrowserCommand, desktopViteCommand, resolveDesktopSmokeRuntimeSelection, verifyDesktopSmokeChangedFiles, desktopSmokeProjectReadyExpression, verifyDesktopSmokeSessionWorkspace, waitForVerifiedProject } from './execute'
+
+describe('desktop model completion waiting', () => {
+  test('keeps waiting without a total deadline until project verification passes', async () => {
+    let checks = 0
+    const wait = runInNewContext(`(${waitForVerifiedProject.toString()})`, {
+      Date: { now: () => ++checks * 86_400_000 },
+      Bun: { sleep: async () => {} },
+      agentBrowserCommand: () => [],
+      runLoggedCommand: async () => ({ stdout: '', stderr: '' }),
+      verifyProject: async () => { if (checks++ < 3) throw new Error('model still working') },
+    })
+    await expect(wait({}, '', '', '', '', '', 0)).resolves.toBeUndefined()
+    expect(checks).toBeGreaterThan(3)
+  })
+
+  test('unlimited waiting still reports explicit runtime errors', async () => {
+    const wait = runInNewContext(`(${waitForVerifiedProject.toString()})`, {
+      Date,
+      Bun: { sleep: async () => {} },
+      agentBrowserCommand: () => [],
+      runLoggedCommand: async () => ({ stdout: 'API Error: 429', stderr: '' }),
+    })
+    await expect(wait({}, '', '', '', '', '', 0)).rejects.toThrow('quota/rate-limit failure')
+  })
+})
 
 describe('desktop smoke runtime selection', () => {
   test('lets current-runtime use the desktop default active provider', () => {

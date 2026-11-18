@@ -87,6 +87,7 @@ export type BaselineCase = {
   prompt: string
   mode: 'ui' | 'websocket'
   requiredCapabilities: Array<'model' | 'file-edit' | 'shell' | 'permission' | 'browser'>
+  /** Total case deadline; 0 waits for completion without a wall clock limit. */
   timeoutMs: number
   verify: {
     commands: string[][]

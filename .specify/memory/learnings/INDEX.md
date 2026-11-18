@@ -1,6 +1,7 @@
 # Project Learning Index
 
 - Workflow Agent queued forever after a failure notification: [pending task failure and Reviewer contract boundaries](./learn-2026-11-16-workflow-pending-agent-failure.md). Applies to background dispatch, TaskOutput, batch reset, Reviewer results and desktop status.
+- Windows native verification while the desktop app is running: [locked native target and isolated checks](./learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md). `check:native` defaults to a separate Cargo target on Windows; preserve explicit overrides and do not interrupt the user's app.
 
 Thin first-read index of reusable engineering lessons for later `sp-xxx` workflows.
 
@@ -228,7 +229,7 @@ context. Open only the linked detail documents whose `applies_to` or
   {
     "id": "learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7",
     "problem": "Runtime provider/model switch failures must roll back both server override state and desktop optimistic persistence; Windows native checks can be blocked by a locked default Tauri target.",
-    "lesson": "A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted.",
+    "lesson": "A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted. Windows check:native now defaults to artifacts/native-checks/target, preserving explicit overrides; file locks are separate from Developer Mode symlink permission.",
     "learning_type": "recovery_path",
     "source_command": "sp-debug",
     "recurrence_key": "runtime-switch-rollback-and-locked-native-target",
@@ -253,8 +254,8 @@ context. Open only the linked detail documents whose `applies_to` or
     ],
     "detail": "./learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md",
     "first_seen": "2026-06-15T09:45:00Z",
-    "last_seen": "2026-06-17T15:45:00+08:00",
-    "occurrence_count": 2,
+    "last_seen": "2026-11-18T12:45:31Z",
+    "occurrence_count": 3,
     "signal_strength": "high"
   },
   {
@@ -525,14 +526,14 @@ Provider export modals need copyable JSON plus a save-file path. Tauri dialog sa
 - Applies To: sp-debug, sp-implement, desktop runtime, server websocket, native verification
 - Trigger Signals: Failed to switch provider/model, CLI exited during startup with code 143, runtimeOverride.providerId, desktop runtime selection replay, Stop then switch provider/model, Force-killing CLI subprocess after runtime override restart, check:native PermissionDenied, tauri-build sidecar copy, high, recovery_path
 - Signal: `high`
-- Occurrence Count: 2
+- Occurrence Count: 3
 - First Seen: `2026-06-15T09:45:00Z`
-- Last Seen: `2026-06-17T15:45:00+08:00`
+- Last Seen: `2026-11-18T12:45:31Z`
 - Detail: `./learn-2026-06-15-runtime-switch-rollback-and-locked-native-target-a91d4b2c7.md`
 
 #### Lesson
 
-A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted.
+A failed CLI restart left runtimeOverrides as next-startup truth while desktop replayed the failed selection. Fix both layers. If Stop is clicked immediately before model switch, bind delayed force-kill to the original CLI process generation so it cannot kill the newer runtime-switch process. When check:native hits Windows PermissionDenied in tauri-build sidecar copy, use an isolated CARGO_TARGET_DIR if running desktop processes should not be interrupted. Windows check:native now defaults to artifacts/native-checks/target, preserving explicit overrides; file locks are separate from Developer Mode symlink permission.
 
 
 ---

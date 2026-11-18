@@ -48,6 +48,11 @@ export async function runNativeCheck({
     const commandEnv: Record<string, string | undefined> = {
       ...env,
       PATH: `${path.dirname(launcher)}${path.delimiter}${inheritedPath}`,
+      // A running Windows app locks its sidecar in src-tauri/target. Keep
+      // verification output separate so checks never replace that executable.
+      ...(platform === 'win32' && !env.CARGO_TARGET_DIR
+        ? { CARGO_TARGET_DIR: path.resolve(desktopRoot, '../artifacts/native-checks/target') }
+        : {}),
     }
     const sidecarExit = await runCommand([launcher, 'run', 'build:sidecars'], desktopRoot, commandEnv)
     if (sidecarExit !== 0) return sidecarExit

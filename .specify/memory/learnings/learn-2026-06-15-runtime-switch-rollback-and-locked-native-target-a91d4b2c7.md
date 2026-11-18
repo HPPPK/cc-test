@@ -7,6 +7,8 @@
 - applies_to: `sp-debug`, `sp-implement`, `desktop runtime`, `server websocket`, `native verification`
 - signal_strength: `high`
 - first_seen: `2026-06-15T09:45:00Z`
+- last_seen: `2026-11-18T12:45:31Z`
+- occurrence_count: 3
 
 ## Lesson
 
@@ -33,3 +35,13 @@ For Windows native verification, `cargo check` can fail with `PermissionDenied` 
 - `Force-killing CLI subprocess` appears after a runtime override restart starts or connects a newer SDK.
 - Desktop model selector or provider refresh writes a runtime selection before server success.
 - `check:native` fails with Windows `PermissionDenied` while repo desktop/sidecar processes are running.
+
+## Verified recurrence: 2026-11-18
+
+The running repository desktop app held `desktop/src-tauri/target/debug/claude-sidecar.exe`. `tauri-build` failed at `fs::remove_file(&dest)` with Windows PermissionDenied. This is a loaded executable file lock, separate from the file-symlink EPERM addressed by Developer Mode. Do not widen permissions or terminate an active desktop/AI session to make this check pass.
+
+`scripts/check-native.ts` now sets a Windows-only default `CARGO_TARGET_DIR` of `artifacts/native-checks/target`. Explicit user targets are preserved, other platforms retain Cargo's normal default, and the original environment object is not modified. This is verification output isolation, not a product runtime or expert-mode change.
+
+Validation: the missing-isolation test failed before the change; all 5 native-check unit tests passed afterward. A real clean `bun run check:native` passed in the isolated target in 10m59s while the existing app remained running. Evidence: `artifacts/quality-runs/2026-11-18T10-51-45-227Z/logs/native-isolated.log`.
+
+For process diagnostics, prefer PID and executable path. If a command line is needed, redact SDK URL tokens and other credentials before displaying or recording it.

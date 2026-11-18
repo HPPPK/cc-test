@@ -9,7 +9,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'Run the tests, inspect the failing assertion, fix the implementation bug, and rerun the tests until they pass. Only modify the fixture source files needed for the fix.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell'],
-    timeoutMs: 180_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['src/math.ts'],
@@ -26,7 +26,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'The user display API contract changed to return an object with a label field, where label is "Ada Lovelace <ada@example.com>". Update the implementation and caller so the existing tests pass. Do not edit package.json.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell'],
-    timeoutMs: 240_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['src/api.ts', 'src/app.ts'],
@@ -43,7 +43,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'Run the tests and fix the slug formatter implementation until the whole suite passes. Do not edit the tests. Keep the implementation small and deterministic.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell'],
-    timeoutMs: 240_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['src/slug.ts'],
@@ -60,7 +60,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'The checkout tests are failing. Search the project, identify the real bug, fix the implementation, and rerun the tests. Do not rewrite unrelated modules.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell'],
-    timeoutMs: 240_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['src/checkout.ts'],
@@ -77,7 +77,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'Run the tests, create the missing project artifact they require, and rerun the tests. Do not modify the tests or package.json.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell', 'permission'],
-    timeoutMs: 180_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['notes/summary.md'],
@@ -94,7 +94,7 @@ export const baselineCases: BaselineCase[] = [
     prompt: 'Update the config parsing flow so parseConfig returns a structured object with enabled and retries fields. Update the implementation and caller so the existing tests pass, then run the suite.',
     mode: 'websocket',
     requiredCapabilities: ['model', 'file-edit', 'shell'],
-    timeoutMs: 300_000,
+    timeoutMs: 0,
     verify: {
       commands: [['bun', 'test']],
       requiredFiles: ['src/config.ts', 'src/runner.ts'],
@@ -120,8 +120,8 @@ export function validateBaselineCases(cases = baselineCases) {
     if (testCase.verify.commands.length === 0) {
       throw new Error(`Baseline case ${testCase.id} is missing verification commands`)
     }
-    if (testCase.timeoutMs < 30_000) {
-      throw new Error(`Baseline case ${testCase.id} timeout is too low`)
+    if (!Number.isSafeInteger(testCase.timeoutMs) || testCase.timeoutMs < 0 || (testCase.timeoutMs > 0 && testCase.timeoutMs < 30_000)) {
+      throw new Error(`Baseline case ${testCase.id} timeout must be 0 (unlimited) or at least 30000ms`)
     }
   }
 }

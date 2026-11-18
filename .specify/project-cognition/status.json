@@ -13,11 +13,20 @@
   "query_contract_version": 1,
   "update_contract_version": 1,
   "dirty": true,
-  "dirty_reasons": [],
+  "dirty_reasons": ["workflow-execution-timeline-added"],
   "dirty_origin_command": "",
   "dirty_origin_feature_dir": "",
   "dirty_origin_lane_id": "",
-  "dirty_scope_paths": [],
+  "dirty_scope_paths": [
+    "src/server/services/workflowTimelineService.ts",
+    "src/server/services/workflowSessionStateService.ts",
+    "src/server/api/workflowTimeline.ts",
+    "src/server/api/sessions.ts",
+    "src/server/ws/handler.ts",
+    "desktop/src/api/workflowTimeline.ts",
+    "desktop/src/components/workflow/WorkflowTimeline.tsx",
+    "desktop/src/pages/ActiveSession.tsx"
+  ],
   "stale_paths": [
     "desktop/src/__tests__/generalSettings.test.tsx",
     "desktop/src/api/providers.ts",
