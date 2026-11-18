@@ -8,6 +8,14 @@ describe('baselineCases', () => {
     expect(() => validateBaselineCases()).not.toThrow()
   })
 
+  test('lets real model tasks finish without a wall clock deadline', () => {
+    for (const testCase of baselineCases) expect(testCase.timeoutMs).toBe(0)
+    expect(() => validateBaselineCases([{ ...baselineCases[0]!, timeoutMs: 0 }])).not.toThrow()
+    for (const timeoutMs of [-1, NaN, Infinity, 1]) {
+      expect(() => validateBaselineCases([{ ...baselineCases[0]!, timeoutMs }])).toThrow()
+    }
+  })
+
   test('use unique ids', () => {
     const ids = baselineCases.map((testCase) => testCase.id)
     expect(new Set(ids).size).toBe(ids.length)

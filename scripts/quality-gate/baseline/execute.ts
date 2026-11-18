@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { createServer } from 'node:net'
 import type { BaselineCase, BaselineTarget, LaneResult } from '../types'
 import { bunCommand } from '../bunRuntime'
+import { waitForHttp } from '../waitForHttp'
 
 type ServerMessage = {
   type: string
@@ -24,20 +25,6 @@ function getPort() {
       server.close(() => resolve(port))
     })
   })
-}
-
-async function waitForHttp(url: string, timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url)
-      if (res.ok) return
-    } catch {
-      // Keep polling until timeout.
-    }
-    await Bun.sleep(500)
-  }
-  throw new Error(`Timed out waiting for ${url}`)
 }
 
 async function runCommand(command: string[], cwd: string) {
@@ -181,14 +168,7 @@ export async function cleanupBaselineWorkRoot(
   appendFileSync(logPath, `\n[quality-gate] Failed to remove temp work root ${workRoot}: ${message}\n`)
 }
 
-function waitForWebSocketOpen(ws: WebSocket) {
-  return new Promise<void>((resolve, reject) => {
-    ws.onopen = () => resolve()
-    ws.onerror = () => reject(new Error('WebSocket failed to open'))
-  })
-}
-
-async function runPromptOverWebSocket(
+export async function runPromptOverWebSocket(
   baseUrl: string,
   sessionId: string,
   prompt: string,
@@ -198,12 +178,11 @@ async function runPromptOverWebSocket(
   const wsUrl = baseUrl.replace(/^http/, 'ws')
   const ws = new WebSocket(`${wsUrl}/ws/${sessionId}`)
   const messages: ServerMessage[] = []
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   try {
-    await waitForWebSocketOpen(ws)
-
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      if (timeoutMs > 0) timer = setTimeout(() => {
         reject(new Error(`Timed out waiting for baseline case completion after ${timeoutMs}ms`))
       }, timeoutMs)
 
@@ -249,8 +228,13 @@ async function runPromptOverWebSocket(
         clearTimeout(timer)
         reject(new Error('WebSocket error during baseline case'))
       }
+      ws.onclose = () => {
+        clearTimeout(timer)
+        reject(new Error('WebSocket closed before baseline case completion'))
+      }
     })
   } finally {
+    clearTimeout(timer)
     ws.close()
   }
 
@@ -295,7 +279,7 @@ export async function executeBaselineCase(
   const stderrPump = pipeToFile(server.stderr, serverLogPath)
 
   try {
-    await waitForHttp(`${baseUrl}/health`, 60_000)
+    await waitForHttp(`${baseUrl}/health`, { process: server })
 
     const createResponse = await fetch(`${baseUrl}/api/sessions`, {
       method: 'POST',

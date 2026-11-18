@@ -44,6 +44,17 @@ test('persists waiting, errors and task evidence; never writes internal thinking
   await service.recordMessage('missing-session', { type: 'error', message: 'Not a workflow' })
 })
 
+test('expert mode does not create a workflow journal or rewrite its state', async () => {
+  const { service, state } = await fixture()
+  const statePath = path.join(path.dirname(service.getPath('session-1')), 'state.json')
+  const expertState = JSON.stringify({ ...state, mode: 'expert', expert: { expertId: 'fixture-expert' } })
+  await writeFile(statePath, expertState)
+  await service.recordMessage('session-1', { type: 'tool_use_complete', toolUseId: 'expert-tool', toolName: 'Read', input: { file_path: 'expert.md' } })
+  await service.recordMessage('session-1', { type: 'tool_result', toolUseId: 'expert-tool', content: 'expert result' })
+  expect(await readFile(statePath, 'utf8')).toBe(expertState)
+  await expect(readFile(service.getPath('session-1'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
 test('upgrade gate: old workflow with no timeline recovers transcript tools and transitions without changing old files', async () => {
   const { service, state } = await fixture()
   state.transitionHistory = [{ transitionId: 'transition-1', fromPhaseId: null, toPhaseId: 'build', decision: 'started', createdAt: '2026-11-18T00:00:00Z' }] as WorkflowSessionState['transitionHistory']

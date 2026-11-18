@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { changedFiles, writeDiffPatch } from '../baseline/execute'
 import type { BaselineTarget, LaneResult } from '../types'
 import { bunCommand } from '../bunRuntime'
+import { waitForHttp } from '../waitForHttp'
 
 const FIXTURE = 'scripts/quality-gate/desktop-smoke/fixtures/chat-edit'
 const PROMPT = [
@@ -123,22 +124,6 @@ async function terminateSmokeProcessTree(pid: number): Promise<void> {
   await taskkill.exited
 }
 
-async function waitForHttp(url: string, timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs
-  let lastError = ''
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url)
-      if (response.ok) return
-      lastError = `HTTP ${response.status}`
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error)
-    }
-    await Bun.sleep(500)
-  }
-  throw new Error(`Timed out waiting for ${url}${lastError ? ` (${lastError})` : ''}`)
-}
-
 function withAgentBrowserIsolation(command: string[], env?: Record<string, string>): string[] {
   const executable = command[0]?.toLowerCase() ?? ''
   if (!executable.includes('agent-browser')) return command
@@ -228,7 +213,7 @@ async function setPermissionMode(baseUrl: string, mode: string) {
   })
 }
 
-async function waitForVerifiedProject(
+export async function waitForVerifiedProject(
   browserEnv: Record<string, string>,
   browserLogPath: string,
   rootDir: string,
@@ -237,7 +222,7 @@ async function waitForVerifiedProject(
   artifactDir: string,
   timeoutMs: number,
 ) {
-  const deadline = Date.now() + timeoutMs
+  const deadline = timeoutMs > 0 ? Date.now() + timeoutMs : Infinity
   let lastVerificationError = 'project verification has not run yet'
   while (Date.now() < deadline) {
     const body = await runLoggedCommand(agentBrowserCommand('get', 'text', '#content-area'), {
@@ -363,8 +348,8 @@ export async function executeDesktopSmoke(
 
   let previousPermissionMode: string | null = null
   try {
-    await waitForHttp(`${baseUrl}/health`, 20_000)
-    await waitForHttp(appUrl, 30_000)
+    await waitForHttp(`${baseUrl}/health`, { process: server })
+    await waitForHttp(appUrl, { process: vite })
 
     const permission = await fetchJson<{ mode: string }>(`${baseUrl}/api/permissions/mode`)
     previousPermissionMode = permission.mode
@@ -489,7 +474,7 @@ export async function executeDesktopSmoke(
       originalDir,
       projectDir,
       artifactDir,
-      360_000,
+      0,
     )
     await runLoggedCommand(agentBrowserCommand('screenshot', join(artifactDir, 'final.png')), {
       cwd: rootDir,
